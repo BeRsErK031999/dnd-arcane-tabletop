@@ -9,7 +9,7 @@ import {
 } from './sceneFactory'
 
 describe('sceneFactory', () => {
-  it('creates an empty scene with stage 4 defaults', () => {
+  it('creates an empty scene with stage 7 defaults', () => {
     const scene = createEmptyScene({
       campaignId: 'campaign-test',
       id: 'scene-test',
@@ -31,6 +31,9 @@ describe('sceneFactory', () => {
       grid: {
         enabled: true,
         size: 70,
+        distancePerCell: 5,
+        unitLabel: 'ft',
+        snapToGrid: true,
       },
       isActive: true,
     })

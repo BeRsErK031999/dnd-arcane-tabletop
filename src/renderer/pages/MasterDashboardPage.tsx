@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { desktopApi } from '@renderer/services/desktopApi'
 import { useCampaignsStore } from '@renderer/stores/useCampaignsStore'
+import type { SceneMeasurementTemplate } from '@renderer/stores/sceneToolsFactory'
 import { SceneCanvas } from '@renderer/widgets/SceneCanvas'
 import {
   createDefaultPlayerScreenState,
@@ -11,6 +12,8 @@ import {
   type PlayerScreenOpenResult,
   type PlayerScreenState,
   type PlayerScreenStatus,
+  type SceneCanvasViewport,
+  type SceneGrid,
 } from '@shared/types'
 
 type PlayerActionResult = PlayerScreenCommandResult | PlayerScreenOpenResult
@@ -27,16 +30,16 @@ const toolGroups: Array<{ title: string; items: ToolItem[] }> = [
     title: 'Навигация',
     items: [
       { label: 'Обзор', shortcut: 'V', status: 'active' },
-      { label: 'Панорама', shortcut: 'Space', status: 'soon' },
-      { label: 'Масштаб', shortcut: 'Z', status: 'soon' },
+      { label: 'Панорама', shortcut: 'Space', status: 'active' },
+      { label: 'Масштаб', shortcut: 'Z', status: 'active' },
     ],
   },
   {
     title: 'Сцена',
     items: [
-      { label: 'Сетка', shortcut: 'G', status: 'soon' },
-      { label: 'Измерение', shortcut: 'M', status: 'soon' },
-      { label: 'Область', shortcut: 'A', status: 'soon' },
+      { label: 'Сетка', shortcut: 'G', status: 'active' },
+      { label: 'Измерение', shortcut: 'M', status: 'active' },
+      { label: 'Область', shortcut: 'A', status: 'active' },
     ],
   },
   {
@@ -62,6 +65,10 @@ export function MasterDashboardPage() {
     createScene,
     activateScene,
     sendActiveSceneToPlayers,
+    updateActiveSceneGrid,
+    updateActiveSceneViewport,
+    addActiveSceneMeasurement,
+    clearActiveSceneMeasurements,
     importImageAsset,
     sendAssetToPlayers,
   } = useCampaignsStore()
@@ -238,6 +245,30 @@ export function MasterDashboardPage() {
     setSceneActionStatus('Не удалось отправить активную сцену игрокам.')
   }
 
+  async function handleUpdateActiveSceneGrid(grid: Partial<SceneGrid>): Promise<void> {
+    const result = await updateActiveSceneGrid(grid)
+
+    setSceneActionStatus(result.ok ? 'Настройки сетки сохранены.' : 'Не удалось сохранить настройки сетки.')
+  }
+
+  async function handleUpdateActiveSceneViewport(viewport: Partial<SceneCanvasViewport>): Promise<void> {
+    const result = await updateActiveSceneViewport(viewport)
+
+    setSceneActionStatus(result.ok ? 'Положение canvas сохранено.' : 'Не удалось сохранить положение canvas.')
+  }
+
+  async function handleAddActiveSceneMeasurement(template: SceneMeasurementTemplate): Promise<void> {
+    const result = await addActiveSceneMeasurement(template)
+
+    setSceneActionStatus(result.ok ? 'Измерение добавлено.' : 'Не удалось добавить измерение.')
+  }
+
+  async function handleClearActiveSceneMeasurements(): Promise<void> {
+    const result = await clearActiveSceneMeasurements()
+
+    setSceneActionStatus(result.ok ? 'Измерения очищены.' : 'Не удалось очистить измерения.')
+  }
+
   async function handleImportImageAsset(): Promise<void> {
     const result = await importImageAsset(assetKind, assetName)
 
@@ -288,11 +319,11 @@ export function MasterDashboardPage() {
         <div>
           <p className="eyebrow">Master Console</p>
           <h1>Панель мастера</h1>
-          <p className="muted">Stage 6: canvas сцены, слои и player-visible projection.</p>
+          <p className="muted">Stage 7: сетка, масштаб и измерения сцены.</p>
         </div>
         <div className="button-row">
           {selectedCampaign ? <span className="status-badge">Открыта: {selectedCampaign.name}</span> : null}
-          <span className="status-badge">Этап 6</span>
+          <span className="status-badge">Этап 7</span>
           <button className="button button--secondary" type="button" onClick={refresh}>
             Обновить
           </button>
@@ -388,7 +419,7 @@ export function MasterDashboardPage() {
                 <h2>{activeScene?.name ?? 'Рабочая область сцены'}</h2>
               </div>
               <div className="workspace-board__meta">
-                <span>Canvas: Stage 6</span>
+                <span>Grid: Stage 7</span>
                 <span>Player mode: {playerStatus.state.mode}</span>
               </div>
             </div>
@@ -397,7 +428,11 @@ export function MasterDashboardPage() {
               isPlayerSynced={Boolean(activeScene && playerStatus.state.activeSceneId === activeScene.id)}
               isStorageBusy={isStorageBusy}
               mapAsset={activeMapAsset}
+              onAddMeasurement={(template) => void handleAddActiveSceneMeasurement(template)}
+              onClearMeasurements={() => void handleClearActiveSceneMeasurements()}
               onSendToPlayers={() => void handleSendActiveSceneToPlayers()}
+              onUpdateGrid={(grid) => void handleUpdateActiveSceneGrid(grid)}
+              onUpdateViewport={(viewport) => void handleUpdateActiveSceneViewport(viewport)}
               scene={activeScene}
             />
           </section>

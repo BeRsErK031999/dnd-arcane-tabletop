@@ -7,6 +7,8 @@ import type {
   CampaignSummary,
   ImageAssetKind,
   PlayerScreenCommandResult,
+  SceneCanvasViewport,
+  SceneGrid,
   SceneId,
 } from '@shared/types'
 import { createCampaignWithAssetPreview, createCampaignWithImportedAsset } from './assetFactory'
@@ -18,6 +20,13 @@ import {
   createCampaignWithScenePreview,
   getActiveCampaignScene,
 } from './sceneFactory'
+import {
+  createCampaignWithActiveSceneGrid,
+  createCampaignWithActiveSceneMeasurement,
+  createCampaignWithActiveSceneViewport,
+  createCampaignWithoutActiveSceneMeasurements,
+  type SceneMeasurementTemplate,
+} from './sceneToolsFactory'
 
 export type CampaignsStoreStatus = 'idle' | 'loading' | 'ready' | 'saving' | 'deleting' | 'error'
 export type CampaignMutationResult = { ok: true; campaign: Campaign } | { ok: false; reason: string }
@@ -230,6 +239,107 @@ export function useCampaignsStore() {
     }
   }, [selectedCampaign])
 
+  const updateActiveSceneGrid = useCallback(
+    async (grid: Partial<SceneGrid>): Promise<CampaignMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для настройки сетки.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithActiveSceneGrid(selectedCampaign, grid)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign }
+      } catch {
+        setLastError('Не удалось сохранить настройки сетки.')
+        setStatus('error')
+        return { ok: false, reason: 'update-grid-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const updateActiveSceneViewport = useCallback(
+    async (viewport: Partial<SceneCanvasViewport>): Promise<CampaignMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для настройки canvas.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithActiveSceneViewport(selectedCampaign, viewport)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign }
+      } catch {
+        setLastError('Не удалось сохранить положение canvas.')
+        setStatus('error')
+        return { ok: false, reason: 'update-viewport-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const addActiveSceneMeasurement = useCallback(
+    async (template: SceneMeasurementTemplate): Promise<CampaignMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для измерений.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithActiveSceneMeasurement(selectedCampaign, template)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign }
+      } catch {
+        setLastError('Не удалось добавить измерение.')
+        setStatus('error')
+        return { ok: false, reason: 'add-measurement-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const clearActiveSceneMeasurements = useCallback(async (): Promise<CampaignMutationResult> => {
+    if (selectedCampaign === null) {
+      setLastError('Нет открытой кампании для очистки измерений.')
+      return { ok: false, reason: 'campaign-not-selected' }
+    }
+
+    setStatus('saving')
+    setLastError(null)
+
+    try {
+      const updatedCampaign = createCampaignWithoutActiveSceneMeasurements(selectedCampaign)
+      await desktopApi.storage.saveCampaign(updatedCampaign)
+      setSelectedCampaign(updatedCampaign)
+      setCampaigns(await desktopApi.storage.listCampaigns())
+      setStatus('ready')
+      return { ok: true, campaign: updatedCampaign }
+    } catch {
+      setLastError('Не удалось очистить измерения.')
+      setStatus('error')
+      return { ok: false, reason: 'clear-measurements-failed' }
+    }
+  }, [selectedCampaign])
+
   const importImageAsset = useCallback(
     async (kind: ImageAssetKind, suggestedName?: string): Promise<AssetMutationResult> => {
       if (selectedCampaign === null) {
@@ -323,6 +433,10 @@ export function useCampaignsStore() {
     createScene,
     activateScene,
     sendActiveSceneToPlayers,
+    updateActiveSceneGrid,
+    updateActiveSceneViewport,
+    addActiveSceneMeasurement,
+    clearActiveSceneMeasurements,
     importImageAsset,
     sendAssetToPlayers,
   }

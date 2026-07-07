@@ -578,10 +578,18 @@ h1 {
   }
 }
 
+.scene-canvas__content {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+  transition: transform 160ms ease;
+}
+
 .scene-canvas__map,
 .scene-canvas__map-placeholder,
 .scene-canvas__grid,
-.scene-canvas__objects {
+.scene-canvas__objects,
+.scene-canvas__measurements {
   position: absolute;
   inset: 0;
 }
@@ -616,6 +624,10 @@ h1 {
   pointer-events: none;
 }
 
+.scene-canvas__measurements {
+  pointer-events: none;
+}
+
 .scene-canvas-object {
   position: absolute;
   display: grid;
@@ -638,9 +650,59 @@ h1 {
   border-style: dashed;
 }
 
+.scene-canvas-measurement {
+  position: absolute;
+  color: #dff5ef;
+  pointer-events: none;
+}
+
+.scene-canvas-measurement span {
+  min-width: max-content;
+  padding: 3px 6px;
+  color: #fbfaf7;
+  background: rgba(18, 21, 23, 0.78);
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.scene-canvas-measurement--ruler {
+  height: 0;
+  border-top: 3px solid currentColor;
+  transform-origin: left center;
+}
+
+.scene-canvas-measurement--ruler span {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+}
+
+.scene-canvas-measurement--area {
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, currentColor 18%, transparent);
+  border: 2px solid currentColor;
+}
+
+.scene-canvas-measurement--circle {
+  border-radius: 50%;
+}
+
+.scene-canvas-measurement--square {
+  border-radius: 6px;
+}
+
+.scene-canvas-measurement--cone {
+  clip-path: polygon(50% 50%, 100% 0, 100% 100%);
+  transform-origin: center;
+}
+
 .scene-canvas__metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   margin: 0;
 }
@@ -674,6 +736,92 @@ h1 {
   background: #fbfaf7;
   border: 1px solid #ddd6ca;
   border-radius: 6px;
+}
+
+.scene-canvas-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.scene-canvas-control-group {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #d8d3c8;
+  border-radius: 6px;
+}
+
+.scene-canvas-control-group__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.scene-canvas-control-group__header h3 {
+  margin: 0;
+}
+
+.scene-canvas-control-group__header span {
+  color: #69625b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scene-canvas-control-group label {
+  display: grid;
+  gap: 4px;
+  color: #69625b;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.scene-canvas-control-group input {
+  min-width: 0;
+  width: 100%;
+}
+
+.scene-canvas-button-grid,
+.scene-canvas-template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.scene-canvas-button-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.scene-canvas-pan-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.scene-canvas-pan-grid button:first-child,
+.scene-canvas-pan-grid button:last-child {
+  grid-column: 2;
+}
+
+.switch-control {
+  display: inline-flex;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-content: end;
+  gap: 6px;
+  text-transform: none;
+}
+
+.switch-control input {
+  width: auto;
+}
+
+.switch-control--wide {
+  display: flex;
+  flex-direction: row;
+  justify-content: start;
 }
 
 .scene-canvas__layers h3 {
@@ -1267,10 +1415,18 @@ h1 {
   border-radius: 6px;
 }
 
+.player-scene-canvas__content {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+  transition: transform 160ms ease;
+}
+
 .player-scene-canvas__map,
 .player-scene-canvas__placeholder,
 .player-scene-canvas__grid,
-.player-scene-canvas__objects {
+.player-scene-canvas__objects,
+.player-scene-canvas__measurements {
   position: absolute;
   inset: 0;
 }
@@ -1298,6 +1454,11 @@ h1 {
   pointer-events: none;
 }
 
+.player-scene-canvas__objects,
+.player-scene-canvas__measurements {
+  pointer-events: none;
+}
+
 .player-scene-canvas-object {
   position: absolute;
   display: grid;
@@ -1312,6 +1473,56 @@ h1 {
   font-size: 13px;
   font-weight: 800;
   text-align: center;
+  transform-origin: center;
+}
+
+.player-scene-canvas-measurement {
+  position: absolute;
+  color: #dff5ef;
+  pointer-events: none;
+}
+
+.player-scene-canvas-measurement span {
+  min-width: max-content;
+  padding: 4px 7px;
+  color: #fbfaf7;
+  background: rgba(18, 21, 23, 0.82);
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.player-scene-canvas-measurement--ruler {
+  height: 0;
+  border-top: 3px solid currentColor;
+  transform-origin: left center;
+}
+
+.player-scene-canvas-measurement--ruler span {
+  position: absolute;
+  left: 50%;
+  bottom: 9px;
+  transform: translateX(-50%);
+}
+
+.player-scene-canvas-measurement--area {
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, currentColor 18%, transparent);
+  border: 2px solid currentColor;
+}
+
+.player-scene-canvas-measurement--circle {
+  border-radius: 50%;
+}
+
+.player-scene-canvas-measurement--square {
+  border-radius: 6px;
+}
+
+.player-scene-canvas-measurement--cone {
+  clip-path: polygon(50% 50%, 100% 0, 100% 100%);
   transform-origin: center;
 }
 

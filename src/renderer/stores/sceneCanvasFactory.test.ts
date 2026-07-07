@@ -8,7 +8,7 @@ import {
 } from './sceneCanvasFactory'
 
 describe('sceneCanvasFactory', () => {
-  it('creates stage 6 canvas layers for a new scene', () => {
+  it('creates stage 7 canvas state for a new scene', () => {
     const scene = createEmptyScene({
       campaignId: 'campaign-test',
       id: 'scene-test',
@@ -18,7 +18,13 @@ describe('sceneCanvasFactory', () => {
     expect(scene.canvas).toMatchObject({
       width: 1600,
       height: 900,
+      viewport: {
+        zoom: 1,
+        panX: 0,
+        panY: 0,
+      },
       objects: [],
+      measurements: [],
     })
     expect(scene.canvas.layers.map((layer) => [layer.kind, layer.visibility])).toEqual([
       ['map', 'player-visible'],
@@ -30,7 +36,7 @@ describe('sceneCanvasFactory', () => {
     ])
   })
 
-  it('projects only player-visible canvas layers and objects', () => {
+  it('projects only player-visible canvas layers, objects, and measurements', () => {
     const scene: Scene = {
       ...createEmptyScene({
         campaignId: 'campaign-test',
@@ -80,6 +86,36 @@ describe('sceneCanvasFactory', () => {
         isPlayerVisible: false,
       },
     ]
+    scene.canvas.viewport = { zoom: 1.2, panX: 40, panY: -20 }
+    scene.canvas.measurements = [
+      {
+        id: 'measurement-visible',
+        kind: 'ruler',
+        name: 'Visible distance',
+        originX: 120,
+        originY: 140,
+        targetX: 540,
+        targetY: 140,
+        radius: 0,
+        color: '#2c806f',
+        label: '30 ft',
+        isPlayerVisible: true,
+      },
+      {
+        id: 'measurement-master',
+        kind: 'area',
+        shape: 'circle',
+        name: 'Master area',
+        originX: 320,
+        originY: 260,
+        targetX: 420,
+        targetY: 260,
+        radius: 100,
+        color: '#9f2d3c',
+        label: '20 ft',
+        isPlayerVisible: false,
+      },
+    ]
 
     const projection = createPlayerSceneCanvasProjection(scene, [createAssetFixture()])
 
@@ -87,8 +123,10 @@ describe('sceneCanvasFactory', () => {
       id: 'asset-map',
       filePath: 'file:///tmp/map.png',
     })
+    expect(projection.viewport).toEqual({ zoom: 1.2, panX: 40, panY: -20 })
     expect(projection.layers.map((layer) => layer.kind)).toEqual(['map', 'grid', 'object', 'token'])
     expect(projection.objects.map((object) => object.id)).toEqual(['object-visible'])
+    expect(projection.measurements.map((measurement) => measurement.id)).toEqual(['measurement-visible'])
   })
 
   it('hydrates legacy scenes without canvas data', () => {
@@ -109,6 +147,12 @@ describe('sceneCanvasFactory', () => {
     const canvas = getSceneCanvasState(legacyScene)
     const summary = getSceneCanvasLayerSummary(legacyScene)
 
+    expect(canvas.viewport).toEqual({
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+    })
+    expect(canvas.measurements).toEqual([])
     expect(canvas.layers).toHaveLength(6)
     expect(summary.find((layer) => layer.kind === 'master')).toMatchObject({
       visibility: 'master-only',

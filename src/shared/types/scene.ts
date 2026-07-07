@@ -10,6 +10,9 @@ export interface SceneGrid {
   size: number
   color: string
   opacity: number
+  distancePerCell: number
+  unitLabel: string
+  snapToGrid: boolean
 }
 
 export interface Scene {

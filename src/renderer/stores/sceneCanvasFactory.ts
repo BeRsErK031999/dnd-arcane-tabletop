@@ -3,14 +3,22 @@ import type {
   IsoDateString,
   PlayerSceneCanvasProjection,
   Scene,
+  SceneGrid,
   SceneCanvasLayer,
   SceneCanvasLayerKind,
+  SceneCanvasMeasurement,
   SceneCanvasObject,
   SceneCanvasState,
+  SceneCanvasViewport,
 } from '@shared/types'
 
 const defaultCanvasWidth = 1600
 const defaultCanvasHeight = 900
+const defaultCanvasViewport: SceneCanvasViewport = {
+  zoom: 1,
+  panX: 0,
+  panY: 0,
+}
 
 const defaultSceneCanvasLayers: SceneCanvasLayer[] = [
   createCanvasLayer('scene-layer-map', 'map', 'Карта', 'player-visible', 0, true),
@@ -27,8 +35,10 @@ export function createDefaultSceneCanvas(
   return {
     width: defaultCanvasWidth,
     height: defaultCanvasHeight,
+    viewport: { ...defaultCanvasViewport },
     layers: defaultSceneCanvasLayers.map((layer) => ({ ...layer })),
     objects: [],
+    measurements: [],
     updatedAt,
   }
 }
@@ -50,8 +60,12 @@ export function getSceneCanvasState(scene: Scene): SceneCanvasState {
   return {
     width: getPositiveNumber(legacyCanvas.width, defaultCanvasWidth),
     height: getPositiveNumber(legacyCanvas.height, defaultCanvasHeight),
+    viewport: normalizeCanvasViewport(legacyCanvas.viewport),
     layers: mergeCanvasLayers(legacyCanvas.layers),
     objects: Array.isArray(legacyCanvas.objects) ? legacyCanvas.objects.map(normalizeCanvasObject) : [],
+    measurements: Array.isArray(legacyCanvas.measurements)
+      ? legacyCanvas.measurements.map(normalizeCanvasMeasurement)
+      : [],
     updatedAt: legacyCanvas.updatedAt ?? new Date().toISOString(),
   }
 }
@@ -72,6 +86,7 @@ export function createPlayerSceneCanvasProjection(
   return {
     width: canvas.width,
     height: canvas.height,
+    viewport: { ...canvas.viewport },
     grid: { ...scene.grid },
     backgroundAsset: backgroundAsset
       ? {
@@ -103,6 +118,21 @@ export function createPlayerSceneCanvasProjection(
         text,
         assetId,
       })),
+    measurements: canvas.measurements
+      .filter((measurement) => measurement.isPlayerVisible)
+      .map(({ id, kind, shape, name, originX, originY, targetX, targetY, radius, color, label }) => ({
+        id,
+        kind,
+        shape,
+        name,
+        originX,
+        originY,
+        targetX,
+        targetY,
+        radius,
+        color,
+        label,
+      })),
     updatedAt: canvas.updatedAt,
   }
 }
@@ -114,6 +144,57 @@ export function getSceneCanvasLayerSummary(scene: Scene): Array<SceneCanvasLayer
     ...layer,
     objectCount: canvas.objects.filter((object) => object.layerId === layer.id).length,
   }))
+}
+
+export function createSceneCanvasWithViewport(
+  canvas: SceneCanvasState,
+  viewport: Partial<SceneCanvasViewport>,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): SceneCanvasState {
+  return {
+    ...canvas,
+    viewport: normalizeCanvasViewport({
+      ...canvas.viewport,
+      ...viewport,
+    }),
+    updatedAt,
+  }
+}
+
+export function createSceneCanvasWithMeasurement(
+  canvas: SceneCanvasState,
+  grid: SceneGrid,
+  template: 'ruler' | 'circle' | 'cone' | 'square',
+  updatedAt: IsoDateString = new Date().toISOString(),
+): SceneCanvasState {
+  return {
+    ...canvas,
+    measurements: [...canvas.measurements, createMeasurementTemplate(canvas, grid, template)],
+    updatedAt,
+  }
+}
+
+export function createSceneCanvasWithoutMeasurements(
+  canvas: SceneCanvasState,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): SceneCanvasState {
+  return {
+    ...canvas,
+    measurements: [],
+    updatedAt,
+  }
+}
+
+export function snapCanvasValue(value: number, grid: SceneGrid): number {
+  if (!grid.enabled || !grid.snapToGrid) {
+    return value
+  }
+
+  return Math.round(value / grid.size) * grid.size
+}
+
+export function formatGridDistance(cells: number, grid: SceneGrid): string {
+  return `${Math.round(cells * grid.distancePerCell)} ${grid.unitLabel}`
 }
 
 function createCanvasLayer(
@@ -164,12 +245,125 @@ function normalizeCanvasObject(object: SceneCanvasObject): SceneCanvasObject {
   }
 }
 
+function normalizeCanvasViewport(viewport: Partial<SceneCanvasViewport> | undefined): SceneCanvasViewport {
+  return {
+    zoom: clampNumber(viewport?.zoom, 0.5, 3, defaultCanvasViewport.zoom),
+    panX: clampNumber(viewport?.panX, -800, 800, defaultCanvasViewport.panX),
+    panY: clampNumber(viewport?.panY, -800, 800, defaultCanvasViewport.panY),
+  }
+}
+
+function normalizeCanvasMeasurement(measurement: SceneCanvasMeasurement): SceneCanvasMeasurement {
+  return {
+    ...measurement,
+    originX: getFiniteNumber(measurement.originX, defaultCanvasWidth / 2),
+    originY: getFiniteNumber(measurement.originY, defaultCanvasHeight / 2),
+    targetX: getFiniteNumber(measurement.targetX, defaultCanvasWidth / 2),
+    targetY: getFiniteNumber(measurement.targetY, defaultCanvasHeight / 2),
+    radius: getPositiveNumber(measurement.radius, 140),
+    isPlayerVisible: Boolean(measurement.isPlayerVisible),
+  }
+}
+
+function createMeasurementTemplate(
+  canvas: SceneCanvasState,
+  grid: SceneGrid,
+  template: 'ruler' | 'circle' | 'cone' | 'square',
+): SceneCanvasMeasurement {
+  const centerX = snapCanvasValue(canvas.width / 2, grid)
+  const centerY = snapCanvasValue(canvas.height / 2, grid)
+  const rulerLength = grid.size * 6
+  const areaRadius = grid.size * 4
+
+  switch (template) {
+    case 'ruler':
+      return createMeasurement({
+        kind: 'ruler',
+        name: 'Линейка',
+        originX: centerX - rulerLength / 2,
+        originY: centerY,
+        targetX: centerX + rulerLength / 2,
+        targetY: centerY,
+        radius: 0,
+        color: '#2c806f',
+        label: formatGridDistance(6, grid),
+      })
+    case 'circle':
+      return createMeasurement({
+        kind: 'area',
+        shape: 'circle',
+        name: 'Круг',
+        originX: centerX,
+        originY: centerY,
+        targetX: centerX,
+        targetY: centerY,
+        radius: areaRadius,
+        color: '#9f2d3c',
+        label: formatGridDistance(4, grid),
+      })
+    case 'cone':
+      return createMeasurement({
+        kind: 'area',
+        shape: 'cone',
+        name: 'Конус',
+        originX: centerX,
+        originY: centerY,
+        targetX: centerX + areaRadius,
+        targetY: centerY - areaRadius,
+        radius: areaRadius,
+        color: '#d8a86a',
+        label: formatGridDistance(4, grid),
+      })
+    case 'square':
+      return createMeasurement({
+        kind: 'area',
+        shape: 'square',
+        name: 'Квадрат',
+        originX: centerX,
+        originY: centerY,
+        targetX: centerX,
+        targetY: centerY,
+        radius: areaRadius,
+        color: '#49625f',
+        label: formatGridDistance(4, grid),
+      })
+  }
+}
+
+function createMeasurement(
+  measurement: Omit<SceneCanvasMeasurement, 'id' | 'isPlayerVisible'>,
+): SceneCanvasMeasurement {
+  return {
+    id: createMeasurementId(),
+    isPlayerVisible: true,
+    ...measurement,
+  }
+}
+
+function createMeasurementId(): string {
+  const randomId = globalThis.crypto?.randomUUID?.()
+
+  if (randomId) {
+    return `measurement-${randomId}`
+  }
+
+  return `measurement-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 function getFiniteNumber(value: number | undefined, fallback: number): number {
   return Number.isFinite(value) ? Number(value) : fallback
 }
 
 function getPositiveNumber(value: number | undefined, fallback: number): number {
   return Number.isFinite(value) && Number(value) > 0 ? Number(value) : fallback
+}
+
+function clampNumber(value: number | undefined, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback
+  }
+
+  return Math.min(Math.max(Number(value), min), max)
 }
 
 function sortLayers(left: SceneCanvasLayer, right: SceneCanvasLayer): number {

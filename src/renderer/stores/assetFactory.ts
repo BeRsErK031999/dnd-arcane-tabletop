@@ -1,6 +1,5 @@
 import type { Asset, AssetId, Campaign, IsoDateString, PlayerScreenState } from '@shared/types'
-import { createSceneWithHydratedCanvas } from './sceneCanvasFactory'
-import { getActiveCampaignScene } from './sceneFactory'
+import { createSceneWithHydratedState, getActiveCampaignScene } from './sceneFactory'
 
 export function createCampaignWithImportedAsset(
   campaign: Campaign,
@@ -8,7 +7,7 @@ export function createCampaignWithImportedAsset(
   updatedAt: IsoDateString = new Date().toISOString(),
 ): Campaign {
   const activeScene = getActiveCampaignScene(campaign)
-  const hydratedScenes = campaign.scenes.map(createSceneWithHydratedCanvas)
+  const hydratedScenes = campaign.scenes.map(createSceneWithHydratedState)
 
   return {
     ...campaign,

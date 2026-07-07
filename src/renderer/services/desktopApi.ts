@@ -205,12 +205,14 @@ function cloneBrowserFallbackState(state: PlayerScreenState): PlayerScreenState 
     visibleTokenIds: [...state.visibleTokenIds],
     revealedAssetIds: [...state.revealedAssetIds],
     sceneCanvas: state.sceneCanvas
-      ? {
+        ? {
           ...state.sceneCanvas,
           grid: { ...state.sceneCanvas.grid },
+          viewport: { ...state.sceneCanvas.viewport },
           backgroundAsset: state.sceneCanvas.backgroundAsset ? { ...state.sceneCanvas.backgroundAsset } : undefined,
           layers: state.sceneCanvas.layers.map((layer) => ({ ...layer })),
           objects: state.sceneCanvas.objects.map((object) => ({ ...object })),
+          measurements: state.sceneCanvas.measurements.map((measurement) => ({ ...measurement })),
         }
       : undefined,
   }

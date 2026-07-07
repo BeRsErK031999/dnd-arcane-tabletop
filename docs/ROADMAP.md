@@ -284,31 +284,45 @@
 
 ## Этап 7. Сетка, масштаб и измерения
 
+Статус: выполнено.
+
 Цель: реализовать квадратную сетку, размер клетки, 5 условных футов по умолчанию, snap-to-grid, линейку и области заклинаний.
 
 Входит:
-- Grid settings.
-- Zoom и pan.
-- Snap-to-grid.
+- Grid settings: `enabled`, `size`, `color`, `opacity`, `distancePerCell`, `unitLabel`, `snapToGrid`.
+- Canvas viewport: `zoom`, `panX`, `panY`.
+- Snap-to-grid для шаблонных измерений.
 - Ruler tool.
-- Простые area templates.
+- Простые area templates: circle, cone, square.
+- Player-visible projection для viewport и measurements.
+- Legacy hydration для старых сцен без новых canvas/grid полей.
 
 Не входит:
 - Автоматический расчет правил.
 - Изометрическая или hex-сетка.
+- Drag-and-drop редактирование endpoints измерений.
 
 Критерии готовности:
 - Сетка масштабируется вместе с картой.
 - Измерения понятны мастеру.
 - Настройки сохраняются в сцене.
+- Player screen получает тот же viewport и measurement layer.
+- Master-only данные не попадают в player projection.
+- `npm run lint`, `npm run typecheck`, `npm run test`, `npm run dev` проходят или блокеры явно описаны.
 
 Затрагивается:
-- canvas renderer
-- shared scene types
-- master tools panel
+- `src/shared/types/scene.ts`
+- `src/shared/types/sceneCanvas.ts`
+- `src/renderer/stores/sceneCanvasFactory.ts`
+- `src/renderer/stores/sceneToolsFactory.ts`
+- `src/renderer/stores/useCampaignsStore.ts`
+- `src/renderer/widgets/SceneCanvas.tsx`
+- `src/renderer/pages/PlayerScreenPlaceholderPage.tsx`
+- `src/renderer/app/styles.css`
 
 Риски:
 - Нечеткие координаты между master и player view.
+- Неконтролируемые значения zoom/grid settings без clamp.
 
 ## Этап 8. Библиотека ассетов
 

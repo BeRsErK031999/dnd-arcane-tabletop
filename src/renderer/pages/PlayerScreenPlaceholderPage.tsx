@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { desktopApi } from '@renderer/services/desktopApi'
 import {
   createDefaultPlayerScreenState,
+  type PlayerSceneCanvasMeasurement,
   type PlayerSceneCanvasObject,
   type PlayerSceneCanvasProjection,
   type PlayerScreenState,
@@ -109,33 +110,80 @@ function renderPlayerScreenContent(state: PlayerScreenState) {
 }
 
 function PlayerSceneCanvas({ canvas }: { canvas: PlayerSceneCanvasProjection }) {
+  const viewportTransform: CSSProperties = {
+    transform: `translate(${canvas.viewport.panX}px, ${canvas.viewport.panY}px) scale(${canvas.viewport.zoom})`,
+  }
+
   return (
     <div className="player-scene-canvas" style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}>
-      {canvas.backgroundAsset ? (
-        <img className="player-scene-canvas__map" alt="" src={canvas.backgroundAsset.filePath} />
-      ) : (
-        <div className="player-scene-canvas__placeholder" />
-      )}
-      {canvas.grid.enabled ? (
-        <div
-          className="player-scene-canvas__grid"
-          style={{
-            backgroundSize: `${canvas.grid.size}px ${canvas.grid.size}px`,
-            opacity: canvas.grid.opacity,
-          }}
-        />
-      ) : null}
-      <div className="player-scene-canvas__objects">
-        {canvas.objects.map((object) => (
+      <div className="player-scene-canvas__content" style={viewportTransform}>
+        {canvas.backgroundAsset ? (
+          <img className="player-scene-canvas__map" alt="" src={canvas.backgroundAsset.filePath} />
+        ) : (
+          <div className="player-scene-canvas__placeholder" />
+        )}
+        {canvas.grid.enabled ? (
           <div
-            className="player-scene-canvas-object"
-            key={object.id}
-            style={getPlayerCanvasObjectStyle(object, canvas.width, canvas.height)}
-          >
-            <span>{object.text ?? object.name}</span>
-          </div>
-        ))}
+            className="player-scene-canvas__grid"
+            style={{
+              backgroundSize: `${canvas.grid.size}px ${canvas.grid.size}px`,
+              color: canvas.grid.color,
+              opacity: canvas.grid.opacity,
+            }}
+          />
+        ) : null}
+        <div className="player-scene-canvas__objects">
+          {canvas.objects.map((object) => (
+            <div
+              className="player-scene-canvas-object"
+              key={object.id}
+              style={getPlayerCanvasObjectStyle(object, canvas.width, canvas.height)}
+            >
+              <span>{object.text ?? object.name}</span>
+            </div>
+          ))}
+        </div>
+        <div className="player-scene-canvas__measurements">
+          {canvas.measurements.map((measurement) => (
+            <PlayerCanvasMeasurement
+              canvasHeight={canvas.height}
+              canvasWidth={canvas.width}
+              key={measurement.id}
+              measurement={measurement}
+            />
+          ))}
+        </div>
       </div>
+    </div>
+  )
+}
+
+function PlayerCanvasMeasurement({
+  canvasHeight,
+  canvasWidth,
+  measurement,
+}: {
+  canvasHeight: number
+  canvasWidth: number
+  measurement: PlayerSceneCanvasMeasurement
+}) {
+  if (measurement.kind === 'ruler') {
+    return (
+      <div
+        className="player-scene-canvas-measurement player-scene-canvas-measurement--ruler"
+        style={getPlayerRulerMeasurementStyle(measurement, canvasWidth, canvasHeight)}
+      >
+        <span>{measurement.label}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className={`player-scene-canvas-measurement player-scene-canvas-measurement--area player-scene-canvas-measurement--${measurement.shape ?? 'circle'}`}
+      style={getPlayerAreaMeasurementStyle(measurement, canvasWidth, canvasHeight)}
+    >
+      <span>{measurement.label}</span>
     </div>
   )
 }
@@ -152,5 +200,41 @@ function getPlayerCanvasObjectStyle(
     height: `${(object.height / canvasHeight) * 100}%`,
     color: object.color,
     transform: `rotate(${object.rotation}deg)`,
+  }
+}
+
+function getPlayerRulerMeasurementStyle(
+  measurement: PlayerSceneCanvasMeasurement,
+  canvasWidth: number,
+  canvasHeight: number,
+): CSSProperties {
+  const deltaX = measurement.targetX - measurement.originX
+  const deltaY = measurement.targetY - measurement.originY
+  const length = Math.hypot(deltaX, deltaY)
+  const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI)
+
+  return {
+    left: `${(measurement.originX / canvasWidth) * 100}%`,
+    top: `${(measurement.originY / canvasHeight) * 100}%`,
+    width: `${(length / canvasWidth) * 100}%`,
+    color: measurement.color,
+    transform: `rotate(${angle}deg)`,
+  }
+}
+
+function getPlayerAreaMeasurementStyle(
+  measurement: PlayerSceneCanvasMeasurement,
+  canvasWidth: number,
+  canvasHeight: number,
+): CSSProperties {
+  const angle = Math.atan2(measurement.targetY - measurement.originY, measurement.targetX - measurement.originX) * (180 / Math.PI)
+
+  return {
+    left: `${((measurement.originX - measurement.radius) / canvasWidth) * 100}%`,
+    top: `${((measurement.originY - measurement.radius) / canvasHeight) * 100}%`,
+    width: `${((measurement.radius * 2) / canvasWidth) * 100}%`,
+    height: `${((measurement.radius * 2) / canvasHeight) * 100}%`,
+    color: measurement.color,
+    transform: measurement.shape === 'cone' ? `rotate(${angle}deg)` : undefined,
   }
 }

@@ -32,6 +32,9 @@ const defaultSceneGrid: SceneGrid = {
   size: 70,
   color: '#8b7a5a',
   opacity: 0.35,
+  distancePerCell: 5,
+  unitLabel: 'ft',
+  snapToGrid: true,
 }
 
 export function createEmptyScene(options: CreateEmptySceneOptions): Scene {
@@ -44,7 +47,7 @@ export function createEmptyScene(options: CreateEmptySceneOptions): Scene {
     description: description === '' ? undefined : description,
     canvas: createDefaultSceneCanvas(),
     tokens: [],
-    grid: { ...defaultSceneGrid },
+    grid: createHydratedSceneGrid(),
     isActive: options.isActive ?? false,
   }
 }
@@ -62,7 +65,7 @@ export function createCampaignWithNewScene(
   })
   const nextCampaign = {
     ...campaign,
-    scenes: shouldActivateScene ? [scene] : [...campaign.scenes.map(createSceneWithHydratedCanvas), scene],
+    scenes: shouldActivateScene ? [scene] : [...campaign.scenes.map(createSceneWithHydratedState), scene],
     updatedAt,
   }
 
@@ -115,13 +118,20 @@ export function createCampaignWithScenePreview(
 
 export function getActiveCampaignScene(campaign: Campaign): Scene | null {
   const scene = campaign.scenes.find((scene) => scene.isActive) ?? campaign.scenes[0] ?? null
-  return scene ? createSceneWithHydratedCanvas(scene) : null
+  return scene ? createSceneWithHydratedState(scene) : null
 }
 
 export function createCampaignWithHydratedScenes(campaign: Campaign): Campaign {
   return {
     ...campaign,
-    scenes: campaign.scenes.map(createSceneWithHydratedCanvas),
+    scenes: campaign.scenes.map(createSceneWithHydratedState),
+  }
+}
+
+export function createSceneWithHydratedState(scene: Scene): Scene {
+  return {
+    ...createSceneWithHydratedCanvas(scene),
+    grid: createHydratedSceneGrid(scene.grid),
   }
 }
 
@@ -164,7 +174,7 @@ function findSceneOrThrow(campaign: Campaign, sceneId: SceneId): Scene {
     throw new Error('scene-not-found')
   }
 
-  return createSceneWithHydratedCanvas(scene)
+  return createSceneWithHydratedState(scene)
 }
 
 function createSceneId(): SceneId {
@@ -180,4 +190,24 @@ function createSceneId(): SceneId {
 function normalizeSceneName(name: string): string {
   const trimmedName = name.trim()
   return trimmedName === '' ? 'Новая сцена' : trimmedName
+}
+
+export function createHydratedSceneGrid(grid?: Partial<SceneGrid>): SceneGrid {
+  return {
+    enabled: grid?.enabled ?? defaultSceneGrid.enabled,
+    size: clampNumber(grid?.size, 24, 180, defaultSceneGrid.size),
+    color: grid?.color ?? defaultSceneGrid.color,
+    opacity: clampNumber(grid?.opacity, 0.08, 0.9, defaultSceneGrid.opacity),
+    distancePerCell: clampNumber(grid?.distancePerCell, 1, 30, defaultSceneGrid.distancePerCell),
+    unitLabel: grid?.unitLabel?.trim() || defaultSceneGrid.unitLabel,
+    snapToGrid: grid?.snapToGrid ?? defaultSceneGrid.snapToGrid,
+  }
+}
+
+function clampNumber(value: number | undefined, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback
+  }
+
+  return Math.min(Math.max(Number(value), min), max)
 }

@@ -9,6 +9,7 @@ import type {
   SceneCanvasLayerKind,
   SceneCanvasMeasurement,
   SceneCanvasObject,
+  SceneCanvasObjectTokenState,
   SceneCanvasState,
   SceneCanvasViewport,
 } from '@shared/types'
@@ -255,8 +256,26 @@ function normalizeCanvasObject(object: SceneCanvasObject): SceneCanvasObject {
     width: getPositiveNumber(object.width, 120),
     height: getPositiveNumber(object.height, 80),
     rotation: getFiniteNumber(object.rotation, 0),
+    tokenState: normalizeCanvasObjectTokenState(object.tokenState),
     isPlayerVisible: Boolean(object.isPlayerVisible),
   }
+}
+
+function normalizeCanvasObjectTokenState(
+  tokenState: SceneCanvasObjectTokenState | undefined,
+): SceneCanvasObjectTokenState | undefined {
+  if (!tokenState) {
+    return undefined
+  }
+
+  const note = tokenState.note?.trim()
+  const normalizedState: SceneCanvasObjectTokenState = {
+    hitPoints: getOptionalPositiveInteger(tokenState.hitPoints),
+    armorClass: getOptionalPositiveInteger(tokenState.armorClass),
+    note: note === '' ? undefined : note,
+  }
+
+  return Object.values(normalizedState).some((value) => value !== undefined) ? normalizedState : undefined
 }
 
 function normalizeCanvasViewport(viewport: Partial<SceneCanvasViewport> | undefined): SceneCanvasViewport {
@@ -370,6 +389,14 @@ function getFiniteNumber(value: number | undefined, fallback: number): number {
 
 function getPositiveNumber(value: number | undefined, fallback: number): number {
   return Number.isFinite(value) && Number(value) > 0 ? Number(value) : fallback
+}
+
+function getOptionalPositiveInteger(value: number | undefined): number | undefined {
+  if (!Number.isFinite(value)) {
+    return undefined
+  }
+
+  return Math.max(0, Math.round(Number(value)))
 }
 
 function clampNumber(value: number | undefined, min: number, max: number, fallback: number): number {

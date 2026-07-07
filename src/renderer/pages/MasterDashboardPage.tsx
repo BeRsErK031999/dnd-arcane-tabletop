@@ -5,19 +5,23 @@ import {
   type AssetLibraryKindFilter,
 } from '@renderer/stores/assetFactory'
 import { desktopApi } from '@renderer/services/desktopApi'
+import { getSceneCanvasState } from '@renderer/stores/sceneCanvasFactory'
 import { useCampaignsStore } from '@renderer/stores/useCampaignsStore'
-import type { SceneMeasurementTemplate } from '@renderer/stores/sceneToolsFactory'
+import type { SceneMeasurementTemplate, SceneObjectMoveDirection } from '@renderer/stores/sceneToolsFactory'
 import { SceneCanvas } from '@renderer/widgets/SceneCanvas'
 import {
   createDefaultPlayerScreenState,
   type Asset,
   type AssetId,
   type AssetKind,
+  type Campaign,
   type ImageAssetKind,
   type PlayerScreenCommandResult,
   type PlayerScreenOpenResult,
   type PlayerScreenState,
   type PlayerScreenStatus,
+  type SceneCanvasObjectId,
+  type SceneCanvasObjectTokenState,
   type SceneCanvasViewport,
   type SceneGrid,
 } from '@shared/types'
@@ -75,6 +79,10 @@ export function MasterDashboardPage() {
     updateActiveSceneViewport,
     addActiveSceneMeasurement,
     clearActiveSceneMeasurements,
+    moveActiveSceneObject,
+    duplicateActiveSceneObject,
+    setActiveSceneObjectVisibility,
+    updateActiveSceneObjectTokenState,
     importImageAsset,
     updateAssetTags,
     applyAssetToActiveScene,
@@ -97,6 +105,7 @@ export function MasterDashboardPage() {
   const [assetSelectedTags, setAssetSelectedTags] = useState<string[]>([])
   const [assetTagDrafts, setAssetTagDrafts] = useState<Record<AssetId, string>>({})
   const [assetActionStatus, setAssetActionStatus] = useState('Откройте кампанию, чтобы импортировать изображения.')
+  const [selectedSceneObjectId, setSelectedSceneObjectId] = useState<SceneCanvasObjectId | null>(null)
   const [playerStatus, setPlayerStatus] = useState<PlayerScreenStatus>(() => ({
     isOpen: false,
     isFullscreen: false,
@@ -124,6 +133,23 @@ export function MasterDashboardPage() {
         : null,
     [activeScene, selectedCampaign],
   )
+
+  useEffect(() => {
+    if (selectedSceneObjectId === null) {
+      return
+    }
+
+    if (activeScene === null) {
+      setSelectedSceneObjectId(null)
+      return
+    }
+
+    const canvas = getSceneCanvasState(activeScene)
+
+    if (!canvas.objects.some((object) => object.id === selectedSceneObjectId)) {
+      setSelectedSceneObjectId(null)
+    }
+  }, [activeScene, selectedSceneObjectId])
 
   const rightPanelTabs: Array<{ id: RightPanelTab; label: string; count: number }> = [
     { id: 'assets', label: 'Ассеты', count: selectedCampaign?.assets.length ?? totals.assets },
@@ -291,6 +317,66 @@ export function MasterDashboardPage() {
     setSceneActionStatus(result.ok ? 'Измерения очищены.' : 'Не удалось очистить измерения.')
   }
 
+  async function handleMoveActiveSceneObject(
+    objectId: SceneCanvasObjectId,
+    direction: SceneObjectMoveDirection,
+  ): Promise<void> {
+    const result = await moveActiveSceneObject(objectId, direction)
+
+    if (result.ok) {
+      setSelectedSceneObjectId(objectId)
+    }
+
+    setSceneActionStatus(result.ok ? 'Объект сцены перемещен.' : 'Не удалось переместить объект сцены.')
+  }
+
+  async function handleDuplicateActiveSceneObject(objectId: SceneCanvasObjectId): Promise<void> {
+    const result = await duplicateActiveSceneObject(objectId)
+
+    if (result.ok) {
+      const activeScene = getActiveSceneFromCampaign(result.campaign)
+      const duplicatedObject = activeScene ? getSceneCanvasState(activeScene).objects.at(-1) : undefined
+
+      if (duplicatedObject) {
+        setSelectedSceneObjectId(duplicatedObject.id)
+      }
+    }
+
+    setSceneActionStatus(result.ok ? 'Объект сцены дублирован.' : 'Не удалось дублировать объект сцены.')
+  }
+
+  async function handleSetActiveSceneObjectVisibility(
+    objectId: SceneCanvasObjectId,
+    isPlayerVisible: boolean,
+  ): Promise<void> {
+    const result = await setActiveSceneObjectVisibility(objectId, isPlayerVisible)
+
+    if (result.ok) {
+      setSelectedSceneObjectId(objectId)
+    }
+
+    setSceneActionStatus(
+      result.ok
+        ? isPlayerVisible
+          ? 'Объект сцены виден игрокам.'
+          : 'Объект сцены скрыт от игроков.'
+        : 'Не удалось изменить видимость объекта сцены.',
+    )
+  }
+
+  async function handleUpdateActiveSceneObjectTokenState(
+    objectId: SceneCanvasObjectId,
+    tokenState: SceneCanvasObjectTokenState,
+  ): Promise<void> {
+    const result = await updateActiveSceneObjectTokenState(objectId, tokenState)
+
+    if (result.ok) {
+      setSelectedSceneObjectId(objectId)
+    }
+
+    setSceneActionStatus(result.ok ? 'Карточка токена сохранена.' : 'Не удалось обновить карточку токена.')
+  }
+
   async function handleImportImageAsset(): Promise<void> {
     const result = await importImageAsset(assetKind, assetName, normalizeAssetTags(assetImportTags))
 
@@ -337,6 +423,12 @@ export function MasterDashboardPage() {
 
       setSceneActionStatus(`Ассет "${assetName}" добавлен в активную сцену.`)
       setAssetActionStatus(`Ассет "${assetName}" добавлен в активную сцену.`)
+      const updatedActiveScene = getActiveSceneFromCampaign(result.campaign)
+      const addedObject = updatedActiveScene ? getSceneCanvasState(updatedActiveScene).objects.at(-1) : undefined
+
+      if (addedObject) {
+        setSelectedSceneObjectId(addedObject.id)
+      }
       return
     }
 
@@ -375,11 +467,11 @@ export function MasterDashboardPage() {
         <div>
           <p className="eyebrow">Master Console</p>
           <h1>Панель мастера</h1>
-          <p className="muted">Stage 8: библиотека ассетов, теги и быстрый preview.</p>
+          <p className="muted">Stage 9: токены и объекты на карте, перемещение, видимость и карточка токена.</p>
         </div>
         <div className="button-row">
           {selectedCampaign ? <span className="status-badge">Открыта: {selectedCampaign.name}</span> : null}
-          <span className="status-badge">Этап 8</span>
+          <span className="status-badge">Этап 9</span>
           <button className="button button--secondary" type="button" onClick={refresh}>
             Обновить
           </button>
@@ -475,7 +567,7 @@ export function MasterDashboardPage() {
                 <h2>{activeScene?.name ?? 'Рабочая область сцены'}</h2>
               </div>
               <div className="workspace-board__meta">
-                <span>Assets: Stage 8</span>
+                <span>Objects: Stage 9</span>
                 <span>Player mode: {playerStatus.state.mode}</span>
               </div>
             </div>
@@ -487,10 +579,20 @@ export function MasterDashboardPage() {
               mapAsset={activeMapAsset}
               onAddMeasurement={(template) => void handleAddActiveSceneMeasurement(template)}
               onClearMeasurements={() => void handleClearActiveSceneMeasurements()}
+              onDuplicateObject={(objectId) => void handleDuplicateActiveSceneObject(objectId)}
+              onMoveObject={(objectId, direction) => void handleMoveActiveSceneObject(objectId, direction)}
+              onSelectObject={setSelectedSceneObjectId}
               onSendToPlayers={() => void handleSendActiveSceneToPlayers()}
+              onSetObjectVisibility={(objectId, isPlayerVisible) =>
+                void handleSetActiveSceneObjectVisibility(objectId, isPlayerVisible)
+              }
+              onUpdateObjectTokenState={(objectId, tokenState) =>
+                void handleUpdateActiveSceneObjectTokenState(objectId, tokenState)
+              }
               onUpdateGrid={(grid) => void handleUpdateActiveSceneGrid(grid)}
               onUpdateViewport={(viewport) => void handleUpdateActiveSceneViewport(viewport)}
               scene={activeScene}
+              selectedObjectId={selectedSceneObjectId}
             />
           </section>
 
@@ -1150,6 +1252,10 @@ function createTestImageState(): PlayerScreenState {
       sourceLabel: 'Mock handout',
     },
   }
+}
+
+function getActiveSceneFromCampaign(campaign: Campaign) {
+  return campaign.scenes.find((scene) => scene.isActive) ?? campaign.scenes[0] ?? null
 }
 
 function getStatusFromPlayerAction(result: PlayerActionResult): PlayerScreenStatus {

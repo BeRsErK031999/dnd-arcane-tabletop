@@ -371,31 +371,47 @@
 
 ## Этап 9. Токены и объекты на карте
 
+Статус: выполнено.
+
 Цель: добавить, перемещать, дублировать, скрывать токены и объекты на карте, а также хранить простые состояния.
 
 Входит:
-- Token placement.
-- Move, duplicate, hide.
-- Basic token state.
-- Token card preview.
+- Выбор размещенного объекта на master canvas.
+- Move, duplicate, hide/show для объектов активной сцены.
+- Basic token state: HP, AC, заметка.
+- Token card preview/editor в панели canvas.
+- Сохранение объектных операций в campaign JSON.
+- Защита player projection от master-only `tokenState`.
 
 Не входит:
 - Полный character sheet.
 - Автоматические атаки и заклинания.
 - Сетевой ход игроков.
+- Drag-and-drop перемещение мышью.
+- Multi-select и массовые операции.
 
 Критерии готовности:
 - Токены сохраняют позицию и видимость.
 - Игрокам видны только разрешенные токены.
 - Закрытие и повторное открытие приложения сохраняет сцену.
+- Master UI позволяет выбрать, переместить, дублировать, скрыть и снова показать объект.
+- Token state хранит HP, AC и заметку, но не попадает в `PlayerSceneCanvasProjection`.
+- `npm run lint`, `npm run typecheck`, `npm run test`, `npm run dev` проходят или блокеры явно описаны.
 
 Затрагивается:
-- `src/shared/types/token.ts`
-- canvas state
+- `src/shared/types/sceneCanvas.ts`
+- `src/renderer/stores/sceneCanvasFactory.ts`
+- `src/renderer/stores/sceneToolsFactory.ts`
+- `src/renderer/stores/useCampaignsStore.ts`
+- `src/renderer/widgets/SceneCanvas.tsx`
+- `src/renderer/pages/MasterDashboardPage.tsx`
+- `src/renderer/app/styles.css`
 - player projection
 
 Риски:
 - Несогласованность координат и видимости.
+- Утечка мастерской карточки токена игрокам.
+- Слишком ранний переход к полноценному character sheet вместо простого token state.
 
 ## Этап 10. Карточки персонажей, NPC и монстров
 

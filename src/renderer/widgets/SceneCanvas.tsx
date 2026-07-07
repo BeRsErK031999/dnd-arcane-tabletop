@@ -5,6 +5,8 @@ import type {
   SceneCanvasLayer,
   SceneCanvasMeasurement,
   SceneCanvasObject,
+  SceneCanvasObjectId,
+  SceneCanvasObjectTokenState,
   SceneCanvasViewport,
   SceneGrid,
 } from '@shared/types'
@@ -13,7 +15,7 @@ import {
   getSceneCanvasLayerSummary,
   getSceneCanvasState,
 } from '@renderer/stores/sceneCanvasFactory'
-import type { SceneMeasurementTemplate } from '@renderer/stores/sceneToolsFactory'
+import type { SceneMeasurementTemplate, SceneObjectMoveDirection } from '@renderer/stores/sceneToolsFactory'
 
 interface SceneCanvasProps {
   scene: Scene | null
@@ -21,9 +23,15 @@ interface SceneCanvasProps {
   assets: Asset[]
   isPlayerSynced: boolean
   isStorageBusy: boolean
+  selectedObjectId: SceneCanvasObjectId | null
   onAddMeasurement(template: SceneMeasurementTemplate): void
   onClearMeasurements(): void
+  onDuplicateObject(objectId: SceneCanvasObjectId): void
+  onMoveObject(objectId: SceneCanvasObjectId, direction: SceneObjectMoveDirection): void
+  onSelectObject(objectId: SceneCanvasObjectId): void
   onSendToPlayers(): void
+  onSetObjectVisibility(objectId: SceneCanvasObjectId, isPlayerVisible: boolean): void
+  onUpdateObjectTokenState(objectId: SceneCanvasObjectId, tokenState: SceneCanvasObjectTokenState): void
   onUpdateGrid(grid: Partial<SceneGrid>): void
   onUpdateViewport(viewport: Partial<SceneCanvasViewport>): void
 }
@@ -34,9 +42,15 @@ export function SceneCanvas({
   assets,
   isPlayerSynced,
   isStorageBusy,
+  selectedObjectId,
   onAddMeasurement,
   onClearMeasurements,
+  onDuplicateObject,
+  onMoveObject,
+  onSelectObject,
   onSendToPlayers,
+  onSetObjectVisibility,
+  onUpdateObjectTokenState,
   onUpdateGrid,
   onUpdateViewport,
 }: SceneCanvasProps) {
@@ -44,7 +58,7 @@ export function SceneCanvas({
     return (
       <div className="scene-canvas scene-canvas--empty">
         <div className="scene-canvas__empty">
-          <span className="status-badge status-badge--neutral">Stage 8</span>
+          <span className="status-badge status-badge--neutral">Stage 9</span>
           <h3>Сцена не выбрана</h3>
           <p>Откройте кампанию и создайте первую сцену.</p>
         </div>
@@ -92,6 +106,8 @@ export function SceneCanvas({
                   canvasWidth={canvas.width}
                   key={object.id}
                   object={object}
+                  isSelected={object.id === selectedObjectId}
+                  onSelectObject={onSelectObject}
                 />
               ))}
             </div>
@@ -146,6 +162,17 @@ export function SceneCanvas({
           onUpdateViewport={onUpdateViewport}
         />
 
+        <SceneCanvasObjectControls
+          canvas={canvas}
+          isStorageBusy={isStorageBusy}
+          onDuplicateObject={onDuplicateObject}
+          onMoveObject={onMoveObject}
+          onSelectObject={onSelectObject}
+          onSetObjectVisibility={onSetObjectVisibility}
+          onUpdateObjectTokenState={onUpdateObjectTokenState}
+          selectedObjectId={selectedObjectId}
+        />
+
         <div>
           <p className="eyebrow">Layers</p>
           <h3>Слои сцены</h3>
@@ -175,6 +202,199 @@ export function SceneCanvas({
         </button>
       </aside>
     </div>
+  )
+}
+
+interface SceneCanvasObjectControlsProps {
+  canvas: ReturnType<typeof getSceneCanvasState>
+  isStorageBusy: boolean
+  selectedObjectId: SceneCanvasObjectId | null
+  onDuplicateObject(objectId: SceneCanvasObjectId): void
+  onMoveObject(objectId: SceneCanvasObjectId, direction: SceneObjectMoveDirection): void
+  onSelectObject(objectId: SceneCanvasObjectId): void
+  onSetObjectVisibility(objectId: SceneCanvasObjectId, isPlayerVisible: boolean): void
+  onUpdateObjectTokenState(objectId: SceneCanvasObjectId, tokenState: SceneCanvasObjectTokenState): void
+}
+
+function SceneCanvasObjectControls({
+  canvas,
+  isStorageBusy,
+  selectedObjectId,
+  onDuplicateObject,
+  onMoveObject,
+  onSelectObject,
+  onSetObjectVisibility,
+  onUpdateObjectTokenState,
+}: SceneCanvasObjectControlsProps) {
+  const selectedObject = selectedObjectId
+    ? canvas.objects.find((object) => object.id === selectedObjectId) ?? null
+    : null
+
+  return (
+    <section className="scene-canvas-control-group scene-canvas-object-tools">
+      <div className="scene-canvas-control-group__header">
+        <h3>Объекты</h3>
+        <span>{canvas.objects.length}</span>
+      </div>
+
+      {canvas.objects.length === 0 ? (
+        <p className="scene-canvas-object-tools__empty">Добавьте token, portrait или handout из библиотеки ассетов.</p>
+      ) : (
+        <div className="scene-canvas-object-tools__list" role="list">
+          {canvas.objects.map((object) => (
+            <button
+              aria-pressed={object.id === selectedObjectId}
+              className={
+                object.id === selectedObjectId
+                  ? 'scene-canvas-object-tools__item scene-canvas-object-tools__item--active'
+                  : 'scene-canvas-object-tools__item'
+              }
+              key={object.id}
+              onClick={() => onSelectObject(object.id)}
+              type="button"
+            >
+              <span>{object.name}</span>
+              <small>
+                {getObjectKindLabel(object.kind)} · {getObjectVisibilityLabel(object)}
+              </small>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selectedObject ? (
+        <div className="scene-canvas-object-tools__details">
+          <div>
+            <p className="eyebrow">Selected</p>
+            <h4>{selectedObject.name}</h4>
+          </div>
+          <dl className="scene-canvas-object-tools__meta">
+            <div>
+              <dt>X/Y</dt>
+              <dd>
+                {selectedObject.x} / {selectedObject.y}
+              </dd>
+            </div>
+            <div>
+              <dt>Size</dt>
+              <dd>
+                {selectedObject.width} x {selectedObject.height}
+              </dd>
+            </div>
+          </dl>
+
+          <div className="scene-canvas-object-tools__moves" aria-label="Перемещение объекта">
+            <button
+              aria-label={`Переместить ${selectedObject.name} вверх`}
+              className="button button--secondary"
+              disabled={isStorageBusy}
+              onClick={() => onMoveObject(selectedObject.id, 'up')}
+              type="button"
+            >
+              ↑
+            </button>
+            <button
+              aria-label={`Переместить ${selectedObject.name} влево`}
+              className="button button--secondary"
+              disabled={isStorageBusy}
+              onClick={() => onMoveObject(selectedObject.id, 'left')}
+              type="button"
+            >
+              ←
+            </button>
+            <button
+              aria-label={`Переместить ${selectedObject.name} вправо`}
+              className="button button--secondary"
+              disabled={isStorageBusy}
+              onClick={() => onMoveObject(selectedObject.id, 'right')}
+              type="button"
+            >
+              →
+            </button>
+            <button
+              aria-label={`Переместить ${selectedObject.name} вниз`}
+              className="button button--secondary"
+              disabled={isStorageBusy}
+              onClick={() => onMoveObject(selectedObject.id, 'down')}
+              type="button"
+            >
+              ↓
+            </button>
+          </div>
+
+          <div className="scene-canvas-object-tools__actions">
+            <button
+              className="button button--secondary"
+              disabled={isStorageBusy}
+              onClick={() => onDuplicateObject(selectedObject.id)}
+              type="button"
+            >
+              Дублировать
+            </button>
+            <button
+              className="button button--secondary"
+              disabled={isStorageBusy}
+              onClick={() => onSetObjectVisibility(selectedObject.id, !selectedObject.isPlayerVisible)}
+              type="button"
+            >
+              {selectedObject.isPlayerVisible ? 'Скрыть' : 'Показать'}
+            </button>
+          </div>
+
+          {isTokenObject(selectedObject) ? (
+            <div className="scene-canvas-object-tools__token">
+              <div className="scene-canvas-control-group__header">
+                <h4>Карточка токена</h4>
+                <span>{selectedObject.tokenState?.hitPoints ?? 'HP'}</span>
+              </div>
+              <label>
+                <span>HP</span>
+                <input
+                  disabled={isStorageBusy}
+                  min={0}
+                  onChange={(event) =>
+                    onUpdateObjectTokenState(selectedObject.id, {
+                      hitPoints: getOptionalNumberValue(event.target.value),
+                    })
+                  }
+                  type="number"
+                  value={selectedObject.tokenState?.hitPoints ?? ''}
+                />
+              </label>
+              <label>
+                <span>AC</span>
+                <input
+                  disabled={isStorageBusy}
+                  min={0}
+                  onChange={(event) =>
+                    onUpdateObjectTokenState(selectedObject.id, {
+                      armorClass: getOptionalNumberValue(event.target.value),
+                    })
+                  }
+                  type="number"
+                  value={selectedObject.tokenState?.armorClass ?? ''}
+                />
+              </label>
+              <label>
+                <span>Заметка</span>
+                <textarea
+                  disabled={isStorageBusy}
+                  onChange={(event) =>
+                    onUpdateObjectTokenState(selectedObject.id, {
+                      note: event.target.value,
+                    })
+                  }
+                  rows={3}
+                  value={selectedObject.tokenState?.note ?? ''}
+                />
+              </label>
+            </div>
+          ) : (
+            <p className="scene-canvas-object-tools__empty">Карточка HP/AC доступна для объектов слоя tokens.</p>
+          )}
+        </div>
+      ) : null}
+    </section>
   )
 }
 
@@ -407,12 +627,16 @@ function CanvasObject({
   asset,
   canvasHeight,
   canvasWidth,
+  isSelected,
   object,
+  onSelectObject,
 }: {
   asset: Asset | undefined
   canvasHeight: number
   canvasWidth: number
+  isSelected: boolean
   object: SceneCanvasObject
+  onSelectObject(objectId: SceneCanvasObjectId): void
 }) {
   const classNames = ['scene-canvas-object']
 
@@ -424,11 +648,22 @@ function CanvasObject({
     classNames.push('scene-canvas-object--asset')
   }
 
+  if (isSelected) {
+    classNames.push('scene-canvas-object--selected')
+  }
+
   return (
-    <div className={classNames.join(' ')} style={getCanvasObjectStyle(object, canvasWidth, canvasHeight)}>
+    <button
+      aria-label={`Выбрать объект ${object.name}`}
+      aria-pressed={isSelected}
+      className={classNames.join(' ')}
+      onClick={() => onSelectObject(object.id)}
+      style={getCanvasObjectStyle(object, canvasWidth, canvasHeight)}
+      type="button"
+    >
       {asset ? <img alt="" src={asset.filePath} /> : null}
       <span>{object.text ?? object.name}</span>
-    </div>
+    </button>
   )
 }
 
@@ -519,6 +754,36 @@ function getLayerKindLabel(kind: SceneCanvasLayer['kind']): string {
     case 'fog':
       return 'fog'
   }
+}
+
+function isTokenObject(object: SceneCanvasObject): boolean {
+  return object.kind === 'token-placeholder' || object.layerId === 'scene-layer-tokens'
+}
+
+function getObjectKindLabel(kind: SceneCanvasObject['kind']): string {
+  switch (kind) {
+    case 'marker':
+      return 'Маркер'
+    case 'note':
+      return 'Заметка'
+    case 'shape':
+      return 'Фигура'
+    case 'token-placeholder':
+      return 'Токен'
+  }
+}
+
+function getObjectVisibilityLabel(object: SceneCanvasObject): string {
+  return object.isPlayerVisible ? 'виден игрокам' : 'скрыт'
+}
+
+function getOptionalNumberValue(value: string): number | undefined {
+  if (value.trim() === '') {
+    return undefined
+  }
+
+  const numericValue = Number(value)
+  return Number.isFinite(numericValue) ? numericValue : undefined
 }
 
 function getNumberValue(value: string, fallback: number): number {

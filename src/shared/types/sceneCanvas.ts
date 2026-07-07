@@ -11,6 +11,12 @@ export type SceneCanvasMeasurementId = EntityId
 export type SceneCanvasMeasurementKind = 'ruler' | 'area'
 export type SceneCanvasAreaShape = 'circle' | 'cone' | 'square'
 
+export interface SceneCanvasObjectTokenState {
+  hitPoints?: number
+  armorClass?: number
+  note?: string
+}
+
 export interface SceneCanvasViewport {
   zoom: number
   panX: number
@@ -40,6 +46,7 @@ export interface SceneCanvasObject {
   color: string
   text?: string
   assetId?: AssetId
+  tokenState?: SceneCanvasObjectTokenState
   isPlayerVisible: boolean
 }
 

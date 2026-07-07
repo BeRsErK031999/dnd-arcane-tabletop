@@ -7,6 +7,8 @@ import type {
   CampaignSummary,
   ImageAssetKind,
   PlayerScreenCommandResult,
+  SceneCanvasObjectId,
+  SceneCanvasObjectTokenState,
   SceneCanvasViewport,
   SceneGrid,
   SceneId,
@@ -28,9 +30,14 @@ import {
 import {
   createCampaignWithActiveSceneGrid,
   createCampaignWithActiveSceneMeasurement,
+  createCampaignWithActiveSceneObjectTokenState,
+  createCampaignWithActiveSceneObjectVisibility,
   createCampaignWithActiveSceneViewport,
+  createCampaignWithDuplicatedActiveSceneObject,
+  createCampaignWithMovedActiveSceneObject,
   createCampaignWithoutActiveSceneMeasurements,
   type SceneMeasurementTemplate,
+  type SceneObjectMoveDirection,
 } from './sceneToolsFactory'
 
 export type CampaignsStoreStatus = 'idle' | 'loading' | 'ready' | 'saving' | 'deleting' | 'error'
@@ -345,6 +352,127 @@ export function useCampaignsStore() {
     }
   }, [selectedCampaign])
 
+  const moveActiveSceneObject = useCallback(
+    async (
+      objectId: SceneCanvasObjectId,
+      direction: SceneObjectMoveDirection,
+    ): Promise<CampaignMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для перемещения объекта сцены.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithMovedActiveSceneObject(selectedCampaign, objectId, direction)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign }
+      } catch {
+        setLastError('Не удалось переместить объект сцены.')
+        setStatus('error')
+        return { ok: false, reason: 'move-scene-object-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const duplicateActiveSceneObject = useCallback(
+    async (objectId: SceneCanvasObjectId): Promise<CampaignMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для дублирования объекта сцены.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithDuplicatedActiveSceneObject(selectedCampaign, objectId)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign }
+      } catch {
+        setLastError('Не удалось дублировать объект сцены.')
+        setStatus('error')
+        return { ok: false, reason: 'duplicate-scene-object-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const setActiveSceneObjectVisibility = useCallback(
+    async (
+      objectId: SceneCanvasObjectId,
+      isPlayerVisible: boolean,
+    ): Promise<CampaignMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для изменения видимости объекта сцены.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithActiveSceneObjectVisibility(
+          selectedCampaign,
+          objectId,
+          isPlayerVisible,
+        )
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign }
+      } catch {
+        setLastError('Не удалось изменить видимость объекта сцены.')
+        setStatus('error')
+        return { ok: false, reason: 'update-scene-object-visibility-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const updateActiveSceneObjectTokenState = useCallback(
+    async (
+      objectId: SceneCanvasObjectId,
+      tokenState: SceneCanvasObjectTokenState,
+    ): Promise<CampaignMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для обновления карточки токена.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithActiveSceneObjectTokenState(
+          selectedCampaign,
+          objectId,
+          tokenState,
+        )
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign }
+      } catch {
+        setLastError('Не удалось обновить карточку токена.')
+        setStatus('error')
+        return { ok: false, reason: 'update-scene-object-token-state-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
   const importImageAsset = useCallback(
     async (kind: ImageAssetKind, suggestedName?: string, tags?: string[]): Promise<AssetMutationResult> => {
       if (selectedCampaign === null) {
@@ -495,6 +623,10 @@ export function useCampaignsStore() {
     updateActiveSceneViewport,
     addActiveSceneMeasurement,
     clearActiveSceneMeasurements,
+    moveActiveSceneObject,
+    duplicateActiveSceneObject,
+    setActiveSceneObjectVisibility,
+    updateActiveSceneObjectTokenState,
     importImageAsset,
     updateAssetTags,
     applyAssetToActiveScene,

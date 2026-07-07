@@ -58,6 +58,11 @@ describe('sceneCanvasFactory', () => {
         rotation: 0,
         color: '#2c806f',
         assetId: 'asset-map',
+        tokenState: {
+          hitPoints: 11,
+          armorClass: 13,
+          note: 'master-only',
+        },
         isPlayerVisible: true,
       },
       {
@@ -131,6 +136,7 @@ describe('sceneCanvasFactory', () => {
       id: 'asset-map',
       filePath: 'file:///tmp/map.png',
     })
+    expect(projection.objects[0]).not.toHaveProperty('tokenState')
     expect(projection.measurements.map((measurement) => measurement.id)).toEqual(['measurement-visible'])
   })
 

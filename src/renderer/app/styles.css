@@ -574,7 +574,7 @@ h1 {
 
 @media (min-width: 1440px) {
   .scene-canvas {
-    grid-template-columns: minmax(0, 1fr) 220px;
+    grid-template-columns: minmax(0, 1fr) 260px;
   }
 }
 
@@ -630,6 +630,7 @@ h1 {
 
 .scene-canvas-object {
   position: absolute;
+  appearance: none;
   display: grid;
   place-items: center;
   min-width: 28px;
@@ -639,10 +640,13 @@ h1 {
   background: color-mix(in srgb, currentColor 46%, #101416);
   border: 2px solid currentColor;
   border-radius: 6px;
+  font-family: inherit;
   font-size: 12px;
   font-weight: 800;
   text-align: center;
   transform-origin: center;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .scene-canvas-object--master {
@@ -672,6 +676,12 @@ h1 {
   color: #fbfaf7;
   background: rgba(18, 21, 23, 0.78);
   font-size: 11px;
+}
+
+.scene-canvas-object--selected {
+  outline: 3px solid #f1c15d;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px rgba(18, 21, 23, 0.4);
 }
 
 .scene-canvas-measurement {
@@ -802,9 +812,14 @@ h1 {
   text-transform: uppercase;
 }
 
-.scene-canvas-control-group input {
+.scene-canvas-control-group input,
+.scene-canvas-control-group textarea {
   min-width: 0;
   width: 100%;
+}
+
+.scene-canvas-control-group textarea {
+  resize: vertical;
 }
 
 .scene-canvas-button-grid,
@@ -827,6 +842,118 @@ h1 {
 .scene-canvas-pan-grid button:first-child,
 .scene-canvas-pan-grid button:last-child {
   grid-column: 2;
+}
+
+.scene-canvas-object-tools__empty {
+  margin: 0;
+  color: #69625b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.scene-canvas-object-tools__list {
+  display: grid;
+  gap: 6px;
+}
+
+.scene-canvas-object-tools__item {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  color: #1d2427;
+  background: #fff;
+  border: 1px solid #d8d3c8;
+  border-radius: 6px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.scene-canvas-object-tools__item--active {
+  border-color: #2c806f;
+  box-shadow: inset 3px 0 0 #2c806f;
+}
+
+.scene-canvas-object-tools__item span {
+  overflow: hidden;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-canvas-object-tools__item small {
+  color: #69625b;
+  font-size: 11px;
+}
+
+.scene-canvas-object-tools__details {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #e4ded2;
+}
+
+.scene-canvas-object-tools__details h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.scene-canvas-object-tools__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.scene-canvas-object-tools__meta div {
+  display: grid;
+  gap: 3px;
+  padding: 7px;
+  background: #fbfaf7;
+  border: 1px solid #e4ded2;
+  border-radius: 6px;
+}
+
+.scene-canvas-object-tools__meta dt {
+  color: #69625b;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.scene-canvas-object-tools__meta dd {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scene-canvas-object-tools__moves {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.scene-canvas-object-tools__moves button:first-child,
+.scene-canvas-object-tools__moves button:last-child {
+  grid-column: 2;
+}
+
+.scene-canvas-object-tools__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.scene-canvas-object-tools__token {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e4ded2;
+}
+
+.scene-canvas-object-tools__token h4 {
+  margin: 0;
 }
 
 .switch-control {

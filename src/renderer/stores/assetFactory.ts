@@ -204,6 +204,7 @@ function createAssetCanvasObject(
     color: getAssetObjectColor(asset.kind),
     text: asset.name,
     assetId: asset.id,
+    tokenState: asset.kind === 'token' ? {} : undefined,
     isPlayerVisible: true,
   }
 }

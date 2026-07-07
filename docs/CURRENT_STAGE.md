@@ -2,87 +2,88 @@
 
 ## Текущий этап
 
-Этап 4. Сцены и переключение сцен.
+Этап 5. Карты и изображения.
 
 Статус: выполнено в этом этапе.
 
 ## Цель
 
-Добавить создание сцен внутри открытой кампании, выбор активной сцены, сохранение active scene state в JSON-кампании и отправку preview активной сцены на экран игроков.
+Добавить импорт PNG/JPG/JPEG/WEBP/JFIF изображений, копирование выбранного файла в папку assets кампании, создание typed `Asset` записи, привязку map asset к активной сцене и показ импортированного изображения игрокам через `PlayerScreenState`.
 
 ## Уже реализовано до начала этапа
 
 - Electron + React + TypeScript + Vite scaffold.
 - Master/player desktop shell.
 - Typed IPC для player screen.
-- Основной Stage 2 layout мастера.
-- `StorageService` и `JsonStorageService`.
-- Campaign CRUD через `useCampaignsStore`.
-- Валидная пустая `Campaign` shape с `combatState` и `playerScreenState`.
+- JSON campaign storage.
+- Campaign CRUD.
+- Scene creation, active scene switching и scene preview для player screen.
+- Shared `Asset` type уже входил в `Campaign.assets`.
 
 ## Что можно использовать
 
-- `Campaign.scenes`.
-- Shared `Scene` / `SceneGrid` / `SceneId` types.
-- `PlayerScreenState.activeSceneId` и `scenePreview`.
-- `desktopApi.storage` для сохранения кампании.
-- `desktopApi.playerScreen.updateState` для отправки preview.
-- Master workspace и scene strip из Stage 2.
+- `Asset`, `AssetKind`, `PlayerHandoutPreview`.
+- `desktopApi.storage.saveCampaign`.
+- `desktopApi.playerScreen.updateState`.
+- `Campaign.assets`.
+- `Scene.backgroundAssetId`.
+- `data/campaigns/<campaignId>/assets` для development asset copies.
 
 ## Пробелы этапа
 
-- Scene strip был демонстрационным и не был связан с открытой кампанией.
-- Не было фабрики пустой сцены с валидной grid/tokens shape.
-- Store не умел создавать сцену, активировать сцену и сохранять это в кампанию.
-- Экран игроков мог получать только тестовую scene preview, не сцену из campaign state.
-- Browser fallback для player state не повторял поведение main process `updateState`.
+- Не было native image picker IPC.
+- Main process не копировал изображения в campaign asset folder.
+- Renderer не мог добавить imported asset в открытую кампанию.
+- Активная сцена не могла получить map asset.
+- Player screen image mode показывал только тестовый handout.
+- Browser fallback не позволял проверить asset flow без Electron dialog.
 
 ## Что реализовано
 
-- `createEmptyScene` с пустыми tokens и базовой grid shape.
-- Campaign scene helpers для добавления первой/следующих сцен, переключения active scene и сборки player scene preview.
-- `useCampaignsStore` получил операции `createScene`, `activateScene`, `sendActiveSceneToPlayers`.
-- Scene strip показывает реальные сцены открытой кампании.
-- Первая созданная сцена автоматически становится активной.
-- Workspace показывает активную сцену, grid summary, token count и статус синхронизации с player preview.
-- Активную сцену можно отправить игрокам через существующий player screen contract.
-- Browser fallback player state теперь обновляется через `updateState`, `hide`, `show`, `resetState`.
-- Добавлены тесты для scene factory.
+- `AssetImportService` в main process для выбора/копирования поддерживаемых изображений.
+- IPC/preload contract `desktopApi.assets.importImageAsset`.
+- `ImportImageAssetRequest` / `ImportImageAssetResult` shared-типы.
+- Renderer `assetFactory` для добавления imported asset в кампанию и сборки player image preview.
+- Map asset автоматически привязывается к активной сцене через `backgroundAssetId`.
+- Assets panel в правой панели мастера: тип, имя, импорт, список изображений и показ игрокам.
+- Workspace активной сцены показывает связанную карту.
+- Browser fallback создает demo image asset с data URL для проверки renderer route.
+- Тесты для `AssetImportService` и `assetFactory`.
 
 ## Критерии готовности
 
-- Сцены создаются внутри открытой кампании.
-- Первая сцена становится активной автоматически.
-- Активную сцену можно переключить из scene strip.
-- Active scene state сохраняется в JSON-кампании.
-- Player screen получает preview активной сцены через `PlayerScreenState`.
-- Canvas, карта, токены и fog of war не реализованы в этом этапе.
+- Поддерживаемые изображения импортируются через native desktop dialog.
+- Файл копируется в campaign asset folder.
+- В кампании создается typed `Asset`.
+- Map asset привязывается к активной сцене.
+- Импортированное изображение видно в assets panel и workspace preview.
+- Игрокам можно отправить imported image preview.
+- Canvas layers, токены и image editing не реализованы в этом этапе.
 - `npm run lint` проходит.
 - `npm run typecheck` проходит.
 - `npm run test` проходит.
 - `npm run dev` запускается.
-- Scene flow проверен в browser route.
+- Asset flow проверен в browser route.
 
 ## Не входит в этап
 
-- Реальная карта сцены.
-- Canvas.
-- Импорт изображений.
-- Asset binding к сцене.
-- Создание или перемещение токенов.
+- Canvas rendering карты как редактируемого слоя.
+- Drag-and-drop assets.
+- Token art library.
+- Редактирование изображений.
+- Масштаб, pan, grid calibration.
 - Fog of war.
-- Измерения, масштаб, pan и grid editing.
-- Карточки персонажей.
-- SQLite, PostgreSQL, backend, cloud, online mode.
+- Online asset catalog.
+- Marketplace.
 
 ## Следующий этап
 
-Этап 5. Карты и изображения.
+Этап 6. Canvas / слои сцены.
 
 Он не начат. Перед ним нужно отдельно подтвердить переход.
 
 ## Риски и меры
 
-- Риск начать canvas раньше времени: Stage 4 хранит только `Scene` metadata, пустые `tokens` и базовую `grid`.
-- Риск разойтись с player screen contract: preview строится через существующий `PlayerScreenState.scenePreview`.
-- Риск несохраненного active scene state: scene operations всегда сохраняют обновленную кампанию через `desktopApi.storage`.
+- Риск хранить внешние пути вместо локальных копий: main process копирует файл в папку assets кампании и сохраняет `file://` URL.
+- Риск смешать asset import с canvas: Stage 5 только импортирует и показывает preview, без canvas state.
+- Риск невозможности проверить Electron dialog в браузере: browser fallback возвращает demo data URL asset для renderer smoke.

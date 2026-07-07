@@ -200,6 +200,8 @@
 
 ## Этап 5. Карты и изображения
 
+Статус: выполнено.
+
 Цель: загрузка PNG/JPG/JPEG/WEBP/JFIF, копирование в assets и отображение карты у мастера и игроков.
 
 Входит:
@@ -207,22 +209,30 @@
 - Копирование в локальную папку assets кампании.
 - Типизированная запись asset.
 - Preview карты или handout.
+- Привязка map asset к активной сцене.
+- Отправка imported image preview через `PlayerScreenState`.
 
 Не входит:
 - Token art library.
 - Редактирование изображений.
 - Canvas layers.
+- Drag-and-drop assets.
+- Grid calibration, pan и zoom.
 
 Критерии готовности:
 - Поддерживаемые форматы импортируются.
 - Исходные пути не требуются после копирования в assets.
 - Player screen может показать image state.
+- Map asset отображается в workspace активной сцены.
+- `npm run lint`, `npm run typecheck`, `npm run test`, `npm run dev` проходят или блокеры явно описаны.
 
 Затрагивается:
 - `src/shared/types/asset.ts`
 - storage layer
 - main IPC
 - renderer UI
+- `src/main/assets`
+- `src/preload`
 
 Риски:
 - Потеря файлов при переносе кампании.

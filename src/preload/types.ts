@@ -2,6 +2,8 @@ import type {
   Campaign,
   CampaignId,
   CampaignSummary,
+  ImportImageAssetRequest,
+  ImportImageAssetResult,
   PlayerScreenCommandResult,
   PlayerScreenOpenResult,
   PlayerScreenState,
@@ -16,6 +18,9 @@ export interface DesktopApi {
     loadCampaign(campaignId: CampaignId): Promise<Campaign | null>
     saveCampaign(campaign: Campaign): Promise<void>
     deleteCampaign(campaignId: CampaignId): Promise<void>
+  }
+  assets: {
+    importImageAsset(request: ImportImageAssetRequest): Promise<ImportImageAssetResult>
   }
   playerScreen: {
     open(): Promise<PlayerScreenOpenResult>

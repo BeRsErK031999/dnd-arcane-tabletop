@@ -1,4 +1,5 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
+import { AssetImportService } from './assets/AssetImportService.js'
 import { createMasterWindow } from './windows/masterWindow.js'
 import { registerIpcHandlers } from './ipc/index.js'
 import { PlayerScreenController } from './playerScreen/PlayerScreenController.js'
@@ -8,15 +9,32 @@ import { getCampaignsDirectory } from './storage/storagePaths.js'
 const playerScreenController = new PlayerScreenController()
 
 async function bootstrap(): Promise<void> {
-  const storageService = new JsonStorageService(getCampaignsDirectory())
+  const campaignsDirectory = getCampaignsDirectory()
+  const storageService = new JsonStorageService(campaignsDirectory)
+  const assetImportService = new AssetImportService(campaignsDirectory, pickImageFile)
   await storageService.initialize()
 
   createMasterWindow()
 
   registerIpcHandlers({
+    assetImportService,
     storageService,
     playerScreenController,
   })
+}
+
+async function pickImageFile(): Promise<string | null> {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [
+      {
+        name: 'Images',
+        extensions: ['png', 'jpg', 'jpeg', 'webp', 'jfif'],
+      },
+    ],
+  })
+
+  return result.canceled ? null : (result.filePaths[0] ?? null)
 }
 
 app.whenReady().then(() => {

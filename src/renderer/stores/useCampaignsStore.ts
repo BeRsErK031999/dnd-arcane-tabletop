@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { desktopApi } from '@renderer/services/desktopApi'
-import type { Campaign, CampaignId, CampaignSummary, PlayerScreenCommandResult, SceneId } from '@shared/types'
+import type {
+  AssetId,
+  Campaign,
+  CampaignId,
+  CampaignSummary,
+  ImageAssetKind,
+  PlayerScreenCommandResult,
+  SceneId,
+} from '@shared/types'
+import { createCampaignWithAssetPreview, createCampaignWithImportedAsset } from './assetFactory'
 import { createEmptyCampaign, createUpdatedCampaignMetadata } from './campaignFactory'
 import {
   createCampaignWithActiveScene,
@@ -11,6 +20,9 @@ import {
 
 export type CampaignsStoreStatus = 'idle' | 'loading' | 'ready' | 'saving' | 'deleting' | 'error'
 export type CampaignMutationResult = { ok: true; campaign: Campaign } | { ok: false; reason: string }
+export type AssetMutationResult =
+  | { ok: true; campaign: Campaign; assetId: AssetId }
+  | { ok: false; reason: string }
 export type PlayerScenePreviewResult =
   | { ok: true; campaign: Campaign; playerStatus: PlayerScreenCommandResult }
   | { ok: false; reason: string }
@@ -216,6 +228,82 @@ export function useCampaignsStore() {
     }
   }, [selectedCampaign])
 
+  const importImageAsset = useCallback(
+    async (kind: ImageAssetKind, suggestedName?: string): Promise<AssetMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для импорта изображения.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const result = await desktopApi.assets.importImageAsset({
+          campaignId: selectedCampaign.id,
+          kind,
+          suggestedName,
+        })
+
+        if (!result.ok) {
+          setStatus('ready')
+
+          if (result.reason !== 'cancelled') {
+            setLastError('Не удалось импортировать изображение.')
+          }
+
+          return { ok: false, reason: result.reason }
+        }
+
+        const updatedCampaign = createCampaignWithImportedAsset(selectedCampaign, result.asset)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign, assetId: result.asset.id }
+      } catch {
+        setLastError('Не удалось импортировать изображение.')
+        setStatus('error')
+        return { ok: false, reason: 'import-image-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const sendAssetToPlayers = useCallback(
+    async (assetId: AssetId): Promise<PlayerScenePreviewResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для показа изображения.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithAssetPreview(selectedCampaign, assetId)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        const playerStatus = await desktopApi.playerScreen.updateState(updatedCampaign.playerScreenState)
+
+        if (!playerStatus.ok) {
+          setLastError('Не удалось отправить изображение игрокам.')
+          setStatus('error')
+          return { ok: false, reason: playerStatus.reason ?? 'player-screen-update-failed' }
+        }
+
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign, playerStatus }
+      } catch {
+        setLastError('Не удалось отправить изображение игрокам.')
+        setStatus('error')
+        return { ok: false, reason: 'send-asset-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
   useEffect(() => {
     void refresh()
   }, [refresh])
@@ -233,5 +321,7 @@ export function useCampaignsStore() {
     createScene,
     activateScene,
     sendActiveSceneToPlayers,
+    importImageAsset,
+    sendAssetToPlayers,
   }
 }

@@ -3,6 +3,9 @@ import { desktopApi } from '@renderer/services/desktopApi'
 import { useCampaignsStore } from '@renderer/stores/useCampaignsStore'
 import {
   createDefaultPlayerScreenState,
+  type Asset,
+  type AssetId,
+  type ImageAssetKind,
   type PlayerScreenCommandResult,
   type PlayerScreenOpenResult,
   type PlayerScreenState,
@@ -58,6 +61,8 @@ export function MasterDashboardPage() {
     createScene,
     activateScene,
     sendActiveSceneToPlayers,
+    importImageAsset,
+    sendAssetToPlayers,
   } = useCampaignsStore()
   const [activeRightPanel, setActiveRightPanel] = useState<RightPanelTab>('assets')
   const [newCampaignName, setNewCampaignName] = useState('')
@@ -68,6 +73,9 @@ export function MasterDashboardPage() {
   const [newSceneName, setNewSceneName] = useState('')
   const [newSceneDescription, setNewSceneDescription] = useState('')
   const [sceneActionStatus, setSceneActionStatus] = useState('Откройте кампанию, чтобы управлять сценами.')
+  const [assetKind, setAssetKind] = useState<ImageAssetKind>('map')
+  const [assetName, setAssetName] = useState('')
+  const [assetActionStatus, setAssetActionStatus] = useState('Откройте кампанию, чтобы импортировать изображения.')
   const [playerStatus, setPlayerStatus] = useState<PlayerScreenStatus>(() => ({
     isOpen: false,
     isFullscreen: false,
@@ -88,9 +96,16 @@ export function MasterDashboardPage() {
     () => selectedCampaign?.scenes.find((scene) => scene.isActive) ?? selectedCampaign?.scenes[0] ?? null,
     [selectedCampaign],
   )
+  const activeMapAsset = useMemo(
+    () =>
+      activeScene?.backgroundAssetId
+        ? selectedCampaign?.assets.find((asset) => asset.id === activeScene.backgroundAssetId) ?? null
+        : null,
+    [activeScene, selectedCampaign],
+  )
 
   const rightPanelTabs: Array<{ id: RightPanelTab; label: string; count: number }> = [
-    { id: 'assets', label: 'Ассеты', count: totals.assets },
+    { id: 'assets', label: 'Ассеты', count: selectedCampaign?.assets.length ?? totals.assets },
     { id: 'characters', label: 'Персонажи', count: totals.characters },
     { id: 'notes', label: 'Заметки', count: selectedCampaign?.notes.length ?? 0 },
   ]
@@ -129,6 +144,7 @@ export function MasterDashboardPage() {
       setNewCampaignDescription('')
       setCampaignActionStatus(`Кампания "${result.campaign.name}" создана и сохранена.`)
       setSceneActionStatus('Создайте первую сцену для открытой кампании.')
+      setAssetActionStatus('Импортируйте карту или handout для открытой кампании.')
       return
     }
 
@@ -144,6 +160,11 @@ export function MasterDashboardPage() {
         result.campaign.scenes.length === 0
           ? 'В кампании пока нет сцен.'
           : `В кампании доступно сцен: ${result.campaign.scenes.length}.`,
+      )
+      setAssetActionStatus(
+        result.campaign.assets.length === 0
+          ? 'В кампании пока нет изображений.'
+          : `В кампании доступно изображений: ${result.campaign.assets.length}.`,
       )
       return
     }
@@ -169,6 +190,7 @@ export function MasterDashboardPage() {
     if (deleted) {
       setCampaignActionStatus(`Кампания "${campaignName}" удалена.`)
       setSceneActionStatus('Откройте кампанию, чтобы управлять сценами.')
+      setAssetActionStatus('Откройте кампанию, чтобы импортировать изображения.')
       return
     }
 
@@ -215,6 +237,38 @@ export function MasterDashboardPage() {
     setSceneActionStatus('Не удалось отправить активную сцену игрокам.')
   }
 
+  async function handleImportImageAsset(): Promise<void> {
+    const result = await importImageAsset(assetKind, assetName)
+
+    if (result.ok) {
+      const asset = result.campaign.assets.find((candidate) => candidate.id === result.assetId)
+      setAssetName('')
+      setAssetActionStatus(`Изображение "${asset?.name ?? 'без названия'}" импортировано.`)
+
+      if (asset?.kind === 'map') {
+        setSceneActionStatus(`Карта "${asset.name}" привязана к активной сцене.`)
+      }
+
+      return
+    }
+
+    setAssetActionStatus(result.reason === 'cancelled' ? 'Импорт изображения отменен.' : 'Не удалось импортировать изображение.')
+  }
+
+  async function handleSendAssetToPlayers(assetId: AssetId): Promise<void> {
+    const result = await sendAssetToPlayers(assetId)
+
+    if (result.ok) {
+      const assetName = result.campaign.playerScreenState.handoutPreview?.name ?? 'изображение'
+      setPlayerStatus(getStatusFromPlayerAction(result.playerStatus))
+      setAssetActionStatus(`Изображение "${assetName}" отправлено игрокам.`)
+      setPlayerActionStatus(`Изображение "${assetName}" отправлено игрокам.`)
+      return
+    }
+
+    setAssetActionStatus('Не удалось отправить изображение игрокам.')
+  }
+
   async function runPlayerAction(label: string, action: () => Promise<PlayerActionResult>): Promise<void> {
     setPlayerActionStatus('Выполняется...')
 
@@ -233,11 +287,11 @@ export function MasterDashboardPage() {
         <div>
           <p className="eyebrow">Master Console</p>
           <h1>Панель мастера</h1>
-          <p className="muted">Stage 4: сцены кампании, активная сцена и preview для экрана игроков.</p>
+          <p className="muted">Stage 5: карты и изображения через локальный импорт assets.</p>
         </div>
         <div className="button-row">
           {selectedCampaign ? <span className="status-badge">Открыта: {selectedCampaign.name}</span> : null}
-          <span className="status-badge">Этап 4</span>
+          <span className="status-badge">Этап 5</span>
           <button className="button button--secondary" type="button" onClick={refresh}>
             Обновить
           </button>
@@ -333,7 +387,7 @@ export function MasterDashboardPage() {
                 <h2>{activeScene?.name ?? 'Рабочая область сцены'}</h2>
               </div>
               <div className="workspace-board__meta">
-                <span>Canvas: Stage 5</span>
+                <span>Canvas: Stage 6</span>
                 <span>Player mode: {playerStatus.state.mode}</span>
               </div>
             </div>
@@ -356,10 +410,20 @@ export function MasterDashboardPage() {
                         <dd>{activeScene.tokens.length}</dd>
                       </div>
                       <div>
+                        <dt>Карта</dt>
+                        <dd>{activeMapAsset?.name ?? 'не привязана'}</dd>
+                      </div>
+                      <div>
                         <dt>Player preview</dt>
                         <dd>{playerStatus.state.activeSceneId === activeScene.id ? 'синхронизирован' : 'не отправлен'}</dd>
                       </div>
                     </dl>
+                    {activeMapAsset ? (
+                      <figure className="scene-map-preview">
+                        <img alt="" src={activeMapAsset.filePath} />
+                        <figcaption>{activeMapAsset.name}</figcaption>
+                      </figure>
+                    ) : null}
                     <button className="button" disabled={isStorageBusy} onClick={() => void handleSendActiveSceneToPlayers()} type="button">
                       Показать активную сцену игрокам
                     </button>
@@ -546,7 +610,20 @@ export function MasterDashboardPage() {
               </button>
             ))}
           </div>
-          {renderRightPanelContent(activeRightPanel, totals)}
+          {renderRightPanelContent({
+            activeRightPanel,
+            assetActionStatus,
+            assetKind,
+            assetName,
+            assets: selectedCampaign?.assets ?? [],
+            canImportAssets: selectedCampaign !== null,
+            isStorageBusy,
+            onAssetKindChange: setAssetKind,
+            onAssetNameChange: setAssetName,
+            onImportImageAsset: handleImportImageAsset,
+            onSendAssetToPlayers: handleSendAssetToPlayers,
+            totals,
+          })}
         </aside>
       </div>
     </>
@@ -685,33 +762,27 @@ function PlayerScreenControls({ playerActionStatus, playerStatus, runPlayerActio
   )
 }
 
-function renderRightPanelContent(activeRightPanel: RightPanelTab, totals: { assets: number; characters: number }) {
-  if (activeRightPanel === 'assets') {
-    return (
-      <section className="context-panel__body" role="tabpanel">
-        <div className="empty-panel-state">
-          <h3>Библиотека ассетов</h3>
-          <p>Здесь появятся карты, handouts, арты и токены после этапов импорта и библиотеки.</p>
-        </div>
-        <ul className="compact-list">
-          <li>
-            <span>Карты</span>
-            <small>{totals.assets}</small>
-          </li>
-          <li>
-            <span>Handouts</span>
-            <small>Stage 12</small>
-          </li>
-          <li>
-            <span>Токены</span>
-            <small>Stage 9</small>
-          </li>
-        </ul>
-      </section>
-    )
+interface RightPanelContentProps {
+  activeRightPanel: RightPanelTab
+  assetActionStatus: string
+  assetKind: ImageAssetKind
+  assetName: string
+  assets: Asset[]
+  canImportAssets: boolean
+  isStorageBusy: boolean
+  onAssetKindChange(kind: ImageAssetKind): void
+  onAssetNameChange(name: string): void
+  onImportImageAsset(): Promise<void>
+  onSendAssetToPlayers(assetId: AssetId): Promise<void>
+  totals: { assets: number; characters: number }
+}
+
+function renderRightPanelContent(props: RightPanelContentProps) {
+  if (props.activeRightPanel === 'assets') {
+    return <AssetPanel {...props} />
   }
 
-  if (activeRightPanel === 'characters') {
+  if (props.activeRightPanel === 'characters') {
     return (
       <section className="context-panel__body" role="tabpanel">
         <div className="empty-panel-state">
@@ -721,7 +792,7 @@ function renderRightPanelContent(activeRightPanel: RightPanelTab, totals: { asse
         <ul className="compact-list">
           <li>
             <span>Игроки</span>
-            <small>{totals.characters}</small>
+            <small>{props.totals.characters}</small>
           </li>
           <li>
             <span>NPC</span>
@@ -756,6 +827,89 @@ function renderRightPanelContent(activeRightPanel: RightPanelTab, totals: { asse
           <small>Stage 1</small>
         </li>
       </ul>
+    </section>
+  )
+}
+
+function AssetPanel({
+  assetActionStatus,
+  assetKind,
+  assetName,
+  assets,
+  canImportAssets,
+  isStorageBusy,
+  onAssetKindChange,
+  onAssetNameChange,
+  onImportImageAsset,
+  onSendAssetToPlayers,
+}: RightPanelContentProps) {
+  return (
+    <section className="context-panel__body" role="tabpanel">
+      <form
+        className="asset-import-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void onImportImageAsset()
+        }}
+      >
+        <label>
+          <span>Тип</span>
+          <select
+            disabled={!canImportAssets || isStorageBusy}
+            onChange={(event) => onAssetKindChange(event.target.value as ImageAssetKind)}
+            value={assetKind}
+          >
+            <option value="map">Карта</option>
+            <option value="handout">Handout</option>
+            <option value="portrait">Портрет</option>
+            <option value="token">Токен</option>
+            <option value="other">Другое</option>
+          </select>
+        </label>
+        <label>
+          <span>Название</span>
+          <input
+            disabled={!canImportAssets || isStorageBusy}
+            onChange={(event) => onAssetNameChange(event.target.value)}
+            placeholder="Например: Карта подземелья"
+            value={assetName}
+          />
+        </label>
+        <button className="button" disabled={!canImportAssets || isStorageBusy} type="submit">
+          Импортировать изображение
+        </button>
+      </form>
+
+      {assets.length === 0 ? (
+        <div className="empty-panel-state">
+          <h3>Изображений пока нет</h3>
+          <p>Импортированная карта привяжется к активной сцене, остальные изображения останутся в библиотеке.</p>
+        </div>
+      ) : (
+        <ul className="asset-list">
+          {assets.map((asset) => (
+            <li className="asset-item" key={asset.id}>
+              <div className="asset-thumb">
+                <img alt="" src={asset.filePath} />
+              </div>
+              <div>
+                <span>{asset.name}</span>
+                <small>{getAssetKindLabel(asset.kind)}</small>
+              </div>
+              <button
+                className="button button--secondary"
+                disabled={isStorageBusy}
+                onClick={() => void onSendAssetToPlayers(asset.id)}
+                type="button"
+              >
+                Показать
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="form-status">{assetActionStatus}</p>
     </section>
   )
 }
@@ -820,6 +974,23 @@ function getPlayerActionLabel(label: string, result: PlayerActionResult): string
   }
 
   return label
+}
+
+function getAssetKindLabel(kind: Asset['kind']): string {
+  switch (kind) {
+    case 'map':
+      return 'Карта'
+    case 'token':
+      return 'Токен'
+    case 'portrait':
+      return 'Портрет'
+    case 'handout':
+      return 'Handout'
+    case 'audio':
+      return 'Audio'
+    case 'other':
+      return 'Изображение'
+  }
 }
 
 function formatTimestamp(value: string): string {

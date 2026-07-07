@@ -3,6 +3,7 @@ import type { CampaignId, EntityId, IsoDateString } from './common.js'
 export type AssetId = EntityId
 
 export type AssetKind = 'map' | 'token' | 'portrait' | 'handout' | 'audio' | 'other'
+export type ImageAssetKind = Exclude<AssetKind, 'audio'>
 
 export interface Asset {
   id: AssetId
@@ -13,3 +14,14 @@ export interface Asset {
   createdAt: IsoDateString
   metadata?: Record<string, string | number | boolean | null>
 }
+
+export interface ImportImageAssetRequest {
+  campaignId: CampaignId
+  kind: ImageAssetKind
+  suggestedName?: string
+  sourceFilePath?: string
+}
+
+export type ImportImageAssetResult =
+  | { ok: true; asset: Asset }
+  | { ok: false; reason: 'cancelled' | 'unsupported-file' | 'copy-failed' }

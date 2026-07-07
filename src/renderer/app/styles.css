@@ -350,6 +350,29 @@ h1 {
   font-weight: 800;
 }
 
+.scene-map-preview {
+  width: min(100%, 560px);
+  margin: 4px 0 0;
+  overflow: hidden;
+  background: #191817;
+  border: 1px solid #d8d3c8;
+  border-radius: 6px;
+}
+
+.scene-map-preview img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: block;
+  object-fit: cover;
+}
+
+.scene-map-preview figcaption {
+  padding: 8px 10px;
+  color: #f8f6f1;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .master-workbench {
   display: grid;
   grid-template-columns: 172px minmax(0, 1fr) 300px;
@@ -662,6 +685,89 @@ h1 {
 
 .form-status--error {
   color: #8c322f;
+}
+
+.asset-import-form {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: #fbfaf7;
+  border: 1px solid #e4ded2;
+  border-radius: 6px;
+}
+
+.asset-import-form label {
+  display: grid;
+  gap: 5px;
+  color: #5f5850;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.asset-import-form input,
+.asset-import-form select {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  color: #191817;
+  background: #fff;
+  border: 1px solid #d8d3c8;
+  border-radius: 6px;
+  font: inherit;
+  text-transform: none;
+}
+
+.asset-import-form input:disabled,
+.asset-import-form select:disabled {
+  color: #8c8580;
+  background: #f2eee7;
+}
+
+.asset-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.asset-item {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  background: #f8f6f1;
+  border: 1px solid #e2dbcf;
+  border-radius: 6px;
+}
+
+.asset-item span {
+  display: block;
+  overflow: hidden;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-item small {
+  color: #69625b;
+  font-size: 12px;
+}
+
+.asset-thumb {
+  overflow: hidden;
+  background: #191817;
+  border: 1px solid #d8d3c8;
+  border-radius: 6px;
+}
+
+.asset-thumb img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  display: block;
+  object-fit: cover;
 }
 
 .metric-grid--compact .metric {
@@ -1045,5 +1151,13 @@ h1 {
   .scene-strip__items,
   .scene-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .asset-item {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  .asset-item .button {
+    grid-column: 1 / -1;
   }
 }

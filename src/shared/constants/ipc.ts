@@ -5,6 +5,9 @@ export const IPC_CHANNELS = {
     saveCampaign: 'storage:saveCampaign',
     deleteCampaign: 'storage:deleteCampaign',
   },
+  assets: {
+    importImage: 'assets:importImage',
+  },
   playerScreen: {
     open: 'player:open',
     close: 'player:close',

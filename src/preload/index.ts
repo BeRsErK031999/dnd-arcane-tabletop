@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { IPC_CHANNELS } from '../shared/constants/index.js'
-import type { Campaign, CampaignId, PlayerScreenState, PlayerScreenStatus } from '../shared/types/index.js'
+import type {
+  Campaign,
+  CampaignId,
+  ImportImageAssetRequest,
+  PlayerScreenState,
+  PlayerScreenStatus,
+} from '../shared/types/index.js'
 import type { DesktopApi } from './types.js'
 
 const desktopApi: DesktopApi = {
@@ -9,6 +15,9 @@ const desktopApi: DesktopApi = {
     loadCampaign: (campaignId: CampaignId) => ipcRenderer.invoke(IPC_CHANNELS.storage.loadCampaign, campaignId),
     saveCampaign: (campaign: Campaign) => ipcRenderer.invoke(IPC_CHANNELS.storage.saveCampaign, campaign),
     deleteCampaign: (campaignId: CampaignId) => ipcRenderer.invoke(IPC_CHANNELS.storage.deleteCampaign, campaignId),
+  },
+  assets: {
+    importImageAsset: (request: ImportImageAssetRequest) => ipcRenderer.invoke(IPC_CHANNELS.assets.importImage, request),
   },
   playerScreen: {
     open: () => ipcRenderer.invoke(IPC_CHANNELS.playerScreen.open),

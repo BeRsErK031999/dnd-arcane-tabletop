@@ -75,8 +75,23 @@ const toolGroups: Array<{ title: string; items: ToolItem[] }> = [
 ]
 
 export function MasterDashboardPage() {
-  const { campaigns, status, refresh } = useCampaignsStore()
+  const {
+    campaigns,
+    selectedCampaign,
+    status,
+    lastError,
+    refresh,
+    createCampaign,
+    openCampaign,
+    saveSelectedCampaign,
+    deleteSelectedCampaign,
+  } = useCampaignsStore()
   const [activeRightPanel, setActiveRightPanel] = useState<RightPanelTab>('assets')
+  const [newCampaignName, setNewCampaignName] = useState('')
+  const [newCampaignDescription, setNewCampaignDescription] = useState('')
+  const [editorName, setEditorName] = useState('')
+  const [editorDescription, setEditorDescription] = useState('')
+  const [campaignActionStatus, setCampaignActionStatus] = useState('JSON-хранилище готово к работе.')
   const [playerStatus, setPlayerStatus] = useState<PlayerScreenStatus>(() => ({
     isOpen: false,
     isFullscreen: false,
@@ -97,8 +112,10 @@ export function MasterDashboardPage() {
   const rightPanelTabs: Array<{ id: RightPanelTab; label: string; count: number }> = [
     { id: 'assets', label: 'Ассеты', count: totals.assets },
     { id: 'characters', label: 'Персонажи', count: totals.characters },
-    { id: 'notes', label: 'Заметки', count: campaigns.length },
+    { id: 'notes', label: 'Заметки', count: selectedCampaign?.notes.length ?? 0 },
   ]
+
+  const isStorageBusy = status === 'loading' || status === 'saving' || status === 'deleting'
 
   useEffect(() => {
     let isMounted = true
@@ -119,6 +136,58 @@ export function MasterDashboardPage() {
     }
   }, [])
 
+  useEffect(() => {
+    setEditorName(selectedCampaign?.name ?? '')
+    setEditorDescription(selectedCampaign?.description ?? '')
+  }, [selectedCampaign])
+
+  async function handleCreateCampaign(): Promise<void> {
+    const result = await createCampaign(newCampaignName, newCampaignDescription)
+
+    if (result.ok) {
+      setNewCampaignName('')
+      setNewCampaignDescription('')
+      setCampaignActionStatus(`Кампания "${result.campaign.name}" создана и сохранена.`)
+      return
+    }
+
+    setCampaignActionStatus('Не удалось создать кампанию.')
+  }
+
+  async function handleOpenCampaign(campaignId: string): Promise<void> {
+    const result = await openCampaign(campaignId)
+
+    if (result.ok) {
+      setCampaignActionStatus(`Кампания "${result.campaign.name}" открыта.`)
+      return
+    }
+
+    setCampaignActionStatus('Не удалось открыть кампанию.')
+  }
+
+  async function handleSaveCampaign(): Promise<void> {
+    const result = await saveSelectedCampaign(editorName, editorDescription)
+
+    if (result.ok) {
+      setCampaignActionStatus(`Кампания "${result.campaign.name}" сохранена в JSON.`)
+      return
+    }
+
+    setCampaignActionStatus('Не удалось сохранить кампанию.')
+  }
+
+  async function handleDeleteCampaign(): Promise<void> {
+    const campaignName = selectedCampaign?.name ?? 'кампания'
+    const deleted = await deleteSelectedCampaign()
+
+    if (deleted) {
+      setCampaignActionStatus(`Кампания "${campaignName}" удалена.`)
+      return
+    }
+
+    setCampaignActionStatus('Не удалось удалить кампанию.')
+  }
+
   async function runPlayerAction(label: string, action: () => Promise<PlayerActionResult>): Promise<void> {
     setPlayerActionStatus('Выполняется...')
 
@@ -137,10 +206,11 @@ export function MasterDashboardPage() {
         <div>
           <p className="eyebrow">Master Console</p>
           <h1>Панель мастера</h1>
-          <p className="muted">Основная рабочая область Stage 2: сцены, инструменты, материалы и экран игроков.</p>
+          <p className="muted">Stage 3: локальные JSON-кампании поверх рабочей области мастера.</p>
         </div>
         <div className="button-row">
-          <span className="status-badge">Этап 2</span>
+          {selectedCampaign ? <span className="status-badge">Открыта: {selectedCampaign.name}</span> : null}
+          <span className="status-badge">Этап 3</span>
           <button className="button button--secondary" type="button" onClick={refresh}>
             Обновить
           </button>
@@ -222,7 +292,7 @@ export function MasterDashboardPage() {
           </section>
 
           <div className="workspace-lower-grid">
-            <section className="campaign-summary" aria-label="Кампании">
+            <section className="campaign-summary campaign-manager" aria-label="Кампании">
               <div className="module-header">
                 <div>
                   <p className="eyebrow">Campaigns</p>
@@ -244,18 +314,118 @@ export function MasterDashboardPage() {
                   <span className="metric__label">персонажей</span>
                 </div>
               </div>
-              {campaigns.length === 0 ? (
-                <p className="muted">Кампаний пока нет. Слой хранения готов к файлам в `data/campaigns`.</p>
-              ) : (
-                <ul className="compact-list">
-                  {campaigns.map((campaign) => (
-                    <li key={campaign.id}>
-                      <span>{campaign.name}</span>
-                      <small>{campaign.updatedAt}</small>
-                    </li>
-                  ))}
-                </ul>
-              )}
+
+              <div className="campaign-manager__grid">
+                <form
+                  className="campaign-form"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void handleCreateCampaign()
+                  }}
+                >
+                  <h3>Новая кампания</h3>
+                  <label>
+                    <span>Название</span>
+                    <input
+                      onChange={(event) => setNewCampaignName(event.target.value)}
+                      placeholder="Например: Башня над рекой"
+                      value={newCampaignName}
+                    />
+                  </label>
+                  <label>
+                    <span>Описание</span>
+                    <textarea
+                      onChange={(event) => setNewCampaignDescription(event.target.value)}
+                      placeholder="Короткая заметка для мастера"
+                      rows={3}
+                      value={newCampaignDescription}
+                    />
+                  </label>
+                  <button className="button" disabled={isStorageBusy} type="submit">
+                    Создать кампанию
+                  </button>
+                </form>
+
+                <form
+                  className="campaign-form"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void handleSaveCampaign()
+                  }}
+                >
+                  <h3>Открытая кампания</h3>
+                  <label>
+                    <span>Название</span>
+                    <input
+                      disabled={selectedCampaign === null}
+                      onChange={(event) => setEditorName(event.target.value)}
+                      placeholder="Откройте кампанию"
+                      value={editorName}
+                    />
+                  </label>
+                  <label>
+                    <span>Описание</span>
+                    <textarea
+                      disabled={selectedCampaign === null}
+                      onChange={(event) => setEditorDescription(event.target.value)}
+                      placeholder="Описание выбранной кампании"
+                      rows={3}
+                      value={editorDescription}
+                    />
+                  </label>
+                  <div className="button-row">
+                    <button className="button" disabled={selectedCampaign === null || isStorageBusy} type="submit">
+                      Сохранить
+                    </button>
+                    <button
+                      className="button button--danger"
+                      disabled={selectedCampaign === null || isStorageBusy}
+                      onClick={() => void handleDeleteCampaign()}
+                      type="button"
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <section className="campaign-list" aria-label="Сохраненные кампании">
+                <div className="campaign-list__header">
+                  <h3>JSON-файлы</h3>
+                  <span>{campaigns.length}</span>
+                </div>
+                {campaigns.length === 0 ? (
+                  <p className="muted">Кампаний пока нет. Новая запись сохранится в `data/campaigns`.</p>
+                ) : (
+                  <ul className="campaign-list__items">
+                    {campaigns.map((campaign) => (
+                      <li
+                        className={selectedCampaign?.id === campaign.id ? 'campaign-item campaign-item--active' : 'campaign-item'}
+                        key={campaign.id}
+                      >
+                        <div>
+                          <span>{campaign.name}</span>
+                          <small>{campaign.description ?? 'Без описания'}</small>
+                        </div>
+                        <div className="campaign-item__meta">
+                          <small>{formatTimestamp(campaign.updatedAt)}</small>
+                          <button
+                            className="button button--secondary"
+                            disabled={isStorageBusy}
+                            onClick={() => void handleOpenCampaign(campaign.id)}
+                            type="button"
+                          >
+                            Открыть
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              {lastError ? <p className="form-status form-status--error">{lastError}</p> : null}
+              <p className="muted">{campaignActionStatus}</p>
             </section>
 
             <PlayerScreenControls

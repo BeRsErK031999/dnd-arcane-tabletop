@@ -1,8 +1,16 @@
 import type { DesktopApi } from '../../preload/types'
-import { createDefaultPlayerScreenState, type PlayerScreenCommandResult, type PlayerScreenStatus } from '@shared/types'
+import {
+  createDefaultPlayerScreenState,
+  type Campaign,
+  type CampaignId,
+  type CampaignSummary,
+  type PlayerScreenCommandResult,
+  type PlayerScreenStatus,
+} from '@shared/types'
 
 const browserFallbackReason = 'desktop-api-unavailable'
 const browserFallbackState = createDefaultPlayerScreenState()
+const browserFallbackCampaigns = new Map<CampaignId, Campaign>()
 const browserFallbackStatus: PlayerScreenStatus = {
   isOpen: false,
   isFullscreen: false,
@@ -19,10 +27,17 @@ function createBrowserFallbackResult(): PlayerScreenCommandResult {
 
 const browserFallbackApi: DesktopApi = {
   storage: {
-    listCampaigns: async () => [],
-    loadCampaign: async () => null,
-    saveCampaign: async () => undefined,
-    deleteCampaign: async () => undefined,
+    listCampaigns: async () =>
+      Array.from(browserFallbackCampaigns.values())
+        .map(createCampaignSummary)
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    loadCampaign: async (campaignId: CampaignId) => browserFallbackCampaigns.get(campaignId) ?? null,
+    saveCampaign: async (campaign: Campaign) => {
+      browserFallbackCampaigns.set(campaign.id, campaign)
+    },
+    deleteCampaign: async (campaignId: CampaignId) => {
+      browserFallbackCampaigns.delete(campaignId)
+    },
   },
   playerScreen: {
     open: async () => ({
@@ -47,3 +62,15 @@ const browserFallbackApi: DesktopApi = {
 }
 
 export const desktopApi = window.arcaneTabletop ?? browserFallbackApi
+
+function createCampaignSummary(campaign: Campaign): CampaignSummary {
+  return {
+    id: campaign.id,
+    name: campaign.name,
+    description: campaign.description,
+    updatedAt: campaign.updatedAt,
+    sceneCount: campaign.scenes.length,
+    assetCount: campaign.assets.length,
+    characterCount: campaign.characterCards.length,
+  }
+}

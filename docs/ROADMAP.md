@@ -123,6 +123,8 @@
 
 ## Этап 3. JSON-хранение кампаний
 
+Статус: выполнено.
+
 Цель: реализовать создание, открытие и сохранение кампаний в локальных папках и JSON-файлах.
 
 Входит:
@@ -131,22 +133,28 @@
 - Сохранение доменной модели кампании.
 - Ошибки чтения и записи.
 - Минимальные fixtures для разработки.
+- Удаление кампании через существующий storage API.
+- Валидная пустая campaign shape с `combatState` и `playerScreenState`.
 
 Не входит:
 - SQLite.
 - Синхронизация, облако или multi-user доступ.
 - Импорт сторонних campaign formats.
+- Создание реальных сцен, asset import, токены или canvas.
 
 Критерии готовности:
 - Кампания создается и сохраняется в JSON.
+- Кампанию можно открыть, обновить и удалить из master UI.
 - Невалидные файлы не ломают список кампаний.
 - Storage остается заменяемым через `StorageService`.
+- `npm run lint`, `npm run typecheck`, `npm run test`, `npm run dev` проходят или блокеры явно описаны.
 
 Затрагивается:
 - `src/main/storage`
 - `src/main/ipc/storageIpc.ts`
 - `src/preload`
 - `src/renderer/stores`
+- `src/renderer/pages`
 - `data/campaigns`
 
 Риски:

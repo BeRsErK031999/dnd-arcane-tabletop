@@ -2,86 +2,81 @@
 
 ## Текущий этап
 
-Этап 2. Основной UI мастера.
+Этап 3. JSON-хранение кампаний.
 
 Статус: выполнено в этом этапе.
 
 ## Цель
 
-Собрать рабочую поверхность мастера, которая станет основой для следующих этапов: сцены, инструменты, центральная рабочая область, правая панель сущностей и сохраненное управление экраном игроков из Stage 1.
+Реализовать создание, открытие, сохранение и удаление кампаний через существующий `StorageService` и JSON-файлы, не добавляя SQLite, backend или реальные игровые сущности следующих этапов.
 
 ## Уже реализовано до начала этапа
 
 - Electron + React + TypeScript + Vite scaffold.
-- Master window и player window.
-- JSON storage через `StorageService`.
-- Shared-типы доменных сущностей.
-- Typed IPC для master/player режима.
-- `PlayerScreenController` в main process.
-- Базовый player screen renderer для режимов `blank`, `scene`, `image`, `split`.
-- Панель управления player screen.
+- Master/player desktop shell.
+- Typed IPC для player screen.
+- Основной Stage 2 layout мастера.
+- `StorageService` и `JsonStorageService`.
+- Storage IPC и preload API для `list/load/save/delete`.
 
 ## Что можно использовать
 
-- `MasterShell` как внешний desktop shell.
-- `MasterDashboardPage` как текущую master route.
-- `desktopApi.playerScreen` для сохранения Stage 1 controls.
-- Campaign summaries из `useCampaignsStore`.
-- Существующие CSS primitives: `panel`, `button`, `status-badge`, `stack`.
+- `desktopApi.storage`.
+- `useCampaignsStore`.
+- Shared `Campaign` / `CampaignSummary` types.
+- `data/campaigns` для development JSON-файлов.
+- `JsonStorageService` tests как гарантию безопасного чтения/записи.
 
 ## Пробелы этапа
 
-- Master screen все еще выглядел как стартовый dashboard, а не как рабочее место мастера.
-- Не было верхней полосы сцен.
-- Не было левой панели инструментов.
-- Не было центральной рабочей области под будущий canvas.
-- Не было правой панели assets/characters/notes.
-- Stage 1 player controls занимали отдельную dashboard card и не были встроены в общий master workspace.
+- Renderer store умел только читать список кампаний.
+- Не было фабрики пустой кампании с валидным domain shape.
+- Master UI не мог создать, открыть, сохранить или удалить кампанию.
+- Browser fallback API не позволял проверить campaign flow в Vite route.
 
 ## Что реализовано
 
-- Верхняя полоса сцен с активной сценой и будущими scene placeholders.
-- Левая панель инструментов с группами будущих master tools.
-- Центральная рабочая область с placeholder canvas, session metrics и понятным состоянием Stage 2.
-- Правая панель с tabs: assets, characters, notes.
-- Компактный блок кампаний и статуса storage.
-- Блок управления экраном игроков сохранен и встроен в workspace.
-- Документация обновлена под завершение Stage 1 и Stage 2.
+- `createEmptyCampaign` для валидной пустой кампании.
+- Обновление метаданных открытой кампании без изменения будущих scene/assets данных.
+- `useCampaignsStore` с операциями `createCampaign`, `openCampaign`, `saveSelectedCampaign`, `deleteSelectedCampaign`.
+- In-memory browser fallback storage для проверки renderer route без записи в repo.
+- Campaign manager в master workspace: форма создания, открытая кампания, сохранение, удаление и список JSON-файлов.
+- Тесты для campaign factory.
 
 ## Критерии готовности
 
-- Master window открывается.
-- На master route видны верхняя сцена strip, tool rail, центральная workspace и правая panel.
-- Правая panel переключается между assets, characters и notes.
-- Player screen controls остаются доступными.
-- Stage 1 player flow не сломан.
-- Нет реализации реальных карт, токенов, fog of war, asset import или карточек персонажей.
+- Кампания создается и сохраняется через storage API.
+- Список кампаний обновляется после создания, сохранения и удаления.
+- Кампанию можно открыть из списка.
+- Метаданные открытой кампании можно сохранить.
+- Пустая кампания содержит валидные `combatState` и `playerScreenState`.
+- Невалидные и небезопасные имена файлов по-прежнему покрыты storage tests.
+- Storage остается заменяемым через `StorageService`.
 - `npm run lint` проходит.
 - `npm run typecheck` проходит.
 - `npm run test` проходит.
 - `npm run dev` запускается.
-- Renderer route `/?screen=master` проверен в браузере.
+- Campaign flow проверен в browser route.
 
 ## Не входит в этап
 
-- Создание и сохранение реальных сцен.
-- Реальный canvas.
-- Импорт изображений.
-- Drag-and-drop assets.
-- Токены и объекты на карте.
+- Создание реальных сцен.
+- Активная сцена и переключение сцен.
+- Импорт изображений и asset library.
+- Canvas.
+- Токены.
 - Fog of war.
-- Редактор карточек персонажей.
-- Реальная инициатива как gameplay-модуль.
-- Backend, SQLite, PostgreSQL, cloud, online mode.
+- Карточки персонажей.
+- SQLite, PostgreSQL, backend, cloud, online mode.
 
 ## Следующий этап
 
-Этап 3. JSON-хранение кампаний.
+Этап 4. Сцены и переключение сцен.
 
 Он не начат. Перед ним нужно отдельно подтвердить переход.
 
 ## Риски и меры
 
-- Риск превратить Stage 2 в функциональный canvas: все scene/canvas/assets элементы остаются UI placeholders.
-- Риск сломать player screen controls: Stage 1 control flow сохранен через тот же `desktopApi.playerScreen`.
-- Риск перегрузить интерфейс: панели сделаны плотными и рабочими, без landing page и декоративной витрины.
+- Риск связать renderer с JSON-форматом: renderer работает через `desktopApi.storage`, а JSON остается деталью `JsonStorageService`.
+- Риск начать Stage 4 раньше времени: campaign factory создает пустые массивы сцен/ассетов/персонажей без UI редактирования.
+- Риск оставлять тестовые campaign files в repo: browser verification использует in-memory fallback, а storage tests используют temp directories.

@@ -2,101 +2,86 @@
 
 ## Текущий этап
 
-Этап 1. Полноценный двухэкранный режим master/player.
+Этап 2. Основной UI мастера.
+
+Статус: выполнено в этом этапе.
 
 ## Цель
 
-Сделать так, чтобы окно мастера могло открывать, закрывать, обновлять и управлять отдельным окном игроков через типизированный IPC.
+Собрать рабочую поверхность мастера, которая станет основой для следующих этапов: сцены, инструменты, центральная рабочая область, правая панель сущностей и сохраненное управление экраном игроков из Stage 1.
 
 ## Уже реализовано до начала этапа
 
 - Electron + React + TypeScript + Vite scaffold.
-- Master window.
-- Подготовленный player window.
+- Master window и player window.
+- JSON storage через `StorageService`.
 - Shared-типы доменных сущностей.
-- `StorageService` и `JsonStorageService`.
-- Базовый preload API.
-- Централизованный файл `src/shared/constants/ipc.ts`.
+- Typed IPC для master/player режима.
+- `PlayerScreenController` в main process.
+- Базовый player screen renderer для режимов `blank`, `scene`, `image`, `split`.
+- Панель управления player screen.
 
 ## Что можно использовать
 
-- `createMasterWindow` и `createPlayerWindow`.
-- `loadRendererWindow` с query-параметром `screen`.
-- `IPC_CHANNELS` как место для всех IPC channel names.
-- `DesktopApi` в preload как безопасный renderer bridge.
-- Existing renderer routing через `/?screen=master` и `/?screen=player`.
-- JSON storage без изменения persistence stack.
+- `MasterShell` как внешний desktop shell.
+- `MasterDashboardPage` как текущую master route.
+- `desktopApi.playerScreen` для сохранения Stage 1 controls.
+- Campaign summaries из `useCampaignsStore`.
+- Существующие CSS primitives: `panel`, `button`, `status-badge`, `stack`.
 
 ## Пробелы этапа
 
-- Player screen был только placeholder.
-- `PlayerScreenState` не описывал режимы `blank`, `scene`, `image`, `split`.
-- IPC для player screen умел только открывать окно.
-- Main process не хранил последнее состояние player screen.
-- Master UI не имел панели проверки open/close/fullscreen/state/visibility.
+- Master screen все еще выглядел как стартовый dashboard, а не как рабочее место мастера.
+- Не было верхней полосы сцен.
+- Не было левой панели инструментов.
+- Не было центральной рабочей области под будущий canvas.
+- Не было правой панели assets/characters/notes.
+- Stage 1 player controls занимали отдельную dashboard card и не были встроены в общий master workspace.
 
-## Что должно быть реализовано
+## Что реализовано
 
-- Кнопка открытия окна игроков.
-- Защита от открытия нескольких одинаковых player windows.
-- Повторное открытие фокусирует существующее player window.
-- Закрытие player window из master UI.
-- Fullscreen и выход из fullscreen.
-- Отправка тестового состояния на экран игроков.
-- Скрытие player screen.
-- Повторный показ player screen.
-- Player window отображает актуальное состояние.
-- Закрытое player window не ломает master window.
-- Повторно открытое player window получает последнее состояние.
-- `PlayerScreenState` типизирован.
-- Канал master -> player централизован.
-- Строковые IPC-каналы не размазаны по проекту.
+- Верхняя полоса сцен с активной сценой и будущими scene placeholders.
+- Левая панель инструментов с группами будущих master tools.
+- Центральная рабочая область с placeholder canvas, session metrics и понятным состоянием Stage 2.
+- Правая панель с tabs: assets, characters, notes.
+- Компактный блок кампаний и статуса storage.
+- Блок управления экраном игроков сохранен и встроен в workspace.
+- Документация обновлена под завершение Stage 1 и Stage 2.
 
 ## Критерии готовности
 
-- Приложение запускается.
 - Master window открывается.
-- Из master window можно открыть player window.
-- Player window можно вручную перенести на второй экран и развернуть fullscreen.
-- Master window может отправить тестовую сцену или сообщение в player window.
-- Master window может скрыть экран игроков.
-- Master window может снова показать экран игроков.
-- Закрытие player window не ломает master window.
-- Повторное открытие player window работает корректно.
+- На master route видны верхняя сцена strip, tool rail, центральная workspace и правая panel.
+- Правая panel переключается между assets, characters и notes.
+- Player screen controls остаются доступными.
+- Stage 1 player flow не сломан.
+- Нет реализации реальных карт, токенов, fog of war, asset import или карточек персонажей.
 - `npm run lint` проходит.
 - `npm run typecheck` проходит.
 - `npm run test` проходит.
 - `npm run dev` запускается.
-- Двухэкранный режим вручную проверен настолько, насколько позволяет текущая среда.
+- Renderer route `/?screen=master` проверен в браузере.
 
 ## Не входит в этап
 
-- Реальный импорт карт.
-- Токены.
-- Canvas scene layers.
+- Создание и сохранение реальных сцен.
+- Реальный canvas.
+- Импорт изображений.
+- Drag-and-drop assets.
+- Токены и объекты на карте.
 - Fog of war.
-- Реальная инициатива как отдельный модуль.
-- Asset library.
-- Карточки персонажей.
+- Редактор карточек персонажей.
+- Реальная инициатива как gameplay-модуль.
 - Backend, SQLite, PostgreSQL, cloud, online mode.
 
-## План реализации этапа
+## Следующий этап
 
-1. Расширить `PlayerScreenState` в shared types.
-2. Централизовать все player IPC channels в `IPC_CHANNELS`.
-3. Добавить main-process controller для player window и player state.
-4. Расширить `playerScreenIpc`.
-5. Расширить preload `DesktopApi`.
-6. Добавить master panel для ручного управления player screen.
-7. Реализовать player renderer для режимов `blank`, `scene`, `image`, `split`.
-8. Добавить или обновить тесты.
-9. Выполнить lint, typecheck, tests и dev smoke check.
-10. Создать commit `feat(player-screen): add typed two-window control flow`.
+Этап 3. JSON-хранение кампаний.
+
+Он не начат. Перед ним нужно отдельно подтвердить переход.
 
 ## Риски и меры
 
-- Состояние может потеряться при закрытии окна: main process хранит последнее `PlayerScreenState` в памяти.
-- IPC может уйти в закрытое окно: отправка проверяет live `BrowserWindow`.
-- Fullscreen может быть вызван при закрытом окне: handler возвращает typed result с причиной.
-- Player renderer может загрузиться после IPC-события: при загрузке он дополнительно запрашивает текущее состояние.
-- Строковые IPC-каналы могут расползтись: все names остаются в `src/shared/constants/ipc.ts`.
+- Риск превратить Stage 2 в функциональный canvas: все scene/canvas/assets элементы остаются UI placeholders.
+- Риск сломать player screen controls: Stage 1 control flow сохранен через тот же `desktopApi.playerScreen`.
+- Риск перегрузить интерфейс: панели сделаны плотными и рабочими, без landing page и декоративной витрины.

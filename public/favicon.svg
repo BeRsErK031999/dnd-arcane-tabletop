@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="D20">
+  <path fill="#191817" d="M32 4 58 18v28L32 60 6 46V18L32 4Z" />
+  <path fill="#9f2d3c" d="M32 9 52 20v23L32 55 12 43V20L32 9Z" />
+  <path fill="#f4eee4" d="M32 15 46 23v17L32 49 18 40V23l14-8Z" />
+  <text x="32" y="38" fill="#191817" font-family="Arial, sans-serif" font-size="15" font-weight="700" text-anchor="middle">20</text>
+</svg>

@@ -1,0 +1,76 @@
+# D&D Arcane Tabletop
+
+Локальное desktop-приложение для мастера D&D. Мастер работает в основном окне, а экран игроков готовится как отдельное Electron-окно для второго монитора, телевизора или проектора.
+
+Проект не является онлайн-сервисом: здесь нет backend, аккаунтов, облака, web-версии, мобильной версии и сетевого подключения игроков.
+
+## Stack
+
+- Electron
+- React
+- TypeScript
+- Vite
+- JSON-файлы для локального хранения кампаний
+- electron-builder для Windows exe-сборки
+
+## Scripts
+
+```bash
+npm install
+npm run dev
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+npm run dist:win
+```
+
+`npm run dev` запускает Vite renderer и Electron master window. `npm run dist:win` собирает Windows installer через electron-builder.
+
+## Structure
+
+```text
+src/
+  main/
+    windows/      Electron windows
+    ipc/          IPC handlers
+    storage/      StorageService and JSON implementation
+  preload/        Secure bridge between Electron and renderer
+  renderer/
+    app/          React entrypoint and styles
+    features/     Feature modules
+    pages/        Screen-level React pages
+    services/     Renderer service adapters
+    shared/       Renderer-local shared helpers
+    stores/       Client state hooks
+    widgets/      Reusable app widgets
+  shared/
+    constants/    Shared constants and IPC channel names
+    types/        Campaign, Scene, Token, Asset, CharacterCard, Note, CombatState, PlayerScreenState
+data/
+  campaigns/      Development JSON campaign files
+docs/
+  PROJECT_RULES.md
+```
+
+## Storage
+
+The app uses a `StorageService` interface. The first implementation is `JsonStorageService`, which reads and writes campaign JSON files. This keeps persistence replaceable later without rewriting renderer features or IPC contracts.
+
+In development campaign files are stored in:
+
+```text
+data/campaigns
+```
+
+In a packaged build the storage directory is resolved from Electron `userData`.
+
+## Stage 1 Check
+
+1. Run `npm install`.
+2. Run `npm run lint`.
+3. Run `npm run typecheck`.
+4. Run `npm run test`.
+5. Run `npm run build`.
+6. Run `npm run dev`.
+7. Confirm that the master window opens and shows the master dashboard.

@@ -2,13 +2,13 @@
 
 ## Текущий этап
 
-Этап 9. Токены и объекты на карте.
+Этап 10. Карточки персонажей, NPC и монстров.
 
 Статус: выполнено в этом этапе.
 
 ## Цель
 
-Дать мастеру базовое управление размещенными объектами активной сцены: выбор объекта на canvas, перемещение по сетке, дублирование, скрытие от игроков и простую карточку токена с HP, AC и заметкой.
+Дать мастеру простые карточки персонажей, NPC и монстров без полноценного character sheet и rules automation: имя, тип, краткое описание, HP/AC/initiative, портрет, заметки и связь карточки с токеном на карте.
 
 ## Уже реализовано до начала этапа
 
@@ -22,12 +22,16 @@
 - Stage 6 canvas state, layer stack and player-visible canvas projection.
 - Stage 7 grid settings, viewport, measurements and player projection.
 - Stage 8 asset library, tags, search, asset preview and asset-backed canvas objects.
+- Stage 9 object selection, movement, duplicate/hide and master-only token state.
 
 ## Что можно использовать
 
+- `Campaign.characterCards`.
+- `CharacterCard`.
 - `Scene.canvas.objects`.
 - `SceneCanvasObject.assetId`.
 - `SceneCanvasObject.isPlayerVisible`.
+- `SceneCanvasObject.tokenState`.
 - `SceneGrid.snapToGrid`.
 - `createPlayerSceneCanvasProjection`.
 - `desktopApi.storage.saveCampaign`.
@@ -35,55 +39,57 @@
 
 ## Пробелы этапа
 
-- Размещенные объекты нельзя было выбрать и управлять ими из canvas UI.
-- Token/portrait/handout объекты можно было добавить в сцену, но нельзя было перемещать, дублировать или скрывать.
-- У токенов не было простого мастерского состояния HP/AC/заметки.
-- Player projection не имела теста, который защищает от утечки мастерского `tokenState`.
+- Правый раздел "Персонажи" оставался заглушкой без сохранения данных.
+- `CharacterCard` не различал player/NPC/monster и не имел timestamps для безопасной гидрации старых JSON campaigns.
+- Токен мог хранить HP/AC/заметку, но не мог ссылаться на отдельную карточку персонажа.
+- Удаление будущей карточки не очищало бы ссылку из размещенных токенов.
 
 ## Что реализовано
 
-- `SceneCanvasObject` получил опциональное поле `tokenState`.
-- `sceneCanvasFactory` нормализует token state и не включает его в `PlayerSceneCanvasProjection`.
-- `sceneToolsFactory` добавляет операции move, duplicate, visibility и token state update для объекта активной сцены.
-- `useCampaignsStore` сохраняет объектные операции через существующий JSON storage pipeline.
-- `MasterDashboardPage` хранит выбранный объект, выбирает новый объект после добавления ассета в сцену и показывает Stage 9 metadata.
-- `SceneCanvas` получил кликабельные объекты, selected outline, список объектов, кнопки перемещения, duplicate/hide и форму HP/AC/заметки для токенов.
-- Player screen продолжает получать только player-visible объекты без raw campaign state и без мастерской карточки токена.
-- Unit tests покрывают перемещение со snap, дублирование, видимость, нормализацию token state и отсутствие `tokenState` в player projection.
+- `CharacterCard` получил тип `player | npc | monster`, краткое описание, timestamps и простые боевые поля.
+- `characterCardFactory` создает, обновляет, сортирует и гидрирует карточки, нормализует HP/AC/initiative и валидирует портреты только из `portrait`/`token` ассетов.
+- Удаление карточки очищает `tokenState.characterCardId` у объектов сцен и сохраняет остальное состояние токена.
+- `useCampaignsStore` добавил create/update/delete операции для карточек через существующий JSON storage pipeline.
+- `MasterDashboardPage` показывает рабочую панель "Персонажи" с формой создания/редактирования, списком карточек и быстрым preview.
+- `SceneCanvas` позволяет привязать выбранный token object к карточке через master-only поле `tokenState.characterCardId`.
+- `sceneCanvasFactory` и `sceneToolsFactory` сохраняют связь карточки с токеном при нормализации token state.
+- Player projection по-прежнему не получает raw `tokenState`, поэтому заметки и ссылки карточек остаются на стороне мастера.
+- Unit tests покрывают нормализацию карточек, update/delete flow, очистку token links и защиту player projection от `tokenState`.
 
 ## Критерии готовности
 
-- Объект на master canvas можно выбрать кликом.
-- Выбранный объект можно переместить вверх/вниз/влево/вправо с учетом snap-to-grid.
-- Выбранный объект можно дублировать.
-- Выбранный объект можно скрыть от игроков и снова показать.
-- Token object хранит HP, AC и заметку в campaign JSON state.
-- Игрокам видны только разрешенные объекты.
+- Карточки player/NPC/monster создаются из правой панели и сохраняются в campaign JSON state.
+- Карточку можно выбрать, отредактировать и удалить.
+- Простые поля HP, max HP, temporary HP, AC и initiative нормализуются без rules automation.
+- Карточка может ссылаться на portrait/token asset.
+- Token object может ссылаться на карточку через `tokenState.characterCardId`.
+- Удаление карточки очищает ссылки из токенов.
 - Player projection не содержит `tokenState`.
 - `npm run lint` проходит.
 - `npm run typecheck` проходит.
 - `npm run test` проходит.
 - `npm run dev` запускается.
-- Master/player object flow проверен в browser route.
+- Master card flow проверен в browser route.
 
 ## Не входит в этап
 
 - Полноценный character sheet.
-- Автоматические атаки, заклинания и D&D rules engine.
-- Связь token state с отдельной карточкой персонажа.
+- Автоматические атаки, заклинания, spell slots, inventory и D&D rules engine.
+- Импорт из D&D Beyond или сторонних character builders.
+- Расчет модификаторов и проверок.
 - Drag-and-drop перемещение мышью.
 - Multi-select и массовые операции.
 - Fog of war.
 
 ## Следующий этап
 
-Этап 10. Карточки персонажей, NPC и монстров.
+Этап 11. Туман войны.
 
 Он не начат.
 
 ## Риски и меры
 
-- Риск утечки мастерских заметок игрокам: `tokenState` остается только в `SceneCanvasObject` и не попадает в `PlayerSceneCanvasProjection`.
-- Риск рассинхронизации координат: перемещение идет через фабрику и использует `snapCanvasValue`, clamp и размеры canvas.
-- Риск сломать старые JSON campaigns: отсутствующий `tokenState` нормализуется как `undefined`.
-- Риск слишком рано перейти к character sheet: Stage 9 ограничен HP/AC/заметкой без rules automation.
+- Риск утечки мастерских заметок игрокам: связь карточки хранится только в `tokenState`, а `PlayerSceneCanvasProjection` не включает это поле.
+- Риск сломать старые JSON campaigns: отсутствующие поля карточек гидрируются с безопасными defaults и timestamps.
+- Риск невалидных portrait links: фабрика принимает только assets с kind `portrait` или `token`.
+- Риск слишком рано перейти к character sheet: Stage 10 ограничен простыми карточками и явно не добавляет rules automation.

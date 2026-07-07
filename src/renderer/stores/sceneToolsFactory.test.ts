@@ -166,6 +166,7 @@ describe('sceneToolsFactory', () => {
       hidden,
       'object-token',
       {
+        characterCardId: 'character-linked',
         hitPoints: 12.6,
         armorClass: -1,
         note: ' wounded ',
@@ -179,6 +180,7 @@ describe('sceneToolsFactory', () => {
     expect(object).toMatchObject({
       isPlayerVisible: false,
       tokenState: {
+        characterCardId: 'character-linked',
         hitPoints: 13,
         armorClass: 0,
         note: 'wounded',

@@ -270,6 +270,7 @@ function normalizeCanvasObjectTokenState(
 
   const note = tokenState.note?.trim()
   const normalizedState: SceneCanvasObjectTokenState = {
+    characterCardId: tokenState.characterCardId,
     hitPoints: getOptionalPositiveInteger(tokenState.hitPoints),
     armorClass: getOptionalPositiveInteger(tokenState.armorClass),
     note: note === '' ? undefined : note,

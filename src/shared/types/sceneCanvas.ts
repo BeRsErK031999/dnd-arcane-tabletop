@@ -1,4 +1,5 @@
 import type { AssetId } from './asset.js'
+import type { CharacterCardId } from './characterCard.js'
 import type { EntityId, IsoDateString } from './common.js'
 
 export type SceneCanvasLayerId = EntityId
@@ -12,6 +13,7 @@ export type SceneCanvasMeasurementKind = 'ruler' | 'area'
 export type SceneCanvasAreaShape = 'circle' | 'cone' | 'square'
 
 export interface SceneCanvasObjectTokenState {
+  characterCardId?: CharacterCardId
   hitPoints?: number
   armorClass?: number
   note?: string

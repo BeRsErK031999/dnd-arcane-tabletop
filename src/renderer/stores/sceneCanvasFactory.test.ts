@@ -59,6 +59,7 @@ describe('sceneCanvasFactory', () => {
         color: '#2c806f',
         assetId: 'asset-map',
         tokenState: {
+          characterCardId: 'character-master',
           hitPoints: 11,
           armorClass: 13,
           note: 'master-only',

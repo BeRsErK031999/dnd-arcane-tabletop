@@ -210,6 +210,7 @@ function findCanvasObjectOrThrow(
 function normalizeTokenState(tokenState: SceneCanvasObjectTokenState): SceneCanvasObjectTokenState | undefined {
   const note = tokenState.note?.trim()
   const normalizedState: SceneCanvasObjectTokenState = {
+    characterCardId: tokenState.characterCardId,
     hitPoints: normalizeOptionalInteger(tokenState.hitPoints),
     armorClass: normalizeOptionalInteger(tokenState.armorClass),
     note: note === '' ? undefined : note,

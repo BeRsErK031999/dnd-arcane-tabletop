@@ -109,6 +109,8 @@ Player window не получает raw `Scene.canvas`. Master renderer стро
 
 На этапе 9 управление размещенными объектами остается в renderer store/factory слое. `SceneCanvasObject` может хранить мастерское `tokenState` с HP, AC и заметкой, но `PlayerSceneCanvasProjection` не включает это поле. Move, duplicate, hide/show и token state update проходят через `sceneToolsFactory`, поэтому координаты нормализуются с учетом grid snap/clamp, а player window получает только display-ready объекты, разрешенные через `isPlayerVisible`.
 
+На этапе 10 `CharacterCard` остается простой campaign-сущностью для player/NPC/monster без rules engine. Renderer хранит операции создания, обновления, удаления и гидрации в `characterCardFactory`, а `useCampaignsStore` сохраняет их через существующий JSON pipeline. Связь с размещенным токеном хранится в `SceneCanvasObject.tokenState.characterCardId`, остается master-only и очищается при удалении карточки. `PlayerSceneCanvasProjection` не получает raw `tokenState`, поэтому карточки, заметки и служебные ссылки не раскрываются player window.
+
 ## IPC
 
 IPC channel names хранятся централизованно в `src/shared/constants/ipc.ts`.

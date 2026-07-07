@@ -415,31 +415,46 @@
 
 ## Этап 10. Карточки персонажей, NPC и монстров
 
+Статус: выполнено.
+
 Цель: реализовать простые карточки без полноценного character sheet.
 
 Входит:
 - Имя, тип, краткое описание.
-- HP/AC или простые числовые поля.
-- Связь карточки с токеном.
-- Быстрый preview.
+- HP, max HP, temporary HP, AC и initiative modifier как простые числовые поля.
+- Связь карточки с токеном через master-only `tokenState.characterCardId`.
+- Портрет из portrait/token assets.
+- Создание, редактирование, удаление и быстрый preview в правой панели.
 
 Не входит:
 - Полная автоматизация D&D 5e.
 - Импорт из D&D Beyond.
 - Расчет spell slots и inventory.
+- Полноценный character sheet и rules engine.
 
 Критерии готовности:
 - Карточки создаются, редактируются и сохраняются.
 - Токен может ссылаться на карточку.
+- Удаление карточки очищает ссылки из токенов.
+- Player projection не содержит `tokenState`.
 - UI не притворяется полноценным VTT character sheet.
+- `npm run lint`, `npm run typecheck` и `npm run test` проходят.
+- Master card flow проверен в browser route.
 
 Затрагивается:
 - `src/shared/types/characterCard.ts`
-- renderer side panels
-- storage layer
+- `src/shared/types/sceneCanvas.ts`
+- `src/renderer/stores/characterCardFactory.ts`
+- `src/renderer/stores/useCampaignsStore.ts`
+- `src/renderer/widgets/SceneCanvas.tsx`
+- `src/renderer/pages/MasterDashboardPage.tsx`
+- `src/renderer/app/styles.css`
+- storage layer через существующий campaign JSON pipeline
 
 Риски:
 - Разрастание фичи в полноценный rules engine.
+- Утечка мастерских заметок или ссылок карточек игрокам через player projection.
+- Ссылки токенов на удаленные карточки.
 
 ## Этап 11. Туман войны
 

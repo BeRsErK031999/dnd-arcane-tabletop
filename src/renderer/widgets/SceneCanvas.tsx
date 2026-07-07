@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
 import type {
   Asset,
+  CharacterCard,
   Scene,
   SceneCanvasLayer,
   SceneCanvasMeasurement,
@@ -21,6 +22,7 @@ interface SceneCanvasProps {
   scene: Scene | null
   mapAsset: Asset | null
   assets: Asset[]
+  characterCards: CharacterCard[]
   isPlayerSynced: boolean
   isStorageBusy: boolean
   selectedObjectId: SceneCanvasObjectId | null
@@ -40,6 +42,7 @@ export function SceneCanvas({
   scene,
   mapAsset,
   assets,
+  characterCards,
   isPlayerSynced,
   isStorageBusy,
   selectedObjectId,
@@ -164,6 +167,7 @@ export function SceneCanvas({
 
         <SceneCanvasObjectControls
           canvas={canvas}
+          characterCards={characterCards}
           isStorageBusy={isStorageBusy}
           onDuplicateObject={onDuplicateObject}
           onMoveObject={onMoveObject}
@@ -207,6 +211,7 @@ export function SceneCanvas({
 
 interface SceneCanvasObjectControlsProps {
   canvas: ReturnType<typeof getSceneCanvasState>
+  characterCards: CharacterCard[]
   isStorageBusy: boolean
   selectedObjectId: SceneCanvasObjectId | null
   onDuplicateObject(objectId: SceneCanvasObjectId): void
@@ -218,6 +223,7 @@ interface SceneCanvasObjectControlsProps {
 
 function SceneCanvasObjectControls({
   canvas,
+  characterCards,
   isStorageBusy,
   selectedObjectId,
   onDuplicateObject,
@@ -347,6 +353,25 @@ function SceneCanvasObjectControls({
                 <h4>Карточка токена</h4>
                 <span>{selectedObject.tokenState?.hitPoints ?? 'HP'}</span>
               </div>
+              <label>
+                <span>Карточка</span>
+                <select
+                  disabled={isStorageBusy || characterCards.length === 0}
+                  onChange={(event) =>
+                    onUpdateObjectTokenState(selectedObject.id, {
+                      characterCardId: event.target.value || undefined,
+                    })
+                  }
+                  value={selectedObject.tokenState?.characterCardId ?? ''}
+                >
+                  <option value="">Без карточки</option>
+                  {characterCards.map((card) => (
+                    <option key={card.id} value={card.id}>
+                      {card.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label>
                 <span>HP</span>
                 <input

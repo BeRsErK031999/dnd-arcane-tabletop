@@ -4,6 +4,7 @@ import {
   normalizeAssetTags,
   type AssetLibraryKindFilter,
 } from '@renderer/stores/assetFactory'
+import { createCharacterCardList, type CharacterCardInput } from '@renderer/stores/characterCardFactory'
 import { desktopApi } from '@renderer/services/desktopApi'
 import { getSceneCanvasState } from '@renderer/stores/sceneCanvasFactory'
 import { useCampaignsStore } from '@renderer/stores/useCampaignsStore'
@@ -15,6 +16,9 @@ import {
   type AssetId,
   type AssetKind,
   type Campaign,
+  type CharacterCard,
+  type CharacterCardId,
+  type CharacterCardKind,
   type ImageAssetKind,
   type PlayerScreenCommandResult,
   type PlayerScreenOpenResult,
@@ -28,6 +32,34 @@ import {
 
 type PlayerActionResult = PlayerScreenCommandResult | PlayerScreenOpenResult
 type RightPanelTab = 'assets' | 'characters' | 'notes'
+
+interface CharacterCardDraft {
+  name: string
+  kind: CharacterCardKind
+  playerName: string
+  description: string
+  armorClass: string
+  hitPointsCurrent: string
+  hitPointsMaximum: string
+  hitPointsTemporary: string
+  initiativeModifier: string
+  portraitAssetId: string
+  notes: string
+}
+
+const emptyCharacterCardDraft: CharacterCardDraft = {
+  name: '',
+  kind: 'player',
+  playerName: '',
+  description: '',
+  armorClass: '',
+  hitPointsCurrent: '',
+  hitPointsMaximum: '',
+  hitPointsTemporary: '',
+  initiativeModifier: '',
+  portraitAssetId: '',
+  notes: '',
+}
 
 interface ToolItem {
   label: string
@@ -79,6 +111,9 @@ export function MasterDashboardPage() {
     updateActiveSceneViewport,
     addActiveSceneMeasurement,
     clearActiveSceneMeasurements,
+    createCharacterCard,
+    updateCharacterCard,
+    deleteCharacterCard,
     moveActiveSceneObject,
     duplicateActiveSceneObject,
     setActiveSceneObjectVisibility,
@@ -106,6 +141,9 @@ export function MasterDashboardPage() {
   const [assetTagDrafts, setAssetTagDrafts] = useState<Record<AssetId, string>>({})
   const [assetActionStatus, setAssetActionStatus] = useState('Откройте кампанию, чтобы импортировать изображения.')
   const [selectedSceneObjectId, setSelectedSceneObjectId] = useState<SceneCanvasObjectId | null>(null)
+  const [selectedCharacterCardId, setSelectedCharacterCardId] = useState<CharacterCardId | null>(null)
+  const [characterDraft, setCharacterDraft] = useState<CharacterCardDraft>(emptyCharacterCardDraft)
+  const [characterActionStatus, setCharacterActionStatus] = useState('Откройте кампанию, чтобы создавать карточки.')
   const [playerStatus, setPlayerStatus] = useState<PlayerScreenStatus>(() => ({
     isOpen: false,
     isFullscreen: false,
@@ -133,6 +171,21 @@ export function MasterDashboardPage() {
         : null,
     [activeScene, selectedCampaign],
   )
+  const characterCards = useMemo(
+    () =>
+      selectedCampaign
+        ? createCharacterCardList(selectedCampaign.characterCards, selectedCampaign.id)
+        : [],
+    [selectedCampaign],
+  )
+  const selectedCharacterCard = useMemo(
+    () => characterCards.find((card) => card.id === selectedCharacterCardId) ?? null,
+    [characterCards, selectedCharacterCardId],
+  )
+  const portraitAssets = useMemo(
+    () => (selectedCampaign?.assets ?? []).filter((asset) => asset.kind === 'portrait' || asset.kind === 'token'),
+    [selectedCampaign?.assets],
+  )
 
   useEffect(() => {
     if (selectedSceneObjectId === null) {
@@ -153,11 +206,13 @@ export function MasterDashboardPage() {
 
   const rightPanelTabs: Array<{ id: RightPanelTab; label: string; count: number }> = [
     { id: 'assets', label: 'Ассеты', count: selectedCampaign?.assets.length ?? totals.assets },
-    { id: 'characters', label: 'Персонажи', count: totals.characters },
+    { id: 'characters', label: 'Персонажи', count: selectedCampaign?.characterCards.length ?? totals.characters },
     { id: 'notes', label: 'Заметки', count: selectedCampaign?.notes.length ?? 0 },
   ]
 
   const isStorageBusy = status === 'loading' || status === 'saving' || status === 'deleting'
+  const hasSelectedCampaign = selectedCampaign !== null
+  const selectedCampaignId = selectedCampaign?.id ?? null
 
   useEffect(() => {
     let isMounted = true
@@ -181,7 +236,28 @@ export function MasterDashboardPage() {
   useEffect(() => {
     setEditorName(selectedCampaign?.name ?? '')
     setEditorDescription(selectedCampaign?.description ?? '')
-  }, [selectedCampaign])
+  }, [selectedCampaign?.name, selectedCampaign?.description])
+
+  useEffect(() => {
+    setSelectedCharacterCardId(null)
+    setCharacterDraft(emptyCharacterCardDraft)
+    setCharacterActionStatus(
+      !hasSelectedCampaign
+        ? 'Откройте кампанию, чтобы создавать карточки.'
+        : 'Карточки персонажей готовы к редактированию.',
+    )
+  }, [hasSelectedCampaign, selectedCampaignId])
+
+  useEffect(() => {
+    if (selectedCharacterCardId === null) {
+      return
+    }
+
+    if (!characterCards.some((card) => card.id === selectedCharacterCardId)) {
+      setSelectedCharacterCardId(null)
+      setCharacterDraft(emptyCharacterCardDraft)
+    }
+  }, [characterCards, selectedCharacterCardId])
 
   useEffect(() => {
     const assets = selectedCampaign?.assets ?? []
@@ -449,6 +525,70 @@ export function MasterDashboardPage() {
     setAssetActionStatus('Не удалось отправить изображение игрокам.')
   }
 
+  async function handleCreateCharacterCard(): Promise<void> {
+    const result = await createCharacterCard(createCharacterCardInput(characterDraft))
+
+    if (result.ok) {
+      const createdCard = result.campaign.characterCards.find((card) => card.id === result.characterCardId)
+      setSelectedCharacterCardId(result.characterCardId)
+      setCharacterDraft(createdCard ? createCharacterCardDraft(createdCard) : emptyCharacterCardDraft)
+      setCharacterActionStatus(`Карточка "${createdCard?.name ?? 'без названия'}" создана.`)
+      setActiveRightPanel('characters')
+      return
+    }
+
+    setCharacterActionStatus('Не удалось создать карточку.')
+  }
+
+  async function handleUpdateCharacterCard(): Promise<void> {
+    if (selectedCharacterCardId === null) {
+      setCharacterActionStatus('Выберите карточку для редактирования.')
+      return
+    }
+
+    const result = await updateCharacterCard(selectedCharacterCardId, createCharacterCardInput(characterDraft))
+
+    if (result.ok) {
+      const updatedCard = result.campaign.characterCards.find((card) => card.id === selectedCharacterCardId)
+      setCharacterDraft(updatedCard ? createCharacterCardDraft(updatedCard) : characterDraft)
+      setCharacterActionStatus(`Карточка "${updatedCard?.name ?? 'без названия'}" сохранена.`)
+      return
+    }
+
+    setCharacterActionStatus('Не удалось сохранить карточку.')
+  }
+
+  async function handleDeleteCharacterCard(): Promise<void> {
+    if (selectedCharacterCardId === null) {
+      setCharacterActionStatus('Выберите карточку для удаления.')
+      return
+    }
+
+    const cardName = selectedCharacterCard?.name ?? 'карточка'
+    const result = await deleteCharacterCard(selectedCharacterCardId)
+
+    if (result.ok) {
+      setSelectedCharacterCardId(null)
+      setCharacterDraft(emptyCharacterCardDraft)
+      setCharacterActionStatus(`Карточка "${cardName}" удалена.`)
+      return
+    }
+
+    setCharacterActionStatus('Не удалось удалить карточку.')
+  }
+
+  function handleSelectCharacterCard(card: CharacterCard): void {
+    setSelectedCharacterCardId(card.id)
+    setCharacterDraft(createCharacterCardDraft(card))
+    setCharacterActionStatus(`Карточка "${card.name}" выбрана.`)
+  }
+
+  function handleNewCharacterCardDraft(): void {
+    setSelectedCharacterCardId(null)
+    setCharacterDraft(emptyCharacterCardDraft)
+    setCharacterActionStatus('Новая карточка готова к заполнению.')
+  }
+
   async function runPlayerAction(label: string, action: () => Promise<PlayerActionResult>): Promise<void> {
     setPlayerActionStatus('Выполняется...')
 
@@ -467,11 +607,11 @@ export function MasterDashboardPage() {
         <div>
           <p className="eyebrow">Master Console</p>
           <h1>Панель мастера</h1>
-          <p className="muted">Stage 9: токены и объекты на карте, перемещение, видимость и карточка токена.</p>
+          <p className="muted">Stage 10: простые карточки персонажей, NPC и монстров без rules automation.</p>
         </div>
         <div className="button-row">
           {selectedCampaign ? <span className="status-badge">Открыта: {selectedCampaign.name}</span> : null}
-          <span className="status-badge">Этап 9</span>
+          <span className="status-badge">Этап 10</span>
           <button className="button button--secondary" type="button" onClick={refresh}>
             Обновить
           </button>
@@ -574,6 +714,7 @@ export function MasterDashboardPage() {
 
             <SceneCanvas
               assets={selectedCampaign?.assets ?? []}
+              characterCards={characterCards}
               isPlayerSynced={Boolean(activeScene && playerStatus.state.activeSceneId === activeScene.id)}
               isStorageBusy={isStorageBusy}
               mapAsset={activeMapAsset}
@@ -747,7 +888,7 @@ export function MasterDashboardPage() {
               <p className="eyebrow">Library</p>
               <h2>Материалы</h2>
             </div>
-            <span className="status-badge status-badge--neutral">Stage 8</span>
+            <span className="status-badge status-badge--neutral">Stage 10</span>
           </div>
           <div className="tab-list" role="tablist" aria-label="Материалы мастера">
             {rightPanelTabs.map((tab) => (
@@ -775,8 +916,12 @@ export function MasterDashboardPage() {
             assetSelectedTags,
             assetTagDrafts,
             assets: selectedCampaign?.assets ?? [],
+            canEditCharacters: selectedCampaign !== null,
             canImportAssets: selectedCampaign !== null,
             canUseAssetsInScene: selectedCampaign !== null && activeScene !== null,
+            characterActionStatus,
+            characterCards,
+            characterDraft,
             isStorageBusy,
             onAssetImportTagsChange: setAssetImportTags,
             onAssetKindChange: setAssetKind,
@@ -793,6 +938,18 @@ export function MasterDashboardPage() {
             onSendAssetToPlayers: handleSendAssetToPlayers,
             onUpdateAssetTags: handleUpdateAssetTags,
             onUseAssetInActiveScene: handleUseAssetInActiveScene,
+            onCharacterDraftChange: (patch) =>
+              setCharacterDraft((draft) => ({
+                ...draft,
+                ...patch,
+              })),
+            onCreateCharacterCard: handleCreateCharacterCard,
+            onDeleteCharacterCard: handleDeleteCharacterCard,
+            onNewCharacterCardDraft: handleNewCharacterCardDraft,
+            onSelectCharacterCard: handleSelectCharacterCard,
+            onUpdateCharacterCard: handleUpdateCharacterCard,
+            portraitAssets,
+            selectedCharacterCardId,
             totals,
           })}
         </aside>
@@ -944,8 +1101,12 @@ interface RightPanelContentProps {
   assetSelectedTags: string[]
   assetTagDrafts: Record<AssetId, string>
   assets: Asset[]
+  canEditCharacters: boolean
   canImportAssets: boolean
   canUseAssetsInScene: boolean
+  characterActionStatus: string
+  characterCards: CharacterCard[]
+  characterDraft: CharacterCardDraft
   isStorageBusy: boolean
   onAssetImportTagsChange(tags: string): void
   onAssetKindChange(kind: ImageAssetKind): void
@@ -958,6 +1119,14 @@ interface RightPanelContentProps {
   onSendAssetToPlayers(assetId: AssetId): Promise<void>
   onUpdateAssetTags(assetId: AssetId): Promise<void>
   onUseAssetInActiveScene(assetId: AssetId): Promise<void>
+  onCharacterDraftChange(patch: Partial<CharacterCardDraft>): void
+  onCreateCharacterCard(): Promise<void>
+  onDeleteCharacterCard(): Promise<void>
+  onNewCharacterCardDraft(): void
+  onSelectCharacterCard(card: CharacterCard): void
+  onUpdateCharacterCard(): Promise<void>
+  portraitAssets: Asset[]
+  selectedCharacterCardId: CharacterCardId | null
   totals: { assets: number; characters: number }
 }
 
@@ -967,28 +1136,7 @@ function renderRightPanelContent(props: RightPanelContentProps) {
   }
 
   if (props.activeRightPanel === 'characters') {
-    return (
-      <section className="context-panel__body" role="tabpanel">
-        <div className="empty-panel-state">
-          <h3>Персонажи и NPC</h3>
-          <p>Правая панель уже выделена, но карточки персонажей появятся отдельным этапом.</p>
-        </div>
-        <ul className="compact-list">
-          <li>
-            <span>Игроки</span>
-            <small>{props.totals.characters}</small>
-          </li>
-          <li>
-            <span>NPC</span>
-            <small>Stage 10</small>
-          </li>
-          <li>
-            <span>Монстры</span>
-            <small>Stage 10</small>
-          </li>
-        </ul>
-      </section>
-    )
+    return <CharacterPanel {...props} />
   }
 
   return (
@@ -1011,6 +1159,247 @@ function renderRightPanelContent(props: RightPanelContentProps) {
           <small>Stage 1</small>
         </li>
       </ul>
+    </section>
+  )
+}
+
+function CharacterPanel({
+  canEditCharacters,
+  characterActionStatus,
+  characterCards,
+  characterDraft,
+  isStorageBusy,
+  onCharacterDraftChange,
+  onCreateCharacterCard,
+  onDeleteCharacterCard,
+  onNewCharacterCardDraft,
+  onSelectCharacterCard,
+  onUpdateCharacterCard,
+  portraitAssets,
+  selectedCharacterCardId,
+}: RightPanelContentProps) {
+  const selectedCard = characterCards.find((card) => card.id === selectedCharacterCardId) ?? null
+
+  return (
+    <section className="context-panel__body" role="tabpanel">
+      <form
+        className="character-card-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void onCreateCharacterCard()
+        }}
+      >
+        <div className="character-card-form__header">
+          <div>
+            <p className="eyebrow">Stage 10</p>
+            <h3>{selectedCard ? 'Редактирование карточки' : 'Новая карточка'}</h3>
+          </div>
+          <button className="button button--secondary" disabled={!canEditCharacters || isStorageBusy} onClick={onNewCharacterCardDraft} type="button">
+            Новая
+          </button>
+        </div>
+
+        <label>
+          <span>Имя</span>
+          <input
+            disabled={!canEditCharacters || isStorageBusy}
+            onChange={(event) => onCharacterDraftChange({ name: event.target.value })}
+            placeholder="Например: Леди Мира"
+            value={characterDraft.name}
+          />
+        </label>
+        <label>
+          <span>Тип</span>
+          <select
+            disabled={!canEditCharacters || isStorageBusy}
+            onChange={(event) => onCharacterDraftChange({ kind: event.target.value as CharacterCardKind })}
+            value={characterDraft.kind}
+          >
+            <option value="player">Игрок</option>
+            <option value="npc">NPC</option>
+            <option value="monster">Монстр</option>
+          </select>
+        </label>
+        <label>
+          <span>Игрок / роль</span>
+          <input
+            disabled={!canEditCharacters || isStorageBusy}
+            onChange={(event) => onCharacterDraftChange({ playerName: event.target.value })}
+            placeholder="Например: Артем"
+            value={characterDraft.playerName}
+          />
+        </label>
+        <label>
+          <span>Кратко</span>
+          <textarea
+            disabled={!canEditCharacters || isStorageBusy}
+            onChange={(event) => onCharacterDraftChange({ description: event.target.value })}
+            placeholder="Короткое описание для мастера"
+            rows={2}
+            value={characterDraft.description}
+          />
+        </label>
+        <div className="character-card-form__numbers">
+          <label>
+            <span>HP</span>
+            <input
+              disabled={!canEditCharacters || isStorageBusy}
+              min={0}
+              onChange={(event) => onCharacterDraftChange({ hitPointsCurrent: event.target.value })}
+              type="number"
+              value={characterDraft.hitPointsCurrent}
+            />
+          </label>
+          <label>
+            <span>Max HP</span>
+            <input
+              disabled={!canEditCharacters || isStorageBusy}
+              min={0}
+              onChange={(event) => onCharacterDraftChange({ hitPointsMaximum: event.target.value })}
+              type="number"
+              value={characterDraft.hitPointsMaximum}
+            />
+          </label>
+          <label>
+            <span>Temp</span>
+            <input
+              disabled={!canEditCharacters || isStorageBusy}
+              min={0}
+              onChange={(event) => onCharacterDraftChange({ hitPointsTemporary: event.target.value })}
+              type="number"
+              value={characterDraft.hitPointsTemporary}
+            />
+          </label>
+          <label>
+            <span>AC</span>
+            <input
+              disabled={!canEditCharacters || isStorageBusy}
+              min={0}
+              onChange={(event) => onCharacterDraftChange({ armorClass: event.target.value })}
+              type="number"
+              value={characterDraft.armorClass}
+            />
+          </label>
+          <label>
+            <span>Init</span>
+            <input
+              disabled={!canEditCharacters || isStorageBusy}
+              onChange={(event) => onCharacterDraftChange({ initiativeModifier: event.target.value })}
+              type="number"
+              value={characterDraft.initiativeModifier}
+            />
+          </label>
+        </div>
+        <label>
+          <span>Портрет</span>
+          <select
+            disabled={!canEditCharacters || isStorageBusy || portraitAssets.length === 0}
+            onChange={(event) => onCharacterDraftChange({ portraitAssetId: event.target.value })}
+            value={characterDraft.portraitAssetId}
+          >
+            <option value="">Без портрета</option>
+            {portraitAssets.map((asset) => (
+              <option key={asset.id} value={asset.id}>
+                {asset.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Заметки</span>
+          <textarea
+            disabled={!canEditCharacters || isStorageBusy}
+            onChange={(event) => onCharacterDraftChange({ notes: event.target.value })}
+            placeholder="Приватные заметки мастера"
+            rows={3}
+            value={characterDraft.notes}
+          />
+        </label>
+
+        <div className="character-card-form__actions">
+          <button className="button" disabled={!canEditCharacters || isStorageBusy} type="submit">
+            Создать
+          </button>
+          <button
+            className="button button--secondary"
+            disabled={!canEditCharacters || isStorageBusy || selectedCharacterCardId === null}
+            onClick={() => void onUpdateCharacterCard()}
+            type="button"
+          >
+            Сохранить
+          </button>
+          <button
+            className="button button--danger"
+            disabled={!canEditCharacters || isStorageBusy || selectedCharacterCardId === null}
+            onClick={() => void onDeleteCharacterCard()}
+            type="button"
+          >
+            Удалить
+          </button>
+        </div>
+      </form>
+
+      {characterCards.length === 0 ? (
+        <div className="empty-panel-state">
+          <h3>Карточек пока нет</h3>
+          <p>Создайте игрока, NPC или монстра с базовыми HP, AC и заметками.</p>
+        </div>
+      ) : (
+        <ul className="character-card-list">
+          {characterCards.map((card) => (
+            <li className={card.id === selectedCharacterCardId ? 'character-card-item character-card-item--active' : 'character-card-item'} key={card.id}>
+              <button onClick={() => onSelectCharacterCard(card)} type="button">
+                <div className="character-card-item__title">
+                  <span>{card.name}</span>
+                  <small>{getCharacterKindLabel(card.kind)}</small>
+                </div>
+                <dl>
+                  <div>
+                    <dt>HP</dt>
+                    <dd>{formatCharacterHitPoints(card)}</dd>
+                  </div>
+                  <div>
+                    <dt>AC</dt>
+                    <dd>{card.armorClass ?? '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>Init</dt>
+                    <dd>{formatSignedNumber(card.initiativeModifier)}</dd>
+                  </div>
+                </dl>
+                {card.description ? <p>{card.description}</p> : null}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {selectedCard ? (
+        <div className="character-card-preview">
+          <div>
+            <p className="eyebrow">Preview</p>
+            <h3>{selectedCard.name}</h3>
+            <span className="asset-tag">{getCharacterKindLabel(selectedCard.kind)}</span>
+          </div>
+          <dl className="status-grid status-grid--compact">
+            <div>
+              <dt>HP</dt>
+              <dd>{formatCharacterHitPoints(selectedCard)}</dd>
+            </div>
+            <div>
+              <dt>AC</dt>
+              <dd>{selectedCard.armorClass ?? '-'}</dd>
+            </div>
+            <div>
+              <dt>Init</dt>
+              <dd>{formatSignedNumber(selectedCard.initiativeModifier)}</dd>
+            </div>
+          </dl>
+          {selectedCard.notes ? <p className="muted">{selectedCard.notes}</p> : null}
+        </div>
+      ) : null}
+
+      <p className="form-status">{characterActionStatus}</p>
     </section>
   )
 }
@@ -1256,6 +1645,75 @@ function createTestImageState(): PlayerScreenState {
 
 function getActiveSceneFromCampaign(campaign: Campaign) {
   return campaign.scenes.find((scene) => scene.isActive) ?? campaign.scenes[0] ?? null
+}
+
+function createCharacterCardInput(draft: CharacterCardDraft): CharacterCardInput {
+  return {
+    name: draft.name,
+    kind: draft.kind,
+    playerName: draft.playerName,
+    description: draft.description,
+    armorClass: getOptionalNumberValue(draft.armorClass),
+    hitPointsCurrent: getOptionalNumberValue(draft.hitPointsCurrent),
+    hitPointsMaximum: getOptionalNumberValue(draft.hitPointsMaximum),
+    hitPointsTemporary: getOptionalNumberValue(draft.hitPointsTemporary),
+    initiativeModifier: getOptionalNumberValue(draft.initiativeModifier),
+    portraitAssetId: draft.portraitAssetId,
+    notes: draft.notes,
+  }
+}
+
+function createCharacterCardDraft(card: CharacterCard): CharacterCardDraft {
+  return {
+    name: card.name,
+    kind: card.kind,
+    playerName: card.playerName ?? '',
+    description: card.description ?? '',
+    armorClass: card.armorClass?.toString() ?? '',
+    hitPointsCurrent: card.hitPoints?.current.toString() ?? '',
+    hitPointsMaximum: card.hitPoints?.maximum.toString() ?? '',
+    hitPointsTemporary: card.hitPoints?.temporary?.toString() ?? '',
+    initiativeModifier: card.initiativeModifier?.toString() ?? '',
+    portraitAssetId: card.portraitAssetId ?? '',
+    notes: card.notes ?? '',
+  }
+}
+
+function getOptionalNumberValue(value: string): number | undefined {
+  if (value.trim() === '') {
+    return undefined
+  }
+
+  const numericValue = Number(value)
+  return Number.isFinite(numericValue) ? numericValue : undefined
+}
+
+function getCharacterKindLabel(kind: CharacterCardKind): string {
+  switch (kind) {
+    case 'player':
+      return 'Игрок'
+    case 'npc':
+      return 'NPC'
+    case 'monster':
+      return 'Монстр'
+  }
+}
+
+function formatCharacterHitPoints(card: CharacterCard): string {
+  if (!card.hitPoints) {
+    return '-'
+  }
+
+  const temporary = card.hitPoints.temporary ? ` +${card.hitPoints.temporary}` : ''
+  return `${card.hitPoints.current}/${card.hitPoints.maximum}${temporary}`
+}
+
+function formatSignedNumber(value: number | undefined): string {
+  if (value === undefined) {
+    return '-'
+  }
+
+  return value > 0 ? `+${value}` : value.toString()
 }
 
 function getStatusFromPlayerAction(result: PlayerActionResult): PlayerScreenStatus {

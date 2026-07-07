@@ -5,6 +5,7 @@ import type {
   Campaign,
   CampaignId,
   CampaignSummary,
+  CharacterCardId,
   ImageAssetKind,
   PlayerScreenCommandResult,
   SceneCanvasObjectId,
@@ -20,6 +21,13 @@ import {
   createCampaignWithImportedAsset,
 } from './assetFactory'
 import { createEmptyCampaign, createUpdatedCampaignMetadata } from './campaignFactory'
+import {
+  createCampaignWithHydratedCharacterCards,
+  createCampaignWithNewCharacterCard,
+  createCampaignWithUpdatedCharacterCard,
+  createCampaignWithoutCharacterCard,
+  type CharacterCardInput,
+} from './characterCardFactory'
 import {
   createCampaignWithActiveScene,
   createCampaignWithHydratedScenes,
@@ -44,6 +52,9 @@ export type CampaignsStoreStatus = 'idle' | 'loading' | 'ready' | 'saving' | 'de
 export type CampaignMutationResult = { ok: true; campaign: Campaign } | { ok: false; reason: string }
 export type AssetMutationResult =
   | { ok: true; campaign: Campaign; assetId: AssetId }
+  | { ok: false; reason: string }
+export type CharacterCardMutationResult =
+  | { ok: true; campaign: Campaign; characterCardId: CharacterCardId }
   | { ok: false; reason: string }
 export type PlayerScenePreviewResult =
   | { ok: true; campaign: Campaign; playerStatus: PlayerScreenCommandResult }
@@ -102,7 +113,7 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'campaign-not-found' }
       }
 
-      const hydratedCampaign = createCampaignWithHydratedScenes(campaign)
+      const hydratedCampaign = createCampaignWithHydratedCharacterCards(createCampaignWithHydratedScenes(campaign))
       setSelectedCampaign(hydratedCampaign)
       setStatus('ready')
       return { ok: true, campaign: hydratedCampaign }
@@ -351,6 +362,89 @@ export function useCampaignsStore() {
       return { ok: false, reason: 'clear-measurements-failed' }
     }
   }, [selectedCampaign])
+
+  const createCharacterCard = useCallback(
+    async (input: CharacterCardInput): Promise<CharacterCardMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для создания карточки.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithNewCharacterCard(selectedCampaign, input)
+        const characterCard = updatedCampaign.characterCards[updatedCampaign.characterCards.length - 1]
+
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign, characterCardId: characterCard.id }
+      } catch {
+        setLastError('Не удалось создать карточку.')
+        setStatus('error')
+        return { ok: false, reason: 'create-character-card-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const updateCharacterCard = useCallback(
+    async (
+      cardId: CharacterCardId,
+      input: CharacterCardInput,
+    ): Promise<CharacterCardMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для редактирования карточки.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithUpdatedCharacterCard(selectedCampaign, cardId, input)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign, characterCardId: cardId }
+      } catch {
+        setLastError('Не удалось обновить карточку.')
+        setStatus('error')
+        return { ok: false, reason: 'update-character-card-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const deleteCharacterCard = useCallback(
+    async (cardId: CharacterCardId): Promise<CharacterCardMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для удаления карточки.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithoutCharacterCard(selectedCampaign, cardId)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign, characterCardId: cardId }
+      } catch {
+        setLastError('Не удалось удалить карточку.')
+        setStatus('error')
+        return { ok: false, reason: 'delete-character-card-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
 
   const moveActiveSceneObject = useCallback(
     async (
@@ -623,6 +717,9 @@ export function useCampaignsStore() {
     updateActiveSceneViewport,
     addActiveSceneMeasurement,
     clearActiveSceneMeasurements,
+    createCharacterCard,
+    updateCharacterCard,
+    deleteCharacterCard,
     moveActiveSceneObject,
     duplicateActiveSceneObject,
     setActiveSceneObjectVisibility,

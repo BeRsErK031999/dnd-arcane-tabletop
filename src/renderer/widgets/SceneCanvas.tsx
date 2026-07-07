@@ -3,6 +3,8 @@ import type {
   Asset,
   CharacterCard,
   Scene,
+  SceneCanvasFogRegion,
+  SceneCanvasFogState,
   SceneCanvasLayer,
   SceneCanvasMeasurement,
   SceneCanvasObject,
@@ -16,7 +18,11 @@ import {
   getSceneCanvasLayerSummary,
   getSceneCanvasState,
 } from '@renderer/stores/sceneCanvasFactory'
-import type { SceneMeasurementTemplate, SceneObjectMoveDirection } from '@renderer/stores/sceneToolsFactory'
+import type {
+  SceneFogRegionTemplate,
+  SceneMeasurementTemplate,
+  SceneObjectMoveDirection,
+} from '@renderer/stores/sceneToolsFactory'
 
 interface SceneCanvasProps {
   scene: Scene | null
@@ -26,13 +32,17 @@ interface SceneCanvasProps {
   isPlayerSynced: boolean
   isStorageBusy: boolean
   selectedObjectId: SceneCanvasObjectId | null
+  onAddFogRegion(shape: SceneFogRegionTemplate): void
   onAddMeasurement(template: SceneMeasurementTemplate): void
+  onClearFogRegions(): void
   onClearMeasurements(): void
   onDuplicateObject(objectId: SceneCanvasObjectId): void
   onMoveObject(objectId: SceneCanvasObjectId, direction: SceneObjectMoveDirection): void
+  onRemoveLastFogRegion(): void
   onSelectObject(objectId: SceneCanvasObjectId): void
   onSendToPlayers(): void
   onSetObjectVisibility(objectId: SceneCanvasObjectId, isPlayerVisible: boolean): void
+  onUpdateFog(fog: Partial<Pick<SceneCanvasFogState, 'enabled' | 'opacity'>>): void
   onUpdateObjectTokenState(objectId: SceneCanvasObjectId, tokenState: SceneCanvasObjectTokenState): void
   onUpdateGrid(grid: Partial<SceneGrid>): void
   onUpdateViewport(viewport: Partial<SceneCanvasViewport>): void
@@ -46,13 +56,17 @@ export function SceneCanvas({
   isPlayerSynced,
   isStorageBusy,
   selectedObjectId,
+  onAddFogRegion,
   onAddMeasurement,
+  onClearFogRegions,
   onClearMeasurements,
   onDuplicateObject,
   onMoveObject,
+  onRemoveLastFogRegion,
   onSelectObject,
   onSendToPlayers,
   onSetObjectVisibility,
+  onUpdateFog,
   onUpdateObjectTokenState,
   onUpdateGrid,
   onUpdateViewport,
@@ -61,7 +75,7 @@ export function SceneCanvas({
     return (
       <div className="scene-canvas scene-canvas--empty">
         <div className="scene-canvas__empty">
-          <span className="status-badge status-badge--neutral">Stage 9</span>
+          <span className="status-badge status-badge--neutral">Stage 11</span>
           <h3>Сцена не выбрана</h3>
           <p>Откройте кампанию и создайте первую сцену.</p>
         </div>
@@ -125,6 +139,13 @@ export function SceneCanvas({
                 />
               ))}
             </div>
+
+            <SceneCanvasFogOverlay
+              canvasHeight={canvas.height}
+              canvasWidth={canvas.width}
+              fog={canvas.fog}
+              variant="master"
+            />
           </div>
         </div>
 
@@ -148,6 +169,10 @@ export function SceneCanvas({
             <dd>{canvas.measurements.length}</dd>
           </div>
           <div>
+            <dt>Туман</dt>
+            <dd>{canvas.fog.enabled ? `${canvas.fog.regions.length} обл.` : 'выключен'}</dd>
+          </div>
+          <div>
             <dt>Projection</dt>
             <dd>{isPlayerSynced ? 'синхронизирован' : 'не отправлен'}</dd>
           </div>
@@ -159,8 +184,12 @@ export function SceneCanvas({
           canvas={canvas}
           grid={scene.grid}
           isStorageBusy={isStorageBusy}
+          onAddFogRegion={onAddFogRegion}
           onAddMeasurement={onAddMeasurement}
+          onClearFogRegions={onClearFogRegions}
           onClearMeasurements={onClearMeasurements}
+          onRemoveLastFogRegion={onRemoveLastFogRegion}
+          onUpdateFog={onUpdateFog}
           onUpdateGrid={onUpdateGrid}
           onUpdateViewport={onUpdateViewport}
         />
@@ -198,7 +227,7 @@ export function SceneCanvas({
           <span>Игрокам</span>
           <strong>
             {playerProjection.layers.length} слоя, {playerProjection.objects.length} объекта,{' '}
-            {playerProjection.measurements.length} измерения
+            {playerProjection.measurements.length} измерения, {playerProjection.fog.regions.length} fog
           </strong>
         </div>
         <button className="button" disabled={isStorageBusy} onClick={onSendToPlayers} type="button">
@@ -427,8 +456,12 @@ interface SceneCanvasControlsProps {
   canvas: ReturnType<typeof getSceneCanvasState>
   grid: SceneGrid
   isStorageBusy: boolean
+  onAddFogRegion(shape: SceneFogRegionTemplate): void
   onAddMeasurement(template: SceneMeasurementTemplate): void
+  onClearFogRegions(): void
   onClearMeasurements(): void
+  onRemoveLastFogRegion(): void
+  onUpdateFog(fog: Partial<Pick<SceneCanvasFogState, 'enabled' | 'opacity'>>): void
   onUpdateGrid(grid: Partial<SceneGrid>): void
   onUpdateViewport(viewport: Partial<SceneCanvasViewport>): void
 }
@@ -437,8 +470,12 @@ function SceneCanvasControls({
   canvas,
   grid,
   isStorageBusy,
+  onAddFogRegion,
   onAddMeasurement,
+  onClearFogRegions,
   onClearMeasurements,
+  onRemoveLastFogRegion,
+  onUpdateFog,
   onUpdateGrid,
   onUpdateViewport,
 }: SceneCanvasControlsProps) {
@@ -614,6 +651,89 @@ function SceneCanvasControls({
           Очистить измерения
         </button>
       </section>
+
+      <section className="scene-canvas-control-group">
+        <div className="scene-canvas-control-group__header">
+          <h3>Туман</h3>
+          <label className="switch-control">
+            <input
+              checked={canvas.fog.enabled}
+              disabled={isStorageBusy}
+              onChange={(event) => onUpdateFog({ enabled: event.target.checked })}
+              type="checkbox"
+            />
+            <span>Вкл</span>
+          </label>
+        </div>
+        <label>
+          <span>Плотность</span>
+          <input
+            disabled={isStorageBusy}
+            max={0.96}
+            min={0.25}
+            onChange={(event) => onUpdateFog({ opacity: getNumberValue(event.target.value, canvas.fog.opacity) })}
+            step={0.01}
+            type="range"
+            value={canvas.fog.opacity}
+          />
+        </label>
+        <div className="scene-canvas-template-grid">
+          <button className="button button--secondary" disabled={isStorageBusy} onClick={() => onAddFogRegion('rectangle')} type="button">
+            Закрыть
+          </button>
+          <button className="button button--secondary" disabled={isStorageBusy} onClick={() => onAddFogRegion('circle')} type="button">
+            Круг
+          </button>
+        </div>
+        <div className="scene-canvas-fog-actions">
+          <button
+            className="button button--secondary"
+            disabled={isStorageBusy || canvas.fog.regions.length === 0}
+            onClick={onRemoveLastFogRegion}
+            type="button"
+          >
+            Открыть
+          </button>
+          <button
+            className="button button--secondary"
+            disabled={isStorageBusy || canvas.fog.regions.length === 0}
+            onClick={onClearFogRegions}
+            type="button"
+          >
+            Очистить
+          </button>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function SceneCanvasFogOverlay({
+  canvasHeight,
+  canvasWidth,
+  fog,
+  variant,
+}: {
+  canvasHeight: number
+  canvasWidth: number
+  fog: SceneCanvasFogState
+  variant: 'master' | 'player'
+}) {
+  if (!fog.enabled || fog.regions.length === 0) {
+    return null
+  }
+
+  return (
+    <div className={`scene-canvas-fog scene-canvas-fog--${variant}`} aria-hidden="true">
+      {fog.regions.map((region) => (
+        <div
+          className={`scene-canvas-fog-region scene-canvas-fog-region--${region.shape}`}
+          key={region.id}
+          style={getFogRegionStyle(region, canvasWidth, canvasHeight, fog.opacity)}
+        >
+          {variant === 'master' ? <span>{region.label}</span> : null}
+        </div>
+      ))}
     </div>
   )
 }
@@ -646,6 +766,21 @@ function CanvasMeasurement({
       <span>{measurement.label}</span>
     </div>
   )
+}
+
+function getFogRegionStyle(
+  region: SceneCanvasFogRegion,
+  canvasWidth: number,
+  canvasHeight: number,
+  opacity: number,
+): CSSProperties {
+  return {
+    left: `${(region.x / canvasWidth) * 100}%`,
+    top: `${(region.y / canvasHeight) * 100}%`,
+    width: `${(region.width / canvasWidth) * 100}%`,
+    height: `${(region.height / canvasHeight) * 100}%`,
+    opacity,
+  }
 }
 
 function CanvasObject({

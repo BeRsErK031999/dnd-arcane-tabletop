@@ -2,13 +2,13 @@
 
 ## Текущий этап
 
-Этап 10. Карточки персонажей, NPC и монстров.
+Этап 11. Туман войны.
 
 Статус: выполнено в этом этапе.
 
 ## Цель
 
-Дать мастеру простые карточки персонажей, NPC и монстров без полноценного character sheet и rules automation: имя, тип, краткое описание, HP/AC/initiative, портрет, заметки и связь карточки с токеном на карте.
+Дать мастеру ручной fog layer для активной сцены: включение тумана, настройку плотности, закрытие прямоугольных и круглых областей, открытие последней области и очистку тумана с player projection, где скрытые области закрыты черным слоем.
 
 ## Уже реализовано до начала этапа
 
@@ -23,6 +23,7 @@
 - Stage 7 grid settings, viewport, measurements and player projection.
 - Stage 8 asset library, tags, search, asset preview and asset-backed canvas objects.
 - Stage 9 object selection, movement, duplicate/hide and master-only token state.
+- Stage 10 simple character cards, NPC/monster kinds and token links.
 
 ## Что можно использовать
 
@@ -32,6 +33,8 @@
 - `SceneCanvasObject.assetId`.
 - `SceneCanvasObject.isPlayerVisible`.
 - `SceneCanvasObject.tokenState`.
+- `SceneCanvasState.fog`.
+- `PlayerSceneCanvasProjection.fog`.
 - `SceneGrid.snapToGrid`.
 - `createPlayerSceneCanvasProjection`.
 - `desktopApi.storage.saveCampaign`.
@@ -39,57 +42,54 @@
 
 ## Пробелы этапа
 
-- Правый раздел "Персонажи" оставался заглушкой без сохранения данных.
-- `CharacterCard` не различал player/NPC/monster и не имел timestamps для безопасной гидрации старых JSON campaigns.
-- Токен мог хранить HP/AC/заметку, но не мог ссылаться на отдельную карточку персонажа.
-- Удаление будущей карточки не очищало бы ссылку из размещенных токенов.
+- Слой `fog` существовал в canvas layer stack, но был отключенной заглушкой без состояния.
+- Мастер не мог закрывать или открывать области карты вручную.
+- Player screen получал карту, объекты и измерения без черного fog overlay.
+- Старые JSON campaigns не имели поля `canvas.fog`, которое нужно безопасно гидрировать.
 
 ## Что реализовано
 
-- `CharacterCard` получил тип `player | npc | monster`, краткое описание, timestamps и простые боевые поля.
-- `characterCardFactory` создает, обновляет, сортирует и гидрирует карточки, нормализует HP/AC/initiative и валидирует портреты только из `portrait`/`token` ассетов.
-- Удаление карточки очищает `tokenState.characterCardId` у объектов сцен и сохраняет остальное состояние токена.
-- `useCampaignsStore` добавил create/update/delete операции для карточек через существующий JSON storage pipeline.
-- `MasterDashboardPage` показывает рабочую панель "Персонажи" с формой создания/редактирования, списком карточек и быстрым preview.
-- `SceneCanvas` позволяет привязать выбранный token object к карточке через master-only поле `tokenState.characterCardId`.
-- `sceneCanvasFactory` и `sceneToolsFactory` сохраняют связь карточки с токеном при нормализации token state.
-- Player projection по-прежнему не получает raw `tokenState`, поэтому заметки и ссылки карточек остаются на стороне мастера.
-- Unit tests покрывают нормализацию карточек, update/delete flow, очистку token links и защиту player projection от `tokenState`.
+- `SceneCanvasState` получил `fog` с `enabled`, `opacity` и списком скрытых областей.
+- `sceneCanvasFactory` гидрирует legacy scenes, нормализует fog regions и синхронизирует видимость слоя `fog`.
+- `sceneToolsFactory` добавляет операции включения/плотности тумана, закрытия rectangle/circle, открытия последней области и очистки тумана.
+- `useCampaignsStore` сохраняет fog operations через существующий JSON storage pipeline.
+- `SceneCanvas` показывает мастерский полупрозрачный fog overlay и отдельный блок управления туманом.
+- `PlayerScreenPlaceholderPage` рисует player fog projection черными областями поверх карты, объектов и измерений.
+- `PlayerSceneCanvasProjection.fog` содержит только display-ready regions без мастерских labels.
+- Unit tests покрывают fog hydration, projection, active-scene mutations и очистку fog layer.
 
 ## Критерии готовности
 
-- Карточки player/NPC/monster создаются из правой панели и сохраняются в campaign JSON state.
-- Карточку можно выбрать, отредактировать и удалить.
-- Простые поля HP, max HP, temporary HP, AC и initiative нормализуются без rules automation.
-- Карточка может ссылаться на portrait/token asset.
-- Token object может ссылаться на карточку через `tokenState.characterCardId`.
-- Удаление карточки очищает ссылки из токенов.
-- Player projection не содержит `tokenState`.
+- Мастер может включить и выключить туман войны.
+- Мастер может настроить плотность тумана.
+- Мастер может закрыть прямоугольную или круглую область.
+- Мастер может открыть последнюю область или очистить весь туман.
+- Fog state сохраняется в scene canvas JSON.
+- Player screen получает черные fog regions без мастерских labels.
 - `npm run lint` проходит.
 - `npm run typecheck` проходит.
 - `npm run test` проходит.
 - `npm run dev` запускается.
-- Master card flow проверен в browser route.
+- Master/player fog flow проверен в browser route.
 
 ## Не входит в этап
 
-- Полноценный character sheet.
-- Автоматические атаки, заклинания, spell slots, inventory и D&D rules engine.
-- Импорт из D&D Beyond или сторонних character builders.
-- Расчет модификаторов и проверок.
-- Drag-and-drop перемещение мышью.
-- Multi-select и массовые операции.
-- Fog of war.
+- Dynamic lighting.
+- Автоматическое зрение токенов.
+- Line of sight.
+- Полигональные маски и freehand drawing.
+- Drag-and-drop редактирование границ fog regions.
+- Индивидуальная видимость тумана для разных игроков.
 
 ## Следующий этап
 
-Этап 11. Туман войны.
+Этап 12. Заметки, handouts и показ артов.
 
 Он не начат.
 
 ## Риски и меры
 
-- Риск утечки мастерских заметок игрокам: связь карточки хранится только в `tokenState`, а `PlayerSceneCanvasProjection` не включает это поле.
-- Риск сломать старые JSON campaigns: отсутствующие поля карточек гидрируются с безопасными defaults и timestamps.
-- Риск невалидных portrait links: фабрика принимает только assets с kind `portrait` или `token`.
-- Риск слишком рано перейти к character sheet: Stage 10 ограничен простыми карточками и явно не добавляет rules automation.
+- Риск утечки скрытых областей игрокам: player projection получает только координаты черных fog regions без мастерских labels.
+- Риск сломать старые JSON campaigns: отсутствующий `canvas.fog` гидрируется в disabled state с пустым списком regions.
+- Риск дорогого рендера больших масок: Stage 11 ограничен простыми absolutely positioned regions без сложного mask engine.
+- Риск слишком рано перейти к dynamic lighting: Stage 11 не добавляет LOS, vision radius и автоматические источники света.

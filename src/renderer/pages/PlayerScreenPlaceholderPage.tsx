@@ -2,6 +2,8 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { desktopApi } from '@renderer/services/desktopApi'
 import {
   createDefaultPlayerScreenState,
+  type PlayerSceneCanvasFogRegion,
+  type PlayerSceneCanvasFogProjection,
   type PlayerSceneCanvasMeasurement,
   type PlayerSceneCanvasObject,
   type PlayerSceneCanvasProjection,
@@ -154,7 +156,34 @@ function PlayerSceneCanvas({ canvas }: { canvas: PlayerSceneCanvasProjection }) 
             />
           ))}
         </div>
+        <PlayerSceneFogOverlay canvasHeight={canvas.height} canvasWidth={canvas.width} fog={canvas.fog} />
       </div>
+    </div>
+  )
+}
+
+function PlayerSceneFogOverlay({
+  canvasHeight,
+  canvasWidth,
+  fog,
+}: {
+  canvasHeight: number
+  canvasWidth: number
+  fog: PlayerSceneCanvasFogProjection
+}) {
+  if (!fog.enabled || fog.regions.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="player-scene-canvas__fog" aria-hidden="true">
+      {fog.regions.map((region) => (
+        <div
+          className={`player-scene-canvas-fog-region player-scene-canvas-fog-region--${region.shape}`}
+          key={region.id}
+          style={getPlayerFogRegionStyle(region, canvasWidth, canvasHeight, fog.opacity)}
+        />
+      ))}
     </div>
   )
 }
@@ -187,6 +216,21 @@ function PlayerCanvasMeasurement({
       <span>{measurement.label}</span>
     </div>
   )
+}
+
+function getPlayerFogRegionStyle(
+  region: PlayerSceneCanvasFogRegion,
+  canvasWidth: number,
+  canvasHeight: number,
+  opacity: number,
+): CSSProperties {
+  return {
+    left: `${(region.x / canvasWidth) * 100}%`,
+    top: `${(region.y / canvasHeight) * 100}%`,
+    width: `${(region.width / canvasWidth) * 100}%`,
+    height: `${(region.height / canvasHeight) * 100}%`,
+    opacity,
+  }
 }
 
 function getPlayerCanvasObjectStyle(

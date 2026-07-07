@@ -8,6 +8,7 @@ import type {
   CharacterCardId,
   ImageAssetKind,
   PlayerScreenCommandResult,
+  SceneCanvasFogState,
   SceneCanvasObjectId,
   SceneCanvasObjectTokenState,
   SceneCanvasViewport,
@@ -37,13 +38,18 @@ import {
 } from './sceneFactory'
 import {
   createCampaignWithActiveSceneGrid,
+  createCampaignWithActiveSceneFog,
+  createCampaignWithActiveSceneFogRegion,
   createCampaignWithActiveSceneMeasurement,
   createCampaignWithActiveSceneObjectTokenState,
   createCampaignWithActiveSceneObjectVisibility,
   createCampaignWithActiveSceneViewport,
   createCampaignWithDuplicatedActiveSceneObject,
   createCampaignWithMovedActiveSceneObject,
+  createCampaignWithoutActiveSceneFogRegions,
   createCampaignWithoutActiveSceneMeasurements,
+  createCampaignWithoutLastActiveSceneFogRegion,
+  type SceneFogRegionTemplate,
   type SceneMeasurementTemplate,
   type SceneObjectMoveDirection,
 } from './sceneToolsFactory'
@@ -360,6 +366,104 @@ export function useCampaignsStore() {
       setLastError('Не удалось очистить измерения.')
       setStatus('error')
       return { ok: false, reason: 'clear-measurements-failed' }
+    }
+  }, [selectedCampaign])
+
+  const updateActiveSceneFog = useCallback(
+    async (fog: Partial<Pick<SceneCanvasFogState, 'enabled' | 'opacity'>>): Promise<CampaignMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для настройки тумана войны.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithActiveSceneFog(selectedCampaign, fog)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign }
+      } catch {
+        setLastError('Не удалось сохранить туман войны.')
+        setStatus('error')
+        return { ok: false, reason: 'update-fog-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const addActiveSceneFogRegion = useCallback(
+    async (shape: SceneFogRegionTemplate): Promise<CampaignMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для добавления тумана войны.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithActiveSceneFogRegion(selectedCampaign, shape)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign }
+      } catch {
+        setLastError('Не удалось добавить область тумана.')
+        setStatus('error')
+        return { ok: false, reason: 'add-fog-region-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const removeLastActiveSceneFogRegion = useCallback(async (): Promise<CampaignMutationResult> => {
+    if (selectedCampaign === null) {
+      setLastError('Нет открытой кампании для открытия области тумана.')
+      return { ok: false, reason: 'campaign-not-selected' }
+    }
+
+    setStatus('saving')
+    setLastError(null)
+
+    try {
+      const updatedCampaign = createCampaignWithoutLastActiveSceneFogRegion(selectedCampaign)
+      await desktopApi.storage.saveCampaign(updatedCampaign)
+      setSelectedCampaign(updatedCampaign)
+      setCampaigns(await desktopApi.storage.listCampaigns())
+      setStatus('ready')
+      return { ok: true, campaign: updatedCampaign }
+    } catch {
+      setLastError('Не удалось открыть область тумана.')
+      setStatus('error')
+      return { ok: false, reason: 'remove-fog-region-failed' }
+    }
+  }, [selectedCampaign])
+
+  const clearActiveSceneFogRegions = useCallback(async (): Promise<CampaignMutationResult> => {
+    if (selectedCampaign === null) {
+      setLastError('Нет открытой кампании для очистки тумана войны.')
+      return { ok: false, reason: 'campaign-not-selected' }
+    }
+
+    setStatus('saving')
+    setLastError(null)
+
+    try {
+      const updatedCampaign = createCampaignWithoutActiveSceneFogRegions(selectedCampaign)
+      await desktopApi.storage.saveCampaign(updatedCampaign)
+      setSelectedCampaign(updatedCampaign)
+      setCampaigns(await desktopApi.storage.listCampaigns())
+      setStatus('ready')
+      return { ok: true, campaign: updatedCampaign }
+    } catch {
+      setLastError('Не удалось очистить туман войны.')
+      setStatus('error')
+      return { ok: false, reason: 'clear-fog-failed' }
     }
   }, [selectedCampaign])
 
@@ -717,6 +821,10 @@ export function useCampaignsStore() {
     updateActiveSceneViewport,
     addActiveSceneMeasurement,
     clearActiveSceneMeasurements,
+    updateActiveSceneFog,
+    addActiveSceneFogRegion,
+    removeLastActiveSceneFogRegion,
+    clearActiveSceneFogRegions,
     createCharacterCard,
     updateCharacterCard,
     deleteCharacterCard,

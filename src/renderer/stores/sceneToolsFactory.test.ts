@@ -8,13 +8,17 @@ import {
 } from './sceneFactory'
 import {
   createCampaignWithActiveSceneGrid,
+  createCampaignWithActiveSceneFog,
+  createCampaignWithActiveSceneFogRegion,
   createCampaignWithActiveSceneMeasurement,
   createCampaignWithActiveSceneObjectTokenState,
   createCampaignWithActiveSceneObjectVisibility,
   createCampaignWithActiveSceneViewport,
   createCampaignWithDuplicatedActiveSceneObject,
   createCampaignWithMovedActiveSceneObject,
+  createCampaignWithoutActiveSceneFogRegions,
   createCampaignWithoutActiveSceneMeasurements,
+  createCampaignWithoutLastActiveSceneFogRegion,
 } from './sceneToolsFactory'
 import { getSceneCanvasState } from './sceneCanvasFactory'
 
@@ -97,6 +101,60 @@ describe('sceneToolsFactory', () => {
 
     expect(cleared.updatedAt).toBe('2026-07-07T08:00:00.000Z')
     expect(getActiveCampaignScene(cleared)?.canvas.measurements).toEqual([])
+  })
+
+  it('manages fog regions on the active scene only', () => {
+    const campaign = createCampaignFixture()
+    const withSettings = createCampaignWithActiveSceneFog(
+      campaign,
+      {
+        enabled: true,
+        opacity: 2,
+      },
+      '2026-07-07T08:10:00.000Z',
+    )
+    const withRectangle = createCampaignWithActiveSceneFogRegion(
+      withSettings,
+      'rectangle',
+      '2026-07-07T08:20:00.000Z',
+    )
+    const withCircle = createCampaignWithActiveSceneFogRegion(
+      withRectangle,
+      'circle',
+      '2026-07-07T08:30:00.000Z',
+    )
+    const inactiveScene = withCircle.scenes.find((scene) => scene.id === 'scene-first')
+    const activeCanvas = getSceneCanvasState(getActiveCampaignScene(withCircle)!)
+
+    expect(withCircle.updatedAt).toBe('2026-07-07T08:30:00.000Z')
+    expect(inactiveScene?.canvas.fog.enabled).toBe(false)
+    expect(activeCanvas.fog).toMatchObject({
+      enabled: true,
+      opacity: 0.96,
+    })
+    expect(activeCanvas.fog.regions.map((region) => region.shape)).toEqual(['rectangle', 'circle'])
+    expect(activeCanvas.layers.find((layer) => layer.kind === 'fog')).toMatchObject({
+      visibility: 'player-visible',
+    })
+
+    const withoutLast = createCampaignWithoutLastActiveSceneFogRegion(
+      withCircle,
+      '2026-07-07T08:40:00.000Z',
+    )
+
+    expect(getSceneCanvasState(getActiveCampaignScene(withoutLast)!).fog.regions).toHaveLength(1)
+
+    const cleared = createCampaignWithoutActiveSceneFogRegions(withoutLast, '2026-07-07T08:50:00.000Z')
+    const clearedCanvas = getSceneCanvasState(getActiveCampaignScene(cleared)!)
+
+    expect(cleared.updatedAt).toBe('2026-07-07T08:50:00.000Z')
+    expect(clearedCanvas.fog).toMatchObject({
+      enabled: false,
+      regions: [],
+    })
+    expect(clearedCanvas.layers.find((layer) => layer.kind === 'fog')).toMatchObject({
+      visibility: 'disabled',
+    })
   })
 
   it('moves active scene objects with grid snapping', () => {

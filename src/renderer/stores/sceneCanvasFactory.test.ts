@@ -25,6 +25,11 @@ describe('sceneCanvasFactory', () => {
       },
       objects: [],
       measurements: [],
+      fog: {
+        enabled: false,
+        opacity: 0.84,
+        regions: [],
+      },
     })
     expect(scene.canvas.layers.map((layer) => [layer.kind, layer.visibility])).toEqual([
       ['map', 'player-visible'],
@@ -94,6 +99,21 @@ describe('sceneCanvasFactory', () => {
       },
     ]
     scene.canvas.viewport = { zoom: 1.2, panX: 40, panY: -20 }
+    scene.canvas.fog = {
+      enabled: true,
+      opacity: 0.72,
+      regions: [
+        {
+          id: 'fog-secret-room',
+          shape: 'rectangle',
+          label: 'Secret room',
+          x: 700,
+          y: 320,
+          width: 280,
+          height: 210,
+        },
+      ],
+    }
     scene.canvas.measurements = [
       {
         id: 'measurement-visible',
@@ -131,7 +151,7 @@ describe('sceneCanvasFactory', () => {
       filePath: 'file:///tmp/map.png',
     })
     expect(projection.viewport).toEqual({ zoom: 1.2, panX: 40, panY: -20 })
-    expect(projection.layers.map((layer) => layer.kind)).toEqual(['map', 'grid', 'object', 'token'])
+    expect(projection.layers.map((layer) => layer.kind)).toEqual(['map', 'grid', 'object', 'token', 'fog'])
     expect(projection.objects.map((object) => object.id)).toEqual(['object-visible'])
     expect(projection.objects[0].asset).toMatchObject({
       id: 'asset-map',
@@ -139,6 +159,21 @@ describe('sceneCanvasFactory', () => {
     })
     expect(projection.objects[0]).not.toHaveProperty('tokenState')
     expect(projection.measurements.map((measurement) => measurement.id)).toEqual(['measurement-visible'])
+    expect(projection.fog).toEqual({
+      enabled: true,
+      opacity: 0.72,
+      regions: [
+        {
+          id: 'fog-secret-room',
+          shape: 'rectangle',
+          x: 700,
+          y: 320,
+          width: 280,
+          height: 210,
+        },
+      ],
+    })
+    expect(projection.fog.regions[0]).not.toHaveProperty('label')
   })
 
   it('hydrates legacy scenes without canvas data', () => {
@@ -165,6 +200,11 @@ describe('sceneCanvasFactory', () => {
       panY: 0,
     })
     expect(canvas.measurements).toEqual([])
+    expect(canvas.fog).toEqual({
+      enabled: false,
+      opacity: 0.84,
+      regions: [],
+    })
     expect(canvas.layers).toHaveLength(6)
     expect(summary.find((layer) => layer.kind === 'master')).toMatchObject({
       visibility: 'master-only',

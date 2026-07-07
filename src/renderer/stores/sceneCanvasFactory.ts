@@ -5,6 +5,9 @@ import type {
   PlayerSceneCanvasAsset,
   Scene,
   SceneGrid,
+  SceneCanvasFogRegion,
+  SceneCanvasFogRegionShape,
+  SceneCanvasFogState,
   SceneCanvasLayer,
   SceneCanvasLayerKind,
   SceneCanvasMeasurement,
@@ -20,6 +23,11 @@ const defaultCanvasViewport: SceneCanvasViewport = {
   zoom: 1,
   panX: 0,
   panY: 0,
+}
+const defaultSceneCanvasFog: SceneCanvasFogState = {
+  enabled: false,
+  opacity: 0.84,
+  regions: [],
 }
 
 const defaultSceneCanvasLayers: SceneCanvasLayer[] = [
@@ -41,6 +49,7 @@ export function createDefaultSceneCanvas(
     layers: defaultSceneCanvasLayers.map((layer) => ({ ...layer })),
     objects: [],
     measurements: [],
+    fog: { ...defaultSceneCanvasFog, regions: [] },
     updatedAt,
   }
 }
@@ -58,16 +67,20 @@ export function getSceneCanvasState(scene: Scene): SceneCanvasState {
   if (!legacyCanvas) {
     return createDefaultSceneCanvas()
   }
+  const width = getPositiveNumber(legacyCanvas.width, defaultCanvasWidth)
+  const height = getPositiveNumber(legacyCanvas.height, defaultCanvasHeight)
+  const fog = normalizeCanvasFog(legacyCanvas.fog, width, height)
 
   return {
-    width: getPositiveNumber(legacyCanvas.width, defaultCanvasWidth),
-    height: getPositiveNumber(legacyCanvas.height, defaultCanvasHeight),
+    width,
+    height,
     viewport: normalizeCanvasViewport(legacyCanvas.viewport),
-    layers: mergeCanvasLayers(legacyCanvas.layers),
+    layers: mergeCanvasLayers(legacyCanvas.layers, fog.enabled),
     objects: Array.isArray(legacyCanvas.objects) ? legacyCanvas.objects.map(normalizeCanvasObject) : [],
     measurements: Array.isArray(legacyCanvas.measurements)
       ? legacyCanvas.measurements.map(normalizeCanvasMeasurement)
       : [],
+    fog,
     updatedAt: legacyCanvas.updatedAt ?? new Date().toISOString(),
   }
 }
@@ -140,6 +153,20 @@ export function createPlayerSceneCanvasProjection(
         color,
         label,
       })),
+    fog: {
+      enabled: canvas.fog.enabled,
+      opacity: canvas.fog.opacity,
+      regions: canvas.fog.enabled
+        ? canvas.fog.regions.map(({ id, shape, x, y, width, height }) => ({
+            id,
+            shape,
+            x,
+            y,
+            width,
+            height,
+          }))
+        : [],
+    },
     updatedAt: canvas.updatedAt,
   }
 }
@@ -157,7 +184,10 @@ export function getSceneCanvasLayerSummary(scene: Scene): Array<SceneCanvasLayer
 
   return canvas.layers.sort(sortLayers).map((layer) => ({
     ...layer,
-    objectCount: canvas.objects.filter((object) => object.layerId === layer.id).length,
+    objectCount:
+      layer.kind === 'fog'
+        ? canvas.fog.regions.length
+        : canvas.objects.filter((object) => object.layerId === layer.id).length,
   }))
 }
 
@@ -200,6 +230,98 @@ export function createSceneCanvasWithoutMeasurements(
   }
 }
 
+export function createSceneCanvasWithFogSettings(
+  canvas: SceneCanvasState,
+  fogSettings: Partial<Pick<SceneCanvasFogState, 'enabled' | 'opacity'>>,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): SceneCanvasState {
+  const fog = normalizeCanvasFog(
+    {
+      ...canvas.fog,
+      ...fogSettings,
+    },
+    canvas.width,
+    canvas.height,
+  )
+
+  return {
+    ...canvas,
+    layers: mergeCanvasLayers(canvas.layers, fog.enabled),
+    fog,
+    updatedAt,
+  }
+}
+
+export function createSceneCanvasWithFogRegion(
+  canvas: SceneCanvasState,
+  grid: SceneGrid,
+  shape: SceneCanvasFogRegionShape,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): SceneCanvasState {
+  const region = createFogRegionTemplate(canvas, grid, shape, canvas.fog.regions.length + 1)
+  const fog = normalizeCanvasFog(
+    {
+      ...canvas.fog,
+      enabled: true,
+      regions: [...canvas.fog.regions, region],
+    },
+    canvas.width,
+    canvas.height,
+  )
+
+  return {
+    ...canvas,
+    layers: mergeCanvasLayers(canvas.layers, true),
+    fog,
+    updatedAt,
+  }
+}
+
+export function createSceneCanvasWithoutLastFogRegion(
+  canvas: SceneCanvasState,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): SceneCanvasState {
+  const regions = canvas.fog.regions.slice(0, -1)
+  const fog = normalizeCanvasFog(
+    {
+      ...canvas.fog,
+      enabled: regions.length > 0 && canvas.fog.enabled,
+      regions,
+    },
+    canvas.width,
+    canvas.height,
+  )
+
+  return {
+    ...canvas,
+    layers: mergeCanvasLayers(canvas.layers, fog.enabled),
+    fog,
+    updatedAt,
+  }
+}
+
+export function createSceneCanvasWithoutFogRegions(
+  canvas: SceneCanvasState,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): SceneCanvasState {
+  const fog = normalizeCanvasFog(
+    {
+      ...canvas.fog,
+      enabled: false,
+      regions: [],
+    },
+    canvas.width,
+    canvas.height,
+  )
+
+  return {
+    ...canvas,
+    layers: mergeCanvasLayers(canvas.layers, false),
+    fog,
+    updatedAt,
+  }
+}
+
 export function snapCanvasValue(value: number, grid: SceneGrid): number {
   if (!grid.enabled || !grid.snapToGrid) {
     return value
@@ -232,20 +354,31 @@ function createCanvasLayer(
   }
 }
 
-function mergeCanvasLayers(layers: SceneCanvasState['layers'] | undefined): SceneCanvasLayer[] {
+function mergeCanvasLayers(layers: SceneCanvasState['layers'] | undefined, isFogEnabled = false): SceneCanvasLayer[] {
   if (!Array.isArray(layers)) {
-    return defaultSceneCanvasLayers.map((layer) => ({ ...layer }))
+    return defaultSceneCanvasLayers.map((layer) => normalizeCanvasLayer(layer, isFogEnabled))
   }
 
   const layersByKind = new Map(layers.map((layer) => [layer.kind, layer]))
   const mergedDefaults = defaultSceneCanvasLayers.map((defaultLayer) => ({
     ...defaultLayer,
     ...layersByKind.get(defaultLayer.kind),
-  }))
+  })).map((layer) => normalizeCanvasLayer(layer, isFogEnabled))
   const knownKinds = new Set(defaultSceneCanvasLayers.map((layer) => layer.kind))
   const customLayers = layers.filter((layer) => !knownKinds.has(layer.kind)).map((layer) => ({ ...layer }))
 
   return [...mergedDefaults, ...customLayers].sort(sortLayers)
+}
+
+function normalizeCanvasLayer(layer: SceneCanvasLayer, isFogEnabled: boolean): SceneCanvasLayer {
+  if (layer.kind !== 'fog') {
+    return { ...layer }
+  }
+
+  return {
+    ...layer,
+    visibility: isFogEnabled ? 'player-visible' : 'disabled',
+  }
 }
 
 function normalizeCanvasObject(object: SceneCanvasObject): SceneCanvasObject {
@@ -297,6 +430,75 @@ function normalizeCanvasMeasurement(measurement: SceneCanvasMeasurement): SceneC
     radius: getPositiveNumber(measurement.radius, 140),
     isPlayerVisible: Boolean(measurement.isPlayerVisible),
   }
+}
+
+function normalizeCanvasFog(
+  fog: Partial<SceneCanvasFogState> | undefined,
+  canvasWidth: number,
+  canvasHeight: number,
+): SceneCanvasFogState {
+  const regions = Array.isArray(fog?.regions)
+    ? fog.regions.map((region, index) => normalizeCanvasFogRegion(region, canvasWidth, canvasHeight, index))
+    : []
+
+  return {
+    enabled: Boolean(fog?.enabled),
+    opacity: clampNumber(fog?.opacity, 0.25, 0.96, defaultSceneCanvasFog.opacity),
+    regions,
+  }
+}
+
+function normalizeCanvasFogRegion(
+  region: Partial<SceneCanvasFogRegion>,
+  canvasWidth: number,
+  canvasHeight: number,
+  index: number,
+): SceneCanvasFogRegion {
+  const fallbackWidth = Math.min(280, canvasWidth)
+  const fallbackHeight = Math.min(210, canvasHeight)
+  const width = clampNumber(region.width, 40, canvasWidth, fallbackWidth)
+  const height = clampNumber(region.height, 40, canvasHeight, fallbackHeight)
+  const x = clampNumber(region.x, 0, Math.max(0, canvasWidth - width), Math.max(0, canvasWidth / 2 - width / 2))
+  const y = clampNumber(region.y, 0, Math.max(0, canvasHeight - height), Math.max(0, canvasHeight / 2 - height / 2))
+  const label = region.label?.trim()
+
+  return {
+    id: region.id ?? createFogRegionId(),
+    shape: region.shape === 'circle' ? 'circle' : 'rectangle',
+    label: label || `Туман ${index + 1}`,
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.round(width),
+    height: Math.round(height),
+  }
+}
+
+function createFogRegionTemplate(
+  canvas: SceneCanvasState,
+  grid: SceneGrid,
+  shape: SceneCanvasFogRegionShape,
+  number: number,
+): SceneCanvasFogRegion {
+  const baseSize = grid.enabled ? grid.size : 70
+  const width = shape === 'circle' ? baseSize * 4 : baseSize * 5
+  const height = shape === 'circle' ? baseSize * 4 : baseSize * 3
+  const x = snapCanvasValue(canvas.width / 2 - width / 2, grid)
+  const y = snapCanvasValue(canvas.height / 2 - height / 2, grid)
+
+  return normalizeCanvasFogRegion(
+    {
+      id: createFogRegionId(),
+      shape,
+      label: shape === 'circle' ? `Круг тумана ${number}` : `Область тумана ${number}`,
+      x,
+      y,
+      width,
+      height,
+    },
+    canvas.width,
+    canvas.height,
+    number - 1,
+  )
 }
 
 function createMeasurementTemplate(
@@ -382,6 +584,16 @@ function createMeasurementId(): string {
   }
 
   return `measurement-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function createFogRegionId(): string {
+  const randomId = globalThis.crypto?.randomUUID?.()
+
+  if (randomId) {
+    return `fog-${randomId}`
+  }
+
+  return `fog-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 function getFiniteNumber(value: number | undefined, fallback: number): number {

@@ -458,6 +458,8 @@
 
 ## Этап 11. Туман войны
 
+Статус: выполнено.
+
 Цель: реализовать ручное открытие и закрытие областей: полупрозрачный туман мастеру и черный слой игрокам.
 
 Входит:
@@ -465,18 +467,30 @@
 - Manual reveal/hide tools.
 - Player projection без скрытых областей.
 - Сохранение fog state в сцене.
+- Настройка плотности тумана.
+- Rectangle/circle regions как простой ручной формат.
 
 Не входит:
 - Dynamic lighting.
 - Автоматическое зрение токенов.
 - Line of sight.
+- Freehand masks и polygon editor.
 
 Критерии готовности:
 - Мастер видит управляемый fog layer.
 - Игроки не видят скрытые области.
 - Fog state сохраняется и восстанавливается.
+- Player projection получает только display-ready fog regions без мастерских labels.
+- `npm run lint`, `npm run typecheck` и `npm run test` проходят.
+- Master/player fog flow проверен в browser route.
 
 Затрагивается:
+- `src/shared/types/sceneCanvas.ts`
+- `src/renderer/stores/sceneCanvasFactory.ts`
+- `src/renderer/stores/sceneToolsFactory.ts`
+- `src/renderer/stores/useCampaignsStore.ts`
+- `src/renderer/widgets/SceneCanvas.tsx`
+- `src/renderer/pages/PlayerScreenPlaceholderPage.tsx`
 - canvas layers
 - player projection
 - scene persistence
@@ -484,6 +498,7 @@
 Риски:
 - Утечки скрытой карты игрокам.
 - Дорогой рендеринг больших масок.
+- Разрастание Stage 11 в dynamic lighting вместо ручного инструмента мастера.
 
 ## Этап 12. Заметки, handouts и показ артов
 

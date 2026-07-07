@@ -11,6 +11,8 @@ export type SceneCanvasObjectKind = 'marker' | 'note' | 'shape' | 'token-placeho
 export type SceneCanvasMeasurementId = EntityId
 export type SceneCanvasMeasurementKind = 'ruler' | 'area'
 export type SceneCanvasAreaShape = 'circle' | 'cone' | 'square'
+export type SceneCanvasFogRegionId = EntityId
+export type SceneCanvasFogRegionShape = 'rectangle' | 'circle'
 
 export interface SceneCanvasObjectTokenState {
   characterCardId?: CharacterCardId
@@ -67,6 +69,22 @@ export interface SceneCanvasMeasurement {
   isPlayerVisible: boolean
 }
 
+export interface SceneCanvasFogRegion {
+  id: SceneCanvasFogRegionId
+  shape: SceneCanvasFogRegionShape
+  label: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface SceneCanvasFogState {
+  enabled: boolean
+  opacity: number
+  regions: SceneCanvasFogRegion[]
+}
+
 export interface SceneCanvasState {
   width: number
   height: number
@@ -74,6 +92,7 @@ export interface SceneCanvasState {
   layers: SceneCanvasLayer[]
   objects: SceneCanvasObject[]
   measurements: SceneCanvasMeasurement[]
+  fog: SceneCanvasFogState
   updatedAt: IsoDateString
 }
 
@@ -130,6 +149,21 @@ export interface PlayerSceneCanvasMeasurement {
   label: string
 }
 
+export interface PlayerSceneCanvasFogRegion {
+  id: SceneCanvasFogRegionId
+  shape: SceneCanvasFogRegionShape
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface PlayerSceneCanvasFogProjection {
+  enabled: boolean
+  opacity: number
+  regions: PlayerSceneCanvasFogRegion[]
+}
+
 export interface PlayerSceneCanvasProjection {
   width: number
   height: number
@@ -139,5 +173,6 @@ export interface PlayerSceneCanvasProjection {
   layers: PlayerSceneCanvasLayer[]
   objects: PlayerSceneCanvasObject[]
   measurements: PlayerSceneCanvasMeasurement[]
+  fog: PlayerSceneCanvasFogProjection
   updatedAt: IsoDateString
 }

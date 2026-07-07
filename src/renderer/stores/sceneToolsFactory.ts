@@ -2,6 +2,8 @@ import type {
   Campaign,
   IsoDateString,
   Scene,
+  SceneCanvasFogRegionShape,
+  SceneCanvasFogState,
   SceneCanvasObject,
   SceneCanvasObjectId,
   SceneCanvasObjectTokenState,
@@ -9,8 +11,12 @@ import type {
   SceneGrid,
 } from '@shared/types'
 import {
+  createSceneCanvasWithFogRegion,
+  createSceneCanvasWithFogSettings,
   createSceneCanvasWithMeasurement,
   createSceneCanvasWithoutMeasurements,
+  createSceneCanvasWithoutFogRegions,
+  createSceneCanvasWithoutLastFogRegion,
   createSceneCanvasWithViewport,
   getSceneCanvasState,
   snapCanvasValue,
@@ -23,6 +29,7 @@ import {
 
 export type SceneMeasurementTemplate = 'ruler' | 'circle' | 'cone' | 'square'
 export type SceneObjectMoveDirection = 'up' | 'down' | 'left' | 'right'
+export type SceneFogRegionTemplate = SceneCanvasFogRegionShape
 
 export function createCampaignWithActiveSceneGrid(
   campaign: Campaign,
@@ -67,6 +74,48 @@ export function createCampaignWithoutActiveSceneMeasurements(
   return updateActiveScene(campaign, updatedAt, (scene) => ({
     ...scene,
     canvas: createSceneCanvasWithoutMeasurements(getSceneCanvasState(scene), updatedAt),
+  }))
+}
+
+export function createCampaignWithActiveSceneFog(
+  campaign: Campaign,
+  fog: Partial<Pick<SceneCanvasFogState, 'enabled' | 'opacity'>>,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): Campaign {
+  return updateActiveScene(campaign, updatedAt, (scene) => ({
+    ...scene,
+    canvas: createSceneCanvasWithFogSettings(getSceneCanvasState(scene), fog, updatedAt),
+  }))
+}
+
+export function createCampaignWithActiveSceneFogRegion(
+  campaign: Campaign,
+  shape: SceneFogRegionTemplate,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): Campaign {
+  return updateActiveScene(campaign, updatedAt, (scene) => ({
+    ...scene,
+    canvas: createSceneCanvasWithFogRegion(getSceneCanvasState(scene), scene.grid, shape, updatedAt),
+  }))
+}
+
+export function createCampaignWithoutLastActiveSceneFogRegion(
+  campaign: Campaign,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): Campaign {
+  return updateActiveScene(campaign, updatedAt, (scene) => ({
+    ...scene,
+    canvas: createSceneCanvasWithoutLastFogRegion(getSceneCanvasState(scene), updatedAt),
+  }))
+}
+
+export function createCampaignWithoutActiveSceneFogRegions(
+  campaign: Campaign,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): Campaign {
+  return updateActiveScene(campaign, updatedAt, (scene) => ({
+    ...scene,
+    canvas: createSceneCanvasWithoutFogRegions(getSceneCanvasState(scene), updatedAt),
   }))
 }
 

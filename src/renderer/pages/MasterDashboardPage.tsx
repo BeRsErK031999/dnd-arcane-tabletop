@@ -8,7 +8,11 @@ import { createCharacterCardList, type CharacterCardInput } from '@renderer/stor
 import { desktopApi } from '@renderer/services/desktopApi'
 import { getSceneCanvasState } from '@renderer/stores/sceneCanvasFactory'
 import { useCampaignsStore } from '@renderer/stores/useCampaignsStore'
-import type { SceneMeasurementTemplate, SceneObjectMoveDirection } from '@renderer/stores/sceneToolsFactory'
+import type {
+  SceneFogRegionTemplate,
+  SceneMeasurementTemplate,
+  SceneObjectMoveDirection,
+} from '@renderer/stores/sceneToolsFactory'
 import { SceneCanvas } from '@renderer/widgets/SceneCanvas'
 import {
   createDefaultPlayerScreenState,
@@ -24,6 +28,7 @@ import {
   type PlayerScreenOpenResult,
   type PlayerScreenState,
   type PlayerScreenStatus,
+  type SceneCanvasFogState,
   type SceneCanvasObjectId,
   type SceneCanvasObjectTokenState,
   type SceneCanvasViewport,
@@ -82,6 +87,7 @@ const toolGroups: Array<{ title: string; items: ToolItem[] }> = [
       { label: 'Сетка', shortcut: 'G', status: 'active' },
       { label: 'Измерение', shortcut: 'M', status: 'active' },
       { label: 'Область', shortcut: 'A', status: 'active' },
+      { label: 'Туман', shortcut: 'F', status: 'active' },
     ],
   },
   {
@@ -111,6 +117,10 @@ export function MasterDashboardPage() {
     updateActiveSceneViewport,
     addActiveSceneMeasurement,
     clearActiveSceneMeasurements,
+    updateActiveSceneFog,
+    addActiveSceneFogRegion,
+    removeLastActiveSceneFogRegion,
+    clearActiveSceneFogRegions,
     createCharacterCard,
     updateCharacterCard,
     deleteCharacterCard,
@@ -393,6 +403,32 @@ export function MasterDashboardPage() {
     setSceneActionStatus(result.ok ? 'Измерения очищены.' : 'Не удалось очистить измерения.')
   }
 
+  async function handleUpdateActiveSceneFog(
+    fog: Partial<Pick<SceneCanvasFogState, 'enabled' | 'opacity'>>,
+  ): Promise<void> {
+    const result = await updateActiveSceneFog(fog)
+
+    setSceneActionStatus(result.ok ? 'Туман войны сохранен.' : 'Не удалось сохранить туман войны.')
+  }
+
+  async function handleAddActiveSceneFogRegion(shape: SceneFogRegionTemplate): Promise<void> {
+    const result = await addActiveSceneFogRegion(shape)
+
+    setSceneActionStatus(result.ok ? 'Область тумана закрыта.' : 'Не удалось добавить область тумана.')
+  }
+
+  async function handleRemoveLastActiveSceneFogRegion(): Promise<void> {
+    const result = await removeLastActiveSceneFogRegion()
+
+    setSceneActionStatus(result.ok ? 'Последняя область тумана открыта.' : 'Не удалось открыть область тумана.')
+  }
+
+  async function handleClearActiveSceneFogRegions(): Promise<void> {
+    const result = await clearActiveSceneFogRegions()
+
+    setSceneActionStatus(result.ok ? 'Туман войны очищен.' : 'Не удалось очистить туман войны.')
+  }
+
   async function handleMoveActiveSceneObject(
     objectId: SceneCanvasObjectId,
     direction: SceneObjectMoveDirection,
@@ -607,11 +643,11 @@ export function MasterDashboardPage() {
         <div>
           <p className="eyebrow">Master Console</p>
           <h1>Панель мастера</h1>
-          <p className="muted">Stage 10: простые карточки персонажей, NPC и монстров без rules automation.</p>
+          <p className="muted">Stage 11: ручной туман войны для master/player canvas.</p>
         </div>
         <div className="button-row">
           {selectedCampaign ? <span className="status-badge">Открыта: {selectedCampaign.name}</span> : null}
-          <span className="status-badge">Этап 10</span>
+          <span className="status-badge">Этап 11</span>
           <button className="button button--secondary" type="button" onClick={refresh}>
             Обновить
           </button>
@@ -707,7 +743,7 @@ export function MasterDashboardPage() {
                 <h2>{activeScene?.name ?? 'Рабочая область сцены'}</h2>
               </div>
               <div className="workspace-board__meta">
-                <span>Objects: Stage 9</span>
+                <span>Fog: Stage 11</span>
                 <span>Player mode: {playerStatus.state.mode}</span>
               </div>
             </div>
@@ -720,8 +756,11 @@ export function MasterDashboardPage() {
               mapAsset={activeMapAsset}
               onAddMeasurement={(template) => void handleAddActiveSceneMeasurement(template)}
               onClearMeasurements={() => void handleClearActiveSceneMeasurements()}
+              onAddFogRegion={(shape) => void handleAddActiveSceneFogRegion(shape)}
+              onClearFogRegions={() => void handleClearActiveSceneFogRegions()}
               onDuplicateObject={(objectId) => void handleDuplicateActiveSceneObject(objectId)}
               onMoveObject={(objectId, direction) => void handleMoveActiveSceneObject(objectId, direction)}
+              onRemoveLastFogRegion={() => void handleRemoveLastActiveSceneFogRegion()}
               onSelectObject={setSelectedSceneObjectId}
               onSendToPlayers={() => void handleSendActiveSceneToPlayers()}
               onSetObjectVisibility={(objectId, isPlayerVisible) =>
@@ -730,6 +769,7 @@ export function MasterDashboardPage() {
               onUpdateObjectTokenState={(objectId, tokenState) =>
                 void handleUpdateActiveSceneObjectTokenState(objectId, tokenState)
               }
+              onUpdateFog={(fog) => void handleUpdateActiveSceneFog(fog)}
               onUpdateGrid={(grid) => void handleUpdateActiveSceneGrid(grid)}
               onUpdateViewport={(viewport) => void handleUpdateActiveSceneViewport(viewport)}
               scene={activeScene}

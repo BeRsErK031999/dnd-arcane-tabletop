@@ -1,11 +1,11 @@
 import { app, BrowserWindow } from 'electron'
 import { createMasterWindow } from './windows/masterWindow.js'
-import { createPlayerWindow } from './windows/playerWindow.js'
 import { registerIpcHandlers } from './ipc/index.js'
+import { PlayerScreenController } from './playerScreen/PlayerScreenController.js'
 import { JsonStorageService } from './storage/JsonStorageService.js'
 import { getCampaignsDirectory } from './storage/storagePaths.js'
 
-let playerWindow: BrowserWindow | null = null
+const playerScreenController = new PlayerScreenController()
 
 async function bootstrap(): Promise<void> {
   const storageService = new JsonStorageService(getCampaignsDirectory())
@@ -15,17 +15,7 @@ async function bootstrap(): Promise<void> {
 
   registerIpcHandlers({
     storageService,
-    getOrCreatePlayerWindow: () => {
-      if (playerWindow === null || playerWindow.isDestroyed()) {
-        playerWindow = createPlayerWindow()
-        playerWindow.on('closed', () => {
-          playerWindow = null
-        })
-      }
-
-      playerWindow.focus()
-      return playerWindow
-    },
+    playerScreenController,
   })
 }
 

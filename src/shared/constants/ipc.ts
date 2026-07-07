@@ -6,6 +6,24 @@ export const IPC_CHANNELS = {
     deleteCampaign: 'storage:deleteCampaign',
   },
   playerScreen: {
-    open: 'playerScreen:open',
+    open: 'player:open',
+    close: 'player:close',
+    focus: 'player:focus',
+    statusGet: 'player:status:get',
+    statusChanged: 'player:status:changed',
+    fullscreen: {
+      set: 'player:fullscreen:set',
+      toggle: 'player:fullscreen:toggle',
+    },
+    state: {
+      get: 'player:state:get',
+      update: 'player:state:update',
+      reset: 'player:state:reset',
+      changed: 'player:state:changed',
+    },
+    visibility: {
+      hide: 'player:visibility:hide',
+      show: 'player:visibility:show',
+    },
   },
 } as const

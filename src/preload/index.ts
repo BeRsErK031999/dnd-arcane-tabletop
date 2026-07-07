@@ -1,6 +1,6 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { IPC_CHANNELS } from '../shared/constants/index.js'
-import type { Campaign, CampaignId } from '../shared/types/index.js'
+import type { Campaign, CampaignId, PlayerScreenState, PlayerScreenStatus } from '../shared/types/index.js'
 import type { DesktopApi } from './types.js'
 
 const desktopApi: DesktopApi = {
@@ -12,7 +12,34 @@ const desktopApi: DesktopApi = {
   },
   playerScreen: {
     open: () => ipcRenderer.invoke(IPC_CHANNELS.playerScreen.open),
+    close: () => ipcRenderer.invoke(IPC_CHANNELS.playerScreen.close),
+    focus: () => ipcRenderer.invoke(IPC_CHANNELS.playerScreen.focus),
+    getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.playerScreen.statusGet),
+    setFullscreen: (isFullscreen: boolean) =>
+      ipcRenderer.invoke(IPC_CHANNELS.playerScreen.fullscreen.set, isFullscreen),
+    toggleFullscreen: () => ipcRenderer.invoke(IPC_CHANNELS.playerScreen.fullscreen.toggle),
+    getState: () => ipcRenderer.invoke(IPC_CHANNELS.playerScreen.state.get),
+    updateState: (state: PlayerScreenState) => ipcRenderer.invoke(IPC_CHANNELS.playerScreen.state.update, state),
+    resetState: () => ipcRenderer.invoke(IPC_CHANNELS.playerScreen.state.reset),
+    hide: () => ipcRenderer.invoke(IPC_CHANNELS.playerScreen.visibility.hide),
+    show: () => ipcRenderer.invoke(IPC_CHANNELS.playerScreen.visibility.show),
+    onStateUpdated: (listener: (state: PlayerScreenState) => void) =>
+      subscribeToIpc(IPC_CHANNELS.playerScreen.state.changed, listener),
+    onStatusChanged: (listener: (status: PlayerScreenStatus) => void) =>
+      subscribeToIpc(IPC_CHANNELS.playerScreen.statusChanged, listener),
   },
 }
 
 contextBridge.exposeInMainWorld('arcaneTabletop', desktopApi)
+
+function subscribeToIpc<Payload>(channel: string, listener: (payload: Payload) => void): () => void {
+  const handler = (_event: IpcRendererEvent, payload: Payload): void => {
+    listener(payload)
+  }
+
+  ipcRenderer.on(channel, handler)
+
+  return () => {
+    ipcRenderer.removeListener(channel, handler)
+  }
+}

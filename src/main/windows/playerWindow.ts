@@ -16,6 +16,7 @@ export function createPlayerWindow(): BrowserWindow {
       preload: getPreloadPath(),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: false,
     },
   })
 

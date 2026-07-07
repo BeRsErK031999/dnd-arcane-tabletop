@@ -2,13 +2,13 @@
 
 ## Текущий этап
 
-Этап 5. Карты и изображения.
+Этап 6. Canvas / слои сцены.
 
 Статус: выполнено в этом этапе.
 
 ## Цель
 
-Добавить импорт PNG/JPG/JPEG/WEBP/JFIF изображений, копирование выбранного файла в папку assets кампании, создание typed `Asset` записи, привязку map asset к активной сцене и показ импортированного изображения игрокам через `PlayerScreenState`.
+Добавить основу canvas для сцены: typed canvas state, слои карты/сетки/объектов/токенов/master-only/fog, отображение активной сцены в master workspace и безопасную player-visible projection без утечки master-only данных.
 
 ## Уже реализовано до начала этапа
 
@@ -18,72 +18,72 @@
 - JSON campaign storage.
 - Campaign CRUD.
 - Scene creation, active scene switching и scene preview для player screen.
-- Shared `Asset` type уже входил в `Campaign.assets`.
+- Local image asset import.
+- Map asset binding через `Scene.backgroundAssetId`.
 
 ## Что можно использовать
 
-- `Asset`, `AssetKind`, `PlayerHandoutPreview`.
+- `Scene`, `SceneGrid`, `Asset`.
+- `PlayerScreenState.scenePreview`.
 - `desktopApi.storage.saveCampaign`.
 - `desktopApi.playerScreen.updateState`.
-- `Campaign.assets`.
+- `Campaign.scenes`, `Campaign.assets`.
 - `Scene.backgroundAssetId`.
-- `data/campaigns/<campaignId>/assets` для development asset copies.
 
 ## Пробелы этапа
 
-- Не было native image picker IPC.
-- Main process не копировал изображения в campaign asset folder.
-- Renderer не мог добавить imported asset в открытую кампанию.
-- Активная сцена не могла получить map asset.
-- Player screen image mode показывал только тестовый handout.
-- Browser fallback не позволял проверить asset flow без Electron dialog.
+- У сцены не было отдельного canvas state.
+- Master workspace показывал карточку-превью, а не слойную рабочую поверхность.
+- Player scene mode получал только текстовый `scenePreview`, без canvas projection.
+- Не было явной границы между `master-only` и `player-visible` слоями.
+- Старые JSON-сцены не имели поля `canvas`.
 
 ## Что реализовано
 
-- `AssetImportService` в main process для выбора/копирования поддерживаемых изображений.
-- IPC/preload contract `desktopApi.assets.importImageAsset`.
-- `ImportImageAssetRequest` / `ImportImageAssetResult` shared-типы.
-- Renderer `assetFactory` для добавления imported asset в кампанию и сборки player image preview.
-- Map asset автоматически привязывается к активной сцене через `backgroundAssetId`.
-- Assets panel в правой панели мастера: тип, имя, импорт, список изображений и показ игрокам.
-- Workspace активной сцены показывает связанную карту.
-- Browser fallback создает demo image asset с data URL для проверки renderer route.
-- Тесты для `AssetImportService` и `assetFactory`.
+- Shared-типы `SceneCanvasState`, `SceneCanvasLayer`, `SceneCanvasObject` и `PlayerSceneCanvasProjection`.
+- Поле `Scene.canvas` с дефолтными слоями: `map`, `grid`, `object`, `token`, `master`, `fog`.
+- `sceneCanvasFactory` для создания canvas, гидрации legacy-сцен, сводки слоев и player projection.
+- Player projection фильтрует `master-only` и `disabled` слои, а также объекты с `isPlayerVisible: false`.
+- `sceneFactory` создает новые сцены с canvas и добавляет `sceneCanvas` в `PlayerScreenState` при отправке сцены игрокам.
+- `useCampaignsStore` гидрирует старые сцены при открытии кампании.
+- `SceneCanvas` в master workspace показывает карту, сетку, объекты, метрики и стек слоев.
+- Player screen отрисовывает `sceneCanvas` projection в режиме `scene`.
+- Тесты для canvas defaults, legacy hydration и фильтрации master-only данных.
 
 ## Критерии готовности
 
-- Поддерживаемые изображения импортируются через native desktop dialog.
-- Файл копируется в campaign asset folder.
-- В кампании создается typed `Asset`.
-- Map asset привязывается к активной сцене.
-- Импортированное изображение видно в assets panel и workspace preview.
-- Игрокам можно отправить imported image preview.
-- Canvas layers, токены и image editing не реализованы в этом этапе.
+- Canvas стабильно отображает активную сцену в master workspace.
+- Карта, если она привязана к активной сцене, используется как нижний слой canvas.
+- Сетка отображается как отдельный overlay.
+- Слои сцены видны в master UI и имеют typed visibility.
+- `master-only` и `disabled` слои не попадают в player projection.
+- Существующие кампании без `Scene.canvas` гидрируются без падения.
+- Player screen в режиме `scene` умеет отрисовывать `sceneCanvas`.
 - `npm run lint` проходит.
 - `npm run typecheck` проходит.
 - `npm run test` проходит.
 - `npm run dev` запускается.
-- Asset flow проверен в browser route.
+- Master/player canvas flow проверен в browser route.
 
 ## Не входит в этап
 
-- Canvas rendering карты как редактируемого слоя.
-- Drag-and-drop assets.
-- Token art library.
-- Редактирование изображений.
-- Масштаб, pan, grid calibration.
-- Fog of war.
-- Online asset catalog.
-- Marketplace.
+- Pan/zoom.
+- Snap-to-grid.
+- Редактирование grid settings.
+- Drag-and-drop объектов.
+- Реальные token placement tools.
+- Полная fog of war логика.
+- Измерения и area templates.
+- Автоматизация правил D&D.
 
 ## Следующий этап
 
-Этап 6. Canvas / слои сцены.
+Этап 7. Сетка, масштаб и измерения.
 
-Он не начат. Перед ним нужно отдельно подтвердить переход.
+Он не начат.
 
 ## Риски и меры
 
-- Риск хранить внешние пути вместо локальных копий: main process копирует файл в папку assets кампании и сохраняет `file://` URL.
-- Риск смешать asset import с canvas: Stage 5 только импортирует и показывает preview, без canvas state.
-- Риск невозможности проверить Electron dialog в браузере: browser fallback возвращает demo data URL asset для renderer smoke.
+- Риск преждевременно усложнить canvas state: Stage 6 хранит только базовые размеры, слои и позиционируемые объекты.
+- Риск утечки master-only данных игрокам: projection строится отдельной функцией и покрыта тестом.
+- Риск сломать старые campaign JSON: legacy-сцены гидрируются при чтении и перед сценическими мутациями.

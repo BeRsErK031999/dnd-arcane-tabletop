@@ -7,6 +7,11 @@ import type {
   SceneGrid,
   SceneId,
 } from '@shared/types'
+import {
+  createDefaultSceneCanvas,
+  createPlayerSceneCanvasProjection,
+  createSceneWithHydratedCanvas,
+} from './sceneCanvasFactory'
 
 interface CreateEmptySceneOptions {
   campaignId: CampaignId
@@ -37,6 +42,7 @@ export function createEmptyScene(options: CreateEmptySceneOptions): Scene {
     campaignId: options.campaignId,
     name: normalizeSceneName(options.name),
     description: description === '' ? undefined : description,
+    canvas: createDefaultSceneCanvas(),
     tokens: [],
     grid: { ...defaultSceneGrid },
     isActive: options.isActive ?? false,
@@ -56,7 +62,7 @@ export function createCampaignWithNewScene(
   })
   const nextCampaign = {
     ...campaign,
-    scenes: shouldActivateScene ? [scene] : [...campaign.scenes, scene],
+    scenes: shouldActivateScene ? [scene] : [...campaign.scenes.map(createSceneWithHydratedCanvas), scene],
     updatedAt,
   }
 
@@ -75,11 +81,12 @@ export function createCampaignWithActiveScene(
   sceneId: SceneId,
   updatedAt: IsoDateString = new Date().toISOString(),
 ): Campaign {
-  const activeScene = findSceneOrThrow(campaign, sceneId)
+  const hydratedCampaign = createCampaignWithHydratedScenes(campaign)
+  const activeScene = findSceneOrThrow(hydratedCampaign, sceneId)
 
   const nextCampaign = {
-    ...campaign,
-    scenes: campaign.scenes.map((scene) => ({
+    ...hydratedCampaign,
+    scenes: hydratedCampaign.scenes.map((scene) => ({
       ...scene,
       isActive: scene.id === sceneId,
     })),
@@ -107,7 +114,15 @@ export function createCampaignWithScenePreview(
 }
 
 export function getActiveCampaignScene(campaign: Campaign): Scene | null {
-  return campaign.scenes.find((scene) => scene.isActive) ?? campaign.scenes[0] ?? null
+  const scene = campaign.scenes.find((scene) => scene.isActive) ?? campaign.scenes[0] ?? null
+  return scene ? createSceneWithHydratedCanvas(scene) : null
+}
+
+export function createCampaignWithHydratedScenes(campaign: Campaign): Campaign {
+  return {
+    ...campaign,
+    scenes: campaign.scenes.map(createSceneWithHydratedCanvas),
+  }
 }
 
 function createSceneSelectionState(campaign: Campaign, scene: Scene, updatedAt: IsoDateString): PlayerScreenState {
@@ -127,6 +142,7 @@ function createScenePlayerScreenState(campaign: Campaign, scene: Scene, updatedA
     isHidden: false,
     title: scene.name,
     message: scene.description ?? 'Сцена готова к показу игрокам.',
+    sceneCanvas: createPlayerSceneCanvasProjection(scene, campaign.assets),
     visibleTokenIds: scene.tokens.map((token) => token.id),
     revealedAssetIds: scene.backgroundAssetId ? [scene.backgroundAssetId] : [],
   }
@@ -148,7 +164,7 @@ function findSceneOrThrow(campaign: Campaign, sceneId: SceneId): Scene {
     throw new Error('scene-not-found')
   }
 
-  return scene
+  return createSceneWithHydratedCanvas(scene)
 }
 
 function createSceneId(): SceneId {

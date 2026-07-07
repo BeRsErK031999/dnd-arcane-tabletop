@@ -1,5 +1,6 @@
 import type { AssetId } from './asset.js'
 import type { CampaignId, IsoDateString } from './common.js'
+import type { PlayerSceneCanvasProjection } from './sceneCanvas.js'
 import type { SceneId } from './scene.js'
 import type { TokenId } from './token.js'
 
@@ -26,6 +27,7 @@ export interface PlayerScreenState {
   title?: string
   message?: string
   scenePreview?: PlayerScenePreview
+  sceneCanvas?: PlayerSceneCanvasProjection
   handoutPreview?: PlayerHandoutPreview
   initiativeVisible: boolean
   campaignId?: CampaignId

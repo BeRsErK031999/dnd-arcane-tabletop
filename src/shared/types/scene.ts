@@ -1,5 +1,6 @@
 import type { AssetId } from './asset.js'
 import type { CampaignId, EntityId } from './common.js'
+import type { SceneCanvasState } from './sceneCanvas.js'
 import type { Token } from './token.js'
 
 export type SceneId = EntityId
@@ -17,6 +18,7 @@ export interface Scene {
   name: string
   description?: string
   backgroundAssetId?: AssetId
+  canvas: SceneCanvasState
   tokens: Token[]
   grid: SceneGrid
   isActive: boolean

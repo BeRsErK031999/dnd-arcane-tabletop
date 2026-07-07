@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { desktopApi } from '@renderer/services/desktopApi'
-import { createDefaultPlayerScreenState, type PlayerScreenState } from '@shared/types'
+import {
+  createDefaultPlayerScreenState,
+  type PlayerSceneCanvasObject,
+  type PlayerSceneCanvasProjection,
+  type PlayerScreenState,
+} from '@shared/types'
 
 export function PlayerScreenPlaceholderPage() {
   const [playerScreenState, setPlayerScreenState] = useState<PlayerScreenState>(() => createDefaultPlayerScreenState())
@@ -48,7 +53,11 @@ function renderPlayerScreenContent(state: PlayerScreenState) {
     case 'scene':
       return (
         <section className="player-screen__scene">
-          <div className="player-screen__map-preview" aria-hidden="true" />
+          {state.sceneCanvas ? (
+            <PlayerSceneCanvas canvas={state.sceneCanvas} />
+          ) : (
+            <div className="player-screen__map-preview" aria-hidden="true" />
+          )}
           <div className="player-screen__content-panel">
             <p className="eyebrow">Scene</p>
             <h1 className="player-screen__title">{state.title ?? state.scenePreview?.name ?? 'Сцена'}</h1>
@@ -96,5 +105,52 @@ function renderPlayerScreenContent(state: PlayerScreenState) {
           <p>{state.message ?? 'Материалы для игроков пока не выбраны.'}</p>
         </section>
       )
+  }
+}
+
+function PlayerSceneCanvas({ canvas }: { canvas: PlayerSceneCanvasProjection }) {
+  return (
+    <div className="player-scene-canvas" style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}>
+      {canvas.backgroundAsset ? (
+        <img className="player-scene-canvas__map" alt="" src={canvas.backgroundAsset.filePath} />
+      ) : (
+        <div className="player-scene-canvas__placeholder" />
+      )}
+      {canvas.grid.enabled ? (
+        <div
+          className="player-scene-canvas__grid"
+          style={{
+            backgroundSize: `${canvas.grid.size}px ${canvas.grid.size}px`,
+            opacity: canvas.grid.opacity,
+          }}
+        />
+      ) : null}
+      <div className="player-scene-canvas__objects">
+        {canvas.objects.map((object) => (
+          <div
+            className="player-scene-canvas-object"
+            key={object.id}
+            style={getPlayerCanvasObjectStyle(object, canvas.width, canvas.height)}
+          >
+            <span>{object.text ?? object.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function getPlayerCanvasObjectStyle(
+  object: PlayerSceneCanvasObject,
+  canvasWidth: number,
+  canvasHeight: number,
+): CSSProperties {
+  return {
+    left: `${(object.x / canvasWidth) * 100}%`,
+    top: `${(object.y / canvasHeight) * 100}%`,
+    width: `${(object.width / canvasWidth) * 100}%`,
+    height: `${(object.height / canvasHeight) * 100}%`,
+    color: object.color,
+    transform: `rotate(${object.rotation}deg)`,
   }
 }

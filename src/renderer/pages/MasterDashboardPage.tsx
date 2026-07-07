@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { desktopApi } from '@renderer/services/desktopApi'
 import { useCampaignsStore } from '@renderer/stores/useCampaignsStore'
+import { SceneCanvas } from '@renderer/widgets/SceneCanvas'
 import {
   createDefaultPlayerScreenState,
   type Asset,
@@ -287,11 +288,11 @@ export function MasterDashboardPage() {
         <div>
           <p className="eyebrow">Master Console</p>
           <h1>Панель мастера</h1>
-          <p className="muted">Stage 5: карты и изображения через локальный импорт assets.</p>
+          <p className="muted">Stage 6: canvas сцены, слои и player-visible projection.</p>
         </div>
         <div className="button-row">
           {selectedCampaign ? <span className="status-badge">Открыта: {selectedCampaign.name}</span> : null}
-          <span className="status-badge">Этап 5</span>
+          <span className="status-badge">Этап 6</span>
           <button className="button button--secondary" type="button" onClick={refresh}>
             Обновить
           </button>
@@ -392,54 +393,13 @@ export function MasterDashboardPage() {
               </div>
             </div>
 
-            <div className="workspace-board__surface">
-              <div className="workspace-board__grid" aria-hidden="true" />
-              <div className="workspace-board__empty workspace-board__empty--scene">
-                {activeScene ? (
-                  <>
-                    <span className="status-badge">Активная сцена</span>
-                    <h3>{activeScene.name}</h3>
-                    <p>{activeScene.description ?? 'Описание можно добавить при создании следующей сцены.'}</p>
-                    <dl className="scene-detail-grid">
-                      <div>
-                        <dt>Сетка</dt>
-                        <dd>{activeScene.grid.enabled ? `${activeScene.grid.size}px` : 'выключена'}</dd>
-                      </div>
-                      <div>
-                        <dt>Токены</dt>
-                        <dd>{activeScene.tokens.length}</dd>
-                      </div>
-                      <div>
-                        <dt>Карта</dt>
-                        <dd>{activeMapAsset?.name ?? 'не привязана'}</dd>
-                      </div>
-                      <div>
-                        <dt>Player preview</dt>
-                        <dd>{playerStatus.state.activeSceneId === activeScene.id ? 'синхронизирован' : 'не отправлен'}</dd>
-                      </div>
-                    </dl>
-                    {activeMapAsset ? (
-                      <figure className="scene-map-preview">
-                        <img alt="" src={activeMapAsset.filePath} />
-                        <figcaption>{activeMapAsset.name}</figcaption>
-                      </figure>
-                    ) : null}
-                    <button className="button" disabled={isStorageBusy} onClick={() => void handleSendActiveSceneToPlayers()} type="button">
-                      Показать активную сцену игрокам
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <span className="status-badge status-badge--neutral">Stage 4</span>
-                    <h3>Сцена не выбрана</h3>
-                    <p>
-                      Откройте кампанию и создайте первую сцену. Canvas, карта, токены и fog of war останутся будущими
-                      этапами.
-                    </p>
-                  </>
-                )}
-              </div>
-            </div>
+            <SceneCanvas
+              isPlayerSynced={Boolean(activeScene && playerStatus.state.activeSceneId === activeScene.id)}
+              isStorageBusy={isStorageBusy}
+              mapAsset={activeMapAsset}
+              onSendToPlayers={() => void handleSendActiveSceneToPlayers()}
+              scene={activeScene}
+            />
           </section>
 
           <div className="workspace-lower-grid">

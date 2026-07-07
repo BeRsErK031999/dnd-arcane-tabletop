@@ -240,28 +240,43 @@
 
 ## Этап 6. Canvas / слои сцены
 
+Статус: выполнено.
+
 Цель: добавить основу canvas: карта, сетка, объекты, токены, слой мастера и fog of war как будущий слой.
 
 Входит:
-- Canvas workspace.
-- Отдельные слои сцены.
-- Разделение master-only и player-visible данных.
-- Базовое позиционирование объектов.
+- Shared canvas state у `Scene`.
+- Дефолтный стек слоев `map`, `grid`, `object`, `token`, `master`, `fog`.
+- Canvas workspace в master UI.
+- Отдельная player-visible projection.
+- Разделение `master-only`, `player-visible` и `disabled` данных.
+- Базовое позиционирование объектов в модели и рендерере.
+- Гидрация legacy-сцен без `canvas`.
 
 Не входит:
 - Полная логика fog of war.
+- Pan/zoom.
+- Snap-to-grid.
 - Продвинутые измерения.
+- Drag-and-drop объектов.
 - Автоматизация правил D&D.
 
 Критерии готовности:
 - Canvas стабильно отображает сцену.
 - Master-only слой не попадает игрокам.
 - Архитектура допускает новые слои.
+- Player screen получает canvas projection для режима `scene`.
+- Старые JSON-сцены без `canvas` не ломают открытие кампании.
+- `npm run lint`, `npm run typecheck`, `npm run test`, `npm run dev` проходят или блокеры явно описаны.
 
 Затрагивается:
-- renderer feature modules
-- shared scene/canvas types
-- player screen projection
+- `src/shared/types/sceneCanvas.ts`
+- `src/shared/types/scene.ts`
+- `src/shared/types/playerScreen.ts`
+- `src/renderer/stores/sceneCanvasFactory.ts`
+- `src/renderer/widgets/SceneCanvas.tsx`
+- `src/renderer/pages/MasterDashboardPage.tsx`
+- `src/renderer/pages/PlayerScreenPlaceholderPage.tsx`
 
 Риски:
 - Слишком ранняя сложность canvas state.

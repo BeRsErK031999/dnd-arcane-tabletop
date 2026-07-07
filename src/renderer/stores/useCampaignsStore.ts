@@ -13,6 +13,7 @@ import { createCampaignWithAssetPreview, createCampaignWithImportedAsset } from 
 import { createEmptyCampaign, createUpdatedCampaignMetadata } from './campaignFactory'
 import {
   createCampaignWithActiveScene,
+  createCampaignWithHydratedScenes,
   createCampaignWithNewScene,
   createCampaignWithScenePreview,
   getActiveCampaignScene,
@@ -80,9 +81,10 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'campaign-not-found' }
       }
 
-      setSelectedCampaign(campaign)
+      const hydratedCampaign = createCampaignWithHydratedScenes(campaign)
+      setSelectedCampaign(hydratedCampaign)
       setStatus('ready')
-      return { ok: true, campaign }
+      return { ok: true, campaign: hydratedCampaign }
     } catch {
       setLastError('Не удалось открыть кампанию.')
       setStatus('error')

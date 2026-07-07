@@ -89,10 +89,19 @@ Shared-типы находятся в `src/shared/types`.
 - `title`;
 - `message`;
 - `scenePreview`;
+- `sceneCanvas`;
 - `handoutPreview`;
 - `initiativeVisible`;
 - `updatedAt`;
 - будущие связи с campaign, scene, token и asset ids.
+
+На этапе 6 `Scene` получает `canvas` как typed state рабочей поверхности. Canvas state хранит размер сцены, стек слоев и позиционируемые объекты. Слои имеют visibility:
+
+- `player-visible`;
+- `master-only`;
+- `disabled`.
+
+Player window не получает raw `Scene.canvas`. Master renderer строит `PlayerSceneCanvasProjection`, в которую попадают только `player-visible` слои и объекты с `isPlayerVisible = true`. Это сохраняет границу между заметками/слоем мастера и тем, что видят игроки.
 
 ## IPC
 

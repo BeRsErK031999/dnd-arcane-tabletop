@@ -12,7 +12,8 @@ import {
 } from '@shared/types'
 
 const browserFallbackReason = 'desktop-api-unavailable'
-let browserFallbackState = createDefaultPlayerScreenState()
+const browserFallbackStateStorageKey = 'arcane-tabletop:player-screen-state'
+let browserFallbackState = readStoredBrowserFallbackState() ?? createDefaultPlayerScreenState()
 const browserFallbackCampaigns = new Map<CampaignId, Campaign>()
 let browserFallbackAssetCounter = 0
 const browserFallbackStatus: PlayerScreenStatus = {
@@ -60,29 +61,47 @@ const browserFallbackApi: DesktopApi = {
     }),
     close: async () => createBrowserFallbackResult(),
     focus: async () => createBrowserFallbackResult(),
-    getStatus: async () => browserFallbackStatus,
+    getStatus: async () => syncBrowserFallbackStateFromStorage(),
     setFullscreen: async () => createBrowserFallbackResult(),
     toggleFullscreen: async () => createBrowserFallbackResult(),
-    getState: async () => browserFallbackState,
+    getState: async () => syncBrowserFallbackStateFromStorage().state,
     updateState: async (state: PlayerScreenState) => updateBrowserFallbackState(state),
     resetState: async () => updateBrowserFallbackState(createDefaultPlayerScreenState()),
     hide: async () =>
       updateBrowserFallbackState({
-        ...browserFallbackState,
+        ...syncBrowserFallbackStateFromStorage().state,
         isHidden: true,
       }),
     show: async () =>
       updateBrowserFallbackState({
-        ...browserFallbackState,
+        ...syncBrowserFallbackStateFromStorage().state,
         isHidden: false,
       }),
     onStateUpdated: (listener) => {
       browserFallbackStateListeners.add(listener)
-      return () => browserFallbackStateListeners.delete(listener)
+      const onStorage = (event: StorageEvent) => {
+        if (event.key === browserFallbackStateStorageKey) {
+          listener(syncBrowserFallbackStateFromStorage().state)
+        }
+      }
+      window.addEventListener('storage', onStorage)
+      return () => {
+        browserFallbackStateListeners.delete(listener)
+        window.removeEventListener('storage', onStorage)
+      }
     },
     onStatusChanged: (listener) => {
       browserFallbackStatusListeners.add(listener)
-      return () => browserFallbackStatusListeners.delete(listener)
+      const onStorage = (event: StorageEvent) => {
+        if (event.key === browserFallbackStateStorageKey) {
+          listener(syncBrowserFallbackStateFromStorage())
+        }
+      }
+      window.addEventListener('storage', onStorage)
+      return () => {
+        browserFallbackStatusListeners.delete(listener)
+        window.removeEventListener('storage', onStorage)
+      }
     },
   },
 }
@@ -129,12 +148,11 @@ function escapeSvgText(value: string): string {
 }
 
 function updateBrowserFallbackState(state: PlayerScreenState): PlayerScreenCommandResult {
-  browserFallbackState = {
+  browserFallbackState = cloneBrowserFallbackState({
     ...state,
-    visibleTokenIds: [...state.visibleTokenIds],
-    revealedAssetIds: [...state.revealedAssetIds],
     updatedAt: new Date().toISOString(),
-  }
+  })
+  writeStoredBrowserFallbackState(browserFallbackState)
   browserFallbackStatus.state = browserFallbackState
 
   for (const listener of browserFallbackStateListeners) {
@@ -146,4 +164,54 @@ function updateBrowserFallbackState(state: PlayerScreenState): PlayerScreenComma
   }
 
   return createBrowserFallbackResult(true, undefined)
+}
+
+function syncBrowserFallbackStateFromStorage(): PlayerScreenStatus {
+  const storedState = readStoredBrowserFallbackState()
+
+  if (storedState) {
+    browserFallbackState = storedState
+    browserFallbackStatus.state = browserFallbackState
+  }
+
+  return browserFallbackStatus
+}
+
+function readStoredBrowserFallbackState(): PlayerScreenState | null {
+  try {
+    const serializedState = window.localStorage.getItem(browserFallbackStateStorageKey)
+
+    if (!serializedState) {
+      return null
+    }
+
+    return cloneBrowserFallbackState(JSON.parse(serializedState) as PlayerScreenState)
+  } catch {
+    return null
+  }
+}
+
+function writeStoredBrowserFallbackState(state: PlayerScreenState): void {
+  try {
+    window.localStorage.setItem(browserFallbackStateStorageKey, JSON.stringify(state))
+  } catch {
+    // Browser fallback verification can continue with in-memory state.
+  }
+}
+
+function cloneBrowserFallbackState(state: PlayerScreenState): PlayerScreenState {
+  return {
+    ...state,
+    visibleTokenIds: [...state.visibleTokenIds],
+    revealedAssetIds: [...state.revealedAssetIds],
+    sceneCanvas: state.sceneCanvas
+      ? {
+          ...state.sceneCanvas,
+          grid: { ...state.sceneCanvas.grid },
+          backgroundAsset: state.sceneCanvas.backgroundAsset ? { ...state.sceneCanvas.backgroundAsset } : undefined,
+          layers: state.sceneCanvas.layers.map((layer) => ({ ...layer })),
+          objects: state.sceneCanvas.objects.map((object) => ({ ...object })),
+        }
+      : undefined,
+  }
 }

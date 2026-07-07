@@ -23,6 +23,10 @@ describe('sceneFactory', () => {
       campaignId: 'campaign-test',
       name: 'Ритуальный зал',
       description: 'Светятся семь колонн',
+      canvas: {
+        width: 1600,
+        height: 900,
+      },
       tokens: [],
       grid: {
         enabled: true,
@@ -64,7 +68,7 @@ describe('sceneFactory', () => {
     })
   })
 
-  it('switches the active scene without creating canvas data', () => {
+  it('switches the active scene and keeps canvas data hydrated', () => {
     const campaign = createEmptyCampaign({
       id: 'campaign-test',
       name: 'Campaign',
@@ -82,6 +86,7 @@ describe('sceneFactory', () => {
     expect(updated.playerScreenState.activeSceneId).toBe('scene-second')
     expect(getActiveCampaignScene(updated)?.id).toBe('scene-second')
     expect(updated.scenes.every((scene) => scene.tokens.length === 0)).toBe(true)
+    expect(updated.scenes.every((scene) => scene.canvas.layers.length > 0)).toBe(true)
   })
 
   it('builds a player scene preview from the active scene', () => {
@@ -110,6 +115,10 @@ describe('sceneFactory', () => {
         name: 'Северная башня',
         description: 'Окна выходят на шторм.',
         locationLabel: 'Сцена кампании',
+      },
+      sceneCanvas: {
+        width: 1600,
+        height: 900,
       },
     })
   })

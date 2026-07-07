@@ -163,6 +163,8 @@
 
 ## Этап 4. Сцены и переключение сцен
 
+Статус: выполнено.
+
 Цель: добавить создание сцен, список сцен, активную сцену и отправку выбранной сцены игрокам.
 
 Входит:
@@ -170,22 +172,28 @@
 - Активная сцена кампании.
 - UI выбора сцены.
 - Передача preview активной сцены в `PlayerScreenState`.
+- Сохранение active scene state через существующий JSON storage.
+- Browser fallback для проверки player screen state в renderer route.
 
 Не входит:
 - Реальная карта сцены.
 - Canvas tokens.
 - Fog of war.
+- Импорт изображений и asset binding.
 
 Критерии готовности:
 - Сцены создаются и переключаются.
 - Активная сцена сохраняется в кампании.
 - Игрокам отправляется scene preview.
+- Первая сцена становится активной автоматически.
+- `npm run lint`, `npm run typecheck`, `npm run test`, `npm run dev` проходят или блокеры явно описаны.
 
 Затрагивается:
 - `src/shared/types/scene.ts`
 - `src/renderer/pages`
 - `src/renderer/stores`
 - storage layer
+- player screen fallback
 
 Риски:
 - Смешать сцену как доменную сущность с будущим canvas состоянием.

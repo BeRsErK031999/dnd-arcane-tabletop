@@ -2,13 +2,13 @@
 
 ## Текущий этап
 
-Этап 3. JSON-хранение кампаний.
+Этап 4. Сцены и переключение сцен.
 
 Статус: выполнено в этом этапе.
 
 ## Цель
 
-Реализовать создание, открытие, сохранение и удаление кампаний через существующий `StorageService` и JSON-файлы, не добавляя SQLite, backend или реальные игровые сущности следующих этапов.
+Добавить создание сцен внутри открытой кампании, выбор активной сцены, сохранение active scene state в JSON-кампании и отправку preview активной сцены на экран игроков.
 
 ## Уже реализовано до начала этапа
 
@@ -17,66 +17,72 @@
 - Typed IPC для player screen.
 - Основной Stage 2 layout мастера.
 - `StorageService` и `JsonStorageService`.
-- Storage IPC и preload API для `list/load/save/delete`.
+- Campaign CRUD через `useCampaignsStore`.
+- Валидная пустая `Campaign` shape с `combatState` и `playerScreenState`.
 
 ## Что можно использовать
 
-- `desktopApi.storage`.
-- `useCampaignsStore`.
-- Shared `Campaign` / `CampaignSummary` types.
-- `data/campaigns` для development JSON-файлов.
-- `JsonStorageService` tests как гарантию безопасного чтения/записи.
+- `Campaign.scenes`.
+- Shared `Scene` / `SceneGrid` / `SceneId` types.
+- `PlayerScreenState.activeSceneId` и `scenePreview`.
+- `desktopApi.storage` для сохранения кампании.
+- `desktopApi.playerScreen.updateState` для отправки preview.
+- Master workspace и scene strip из Stage 2.
 
 ## Пробелы этапа
 
-- Renderer store умел только читать список кампаний.
-- Не было фабрики пустой кампании с валидным domain shape.
-- Master UI не мог создать, открыть, сохранить или удалить кампанию.
-- Browser fallback API не позволял проверить campaign flow в Vite route.
+- Scene strip был демонстрационным и не был связан с открытой кампанией.
+- Не было фабрики пустой сцены с валидной grid/tokens shape.
+- Store не умел создавать сцену, активировать сцену и сохранять это в кампанию.
+- Экран игроков мог получать только тестовую scene preview, не сцену из campaign state.
+- Browser fallback для player state не повторял поведение main process `updateState`.
 
 ## Что реализовано
 
-- `createEmptyCampaign` для валидной пустой кампании.
-- Обновление метаданных открытой кампании без изменения будущих scene/assets данных.
-- `useCampaignsStore` с операциями `createCampaign`, `openCampaign`, `saveSelectedCampaign`, `deleteSelectedCampaign`.
-- In-memory browser fallback storage для проверки renderer route без записи в repo.
-- Campaign manager в master workspace: форма создания, открытая кампания, сохранение, удаление и список JSON-файлов.
-- Тесты для campaign factory.
+- `createEmptyScene` с пустыми tokens и базовой grid shape.
+- Campaign scene helpers для добавления первой/следующих сцен, переключения active scene и сборки player scene preview.
+- `useCampaignsStore` получил операции `createScene`, `activateScene`, `sendActiveSceneToPlayers`.
+- Scene strip показывает реальные сцены открытой кампании.
+- Первая созданная сцена автоматически становится активной.
+- Workspace показывает активную сцену, grid summary, token count и статус синхронизации с player preview.
+- Активную сцену можно отправить игрокам через существующий player screen contract.
+- Browser fallback player state теперь обновляется через `updateState`, `hide`, `show`, `resetState`.
+- Добавлены тесты для scene factory.
 
 ## Критерии готовности
 
-- Кампания создается и сохраняется через storage API.
-- Список кампаний обновляется после создания, сохранения и удаления.
-- Кампанию можно открыть из списка.
-- Метаданные открытой кампании можно сохранить.
-- Пустая кампания содержит валидные `combatState` и `playerScreenState`.
-- Невалидные и небезопасные имена файлов по-прежнему покрыты storage tests.
-- Storage остается заменяемым через `StorageService`.
+- Сцены создаются внутри открытой кампании.
+- Первая сцена становится активной автоматически.
+- Активную сцену можно переключить из scene strip.
+- Active scene state сохраняется в JSON-кампании.
+- Player screen получает preview активной сцены через `PlayerScreenState`.
+- Canvas, карта, токены и fog of war не реализованы в этом этапе.
 - `npm run lint` проходит.
 - `npm run typecheck` проходит.
 - `npm run test` проходит.
 - `npm run dev` запускается.
-- Campaign flow проверен в browser route.
+- Scene flow проверен в browser route.
 
 ## Не входит в этап
 
-- Создание реальных сцен.
-- Активная сцена и переключение сцен.
-- Импорт изображений и asset library.
+- Реальная карта сцены.
 - Canvas.
-- Токены.
+- Импорт изображений.
+- Asset binding к сцене.
+- Создание или перемещение токенов.
 - Fog of war.
+- Измерения, масштаб, pan и grid editing.
 - Карточки персонажей.
 - SQLite, PostgreSQL, backend, cloud, online mode.
 
 ## Следующий этап
 
-Этап 4. Сцены и переключение сцен.
+Этап 5. Карты и изображения.
 
 Он не начат. Перед ним нужно отдельно подтвердить переход.
 
 ## Риски и меры
 
-- Риск связать renderer с JSON-форматом: renderer работает через `desktopApi.storage`, а JSON остается деталью `JsonStorageService`.
-- Риск начать Stage 4 раньше времени: campaign factory создает пустые массивы сцен/ассетов/персонажей без UI редактирования.
-- Риск оставлять тестовые campaign files в repo: browser verification использует in-memory fallback, а storage tests используют temp directories.
+- Риск начать canvas раньше времени: Stage 4 хранит только `Scene` metadata, пустые `tokens` и базовую `grid`.
+- Риск разойтись с player screen contract: preview строится через существующий `PlayerScreenState.scenePreview`.
+- Риск несохраненного active scene state: scene operations всегда сохраняют обновленную кампанию через `desktopApi.storage`.

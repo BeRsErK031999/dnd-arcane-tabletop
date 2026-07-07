@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
 import { desktopApi } from '@renderer/services/desktopApi'
-import type { Campaign, CampaignId, CampaignSummary } from '@shared/types'
+import type { Campaign, CampaignId, CampaignSummary, PlayerScreenCommandResult, SceneId } from '@shared/types'
 import { createEmptyCampaign, createUpdatedCampaignMetadata } from './campaignFactory'
+import {
+  createCampaignWithActiveScene,
+  createCampaignWithNewScene,
+  createCampaignWithScenePreview,
+  getActiveCampaignScene,
+} from './sceneFactory'
 
 export type CampaignsStoreStatus = 'idle' | 'loading' | 'ready' | 'saving' | 'deleting' | 'error'
 export type CampaignMutationResult = { ok: true; campaign: Campaign } | { ok: false; reason: string }
+export type PlayerScenePreviewResult =
+  | { ok: true; campaign: Campaign; playerStatus: PlayerScreenCommandResult }
+  | { ok: false; reason: string }
 
 export function useCampaignsStore() {
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([])
@@ -117,6 +126,96 @@ export function useCampaignsStore() {
     }
   }, [selectedCampaign])
 
+  const createScene = useCallback(
+    async (name: string, description?: string): Promise<CampaignMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для создания сцены.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithNewScene(selectedCampaign, { name, description })
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign }
+      } catch {
+        setLastError('Не удалось создать сцену.')
+        setStatus('error')
+        return { ok: false, reason: 'create-scene-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const activateScene = useCallback(
+    async (sceneId: SceneId): Promise<CampaignMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для выбора сцены.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithActiveScene(selectedCampaign, sceneId)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign }
+      } catch {
+        setLastError('Не удалось выбрать активную сцену.')
+        setStatus('error')
+        return { ok: false, reason: 'activate-scene-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const sendActiveSceneToPlayers = useCallback(async (): Promise<PlayerScenePreviewResult> => {
+    if (selectedCampaign === null) {
+      setLastError('Нет открытой кампании для показа сцены.')
+      return { ok: false, reason: 'campaign-not-selected' }
+    }
+
+    const activeScene = getActiveCampaignScene(selectedCampaign)
+
+    if (activeScene === null) {
+      setLastError('В кампании нет сцены для показа игрокам.')
+      return { ok: false, reason: 'scene-not-selected' }
+    }
+
+    setStatus('saving')
+    setLastError(null)
+
+    try {
+      const updatedCampaign = createCampaignWithScenePreview(selectedCampaign, activeScene.id)
+      await desktopApi.storage.saveCampaign(updatedCampaign)
+      const playerStatus = await desktopApi.playerScreen.updateState(updatedCampaign.playerScreenState)
+
+      if (!playerStatus.ok) {
+        setLastError('Не удалось отправить сцену игрокам.')
+        setStatus('error')
+        return { ok: false, reason: playerStatus.reason ?? 'player-screen-update-failed' }
+      }
+
+      setSelectedCampaign(updatedCampaign)
+      setCampaigns(await desktopApi.storage.listCampaigns())
+      setStatus('ready')
+      return { ok: true, campaign: updatedCampaign, playerStatus }
+    } catch {
+      setLastError('Не удалось отправить сцену игрокам.')
+      setStatus('error')
+      return { ok: false, reason: 'send-scene-failed' }
+    }
+  }, [selectedCampaign])
+
   useEffect(() => {
     void refresh()
   }, [refresh])
@@ -131,5 +230,8 @@ export function useCampaignsStore() {
     openCampaign,
     saveSelectedCampaign,
     deleteSelectedCampaign,
+    createScene,
+    activateScene,
+    sendActiveSceneToPlayers,
   }
 }

@@ -222,10 +222,50 @@ h1 {
   font-weight: 800;
 }
 
+.scene-strip__actions {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.scene-strip__actions input {
+  min-width: 0;
+  padding: 9px 10px;
+  color: #191817;
+  background: #fbfaf7;
+  border: 1px solid #d8d3c8;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.scene-strip__actions input:disabled {
+  color: #8c8580;
+  background: #f2eee7;
+}
+
 .scene-strip__items {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.scene-strip__empty,
+.scene-strip__status {
+  margin-bottom: 0;
+  color: #69625b;
+  font-size: 13px;
+}
+
+.scene-strip__empty {
+  grid-column: 1 / -1;
+  min-height: 58px;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: #f8f6f1;
+  border: 1px dashed #d8d3c8;
+  border-radius: 6px;
 }
 
 .scene-tab {
@@ -253,7 +293,11 @@ h1 {
 }
 
 .scene-tab span {
+  min-width: 0;
+  overflow: hidden;
   font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .scene-tab small,
@@ -272,6 +316,37 @@ h1 {
   border: 1px solid #b8dbd1;
   border-radius: 999px;
   font-size: 11px;
+  font-weight: 800;
+}
+
+.scene-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: min(100%, 560px);
+  margin: 4px 0 0;
+}
+
+.scene-detail-grid div {
+  min-height: 64px;
+  display: grid;
+  gap: 4px;
+  align-content: center;
+  padding: 10px;
+  background: rgb(255 255 255 / 72%);
+  border: 1px solid #e2dbcf;
+  border-radius: 6px;
+}
+
+.scene-detail-grid dt {
+  color: #69625b;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.scene-detail-grid dd {
+  margin: 0;
   font-weight: 800;
 }
 
@@ -950,4 +1025,25 @@ h1 {
 
 .player-screen__split-pane--handout {
   background: #221d21;
+}
+
+@media (max-width: 1180px) {
+  .master-workbench {
+    grid-template-columns: 150px minmax(0, 1fr);
+  }
+
+  .context-panel {
+    grid-column: 1 / -1;
+  }
+
+  .scene-strip__actions,
+  .campaign-manager__grid,
+  .workspace-lower-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .scene-strip__items,
+  .scene-detail-grid {
+    grid-template-columns: 1fr;
+  }
 }

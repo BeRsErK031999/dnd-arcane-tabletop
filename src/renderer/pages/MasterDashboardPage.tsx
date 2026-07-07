@@ -12,41 +12,11 @@ import {
 type PlayerActionResult = PlayerScreenCommandResult | PlayerScreenOpenResult
 type RightPanelTab = 'assets' | 'characters' | 'notes'
 
-interface SceneNavigationItem {
-  id: string
-  title: string
-  meta: string
-  status: string
-  isActive?: boolean
-}
-
 interface ToolItem {
   label: string
   shortcut: string
   status: string
 }
-
-const sceneNavigationItems: SceneNavigationItem[] = [
-  {
-    id: 'scene-active',
-    title: 'Зал старого совета',
-    meta: 'Текущая сцена',
-    status: 'preview',
-    isActive: true,
-  },
-  {
-    id: 'scene-road',
-    title: 'Лесная дорога',
-    meta: 'Будущий слот',
-    status: 'draft',
-  },
-  {
-    id: 'scene-crypt',
-    title: 'Нижний склеп',
-    meta: 'Будущий слот',
-    status: 'draft',
-  },
-]
 
 const toolGroups: Array<{ title: string; items: ToolItem[] }> = [
   {
@@ -85,6 +55,9 @@ export function MasterDashboardPage() {
     openCampaign,
     saveSelectedCampaign,
     deleteSelectedCampaign,
+    createScene,
+    activateScene,
+    sendActiveSceneToPlayers,
   } = useCampaignsStore()
   const [activeRightPanel, setActiveRightPanel] = useState<RightPanelTab>('assets')
   const [newCampaignName, setNewCampaignName] = useState('')
@@ -92,6 +65,9 @@ export function MasterDashboardPage() {
   const [editorName, setEditorName] = useState('')
   const [editorDescription, setEditorDescription] = useState('')
   const [campaignActionStatus, setCampaignActionStatus] = useState('JSON-хранилище готово к работе.')
+  const [newSceneName, setNewSceneName] = useState('')
+  const [newSceneDescription, setNewSceneDescription] = useState('')
+  const [sceneActionStatus, setSceneActionStatus] = useState('Откройте кампанию, чтобы управлять сценами.')
   const [playerStatus, setPlayerStatus] = useState<PlayerScreenStatus>(() => ({
     isOpen: false,
     isFullscreen: false,
@@ -107,6 +83,10 @@ export function MasterDashboardPage() {
       characters: campaigns.reduce((sum, campaign) => sum + campaign.characterCount, 0),
     }),
     [campaigns],
+  )
+  const activeScene = useMemo(
+    () => selectedCampaign?.scenes.find((scene) => scene.isActive) ?? selectedCampaign?.scenes[0] ?? null,
+    [selectedCampaign],
   )
 
   const rightPanelTabs: Array<{ id: RightPanelTab; label: string; count: number }> = [
@@ -148,6 +128,7 @@ export function MasterDashboardPage() {
       setNewCampaignName('')
       setNewCampaignDescription('')
       setCampaignActionStatus(`Кампания "${result.campaign.name}" создана и сохранена.`)
+      setSceneActionStatus('Создайте первую сцену для открытой кампании.')
       return
     }
 
@@ -159,6 +140,11 @@ export function MasterDashboardPage() {
 
     if (result.ok) {
       setCampaignActionStatus(`Кампания "${result.campaign.name}" открыта.`)
+      setSceneActionStatus(
+        result.campaign.scenes.length === 0
+          ? 'В кампании пока нет сцен.'
+          : `В кампании доступно сцен: ${result.campaign.scenes.length}.`,
+      )
       return
     }
 
@@ -182,10 +168,51 @@ export function MasterDashboardPage() {
 
     if (deleted) {
       setCampaignActionStatus(`Кампания "${campaignName}" удалена.`)
+      setSceneActionStatus('Откройте кампанию, чтобы управлять сценами.')
       return
     }
 
     setCampaignActionStatus('Не удалось удалить кампанию.')
+  }
+
+  async function handleCreateScene(): Promise<void> {
+    const result = await createScene(newSceneName, newSceneDescription)
+
+    if (result.ok) {
+      const createdScene = result.campaign.scenes[result.campaign.scenes.length - 1]
+      setNewSceneName('')
+      setNewSceneDescription('')
+      setSceneActionStatus(`Сцена "${createdScene.name}" создана и сохранена.`)
+      return
+    }
+
+    setSceneActionStatus('Не удалось создать сцену.')
+  }
+
+  async function handleActivateScene(sceneId: string): Promise<void> {
+    const result = await activateScene(sceneId)
+
+    if (result.ok) {
+      const scene = result.campaign.scenes.find((candidate) => candidate.id === sceneId)
+      setSceneActionStatus(`Сцена "${scene?.name ?? 'без названия'}" выбрана активной.`)
+      return
+    }
+
+    setSceneActionStatus('Не удалось выбрать сцену.')
+  }
+
+  async function handleSendActiveSceneToPlayers(): Promise<void> {
+    const result = await sendActiveSceneToPlayers()
+
+    if (result.ok) {
+      const sceneName = result.campaign.playerScreenState.scenePreview?.name ?? 'активная сцена'
+      setPlayerStatus(getStatusFromPlayerAction(result.playerStatus))
+      setSceneActionStatus(`Сцена "${sceneName}" отправлена игрокам.`)
+      setPlayerActionStatus(`Сцена "${sceneName}" отправлена игрокам.`)
+      return
+    }
+
+    setSceneActionStatus('Не удалось отправить активную сцену игрокам.')
   }
 
   async function runPlayerAction(label: string, action: () => Promise<PlayerActionResult>): Promise<void> {
@@ -206,11 +233,11 @@ export function MasterDashboardPage() {
         <div>
           <p className="eyebrow">Master Console</p>
           <h1>Панель мастера</h1>
-          <p className="muted">Stage 3: локальные JSON-кампании поверх рабочей области мастера.</p>
+          <p className="muted">Stage 4: сцены кампании, активная сцена и preview для экрана игроков.</p>
         </div>
         <div className="button-row">
           {selectedCampaign ? <span className="status-badge">Открыта: {selectedCampaign.name}</span> : null}
-          <span className="status-badge">Этап 3</span>
+          <span className="status-badge">Этап 4</span>
           <button className="button button--secondary" type="button" onClick={refresh}>
             Обновить
           </button>
@@ -220,22 +247,55 @@ export function MasterDashboardPage() {
       <section className="scene-strip" aria-label="Сцены">
         <div className="scene-strip__header">
           <span>Сцены</span>
-          <span className="muted">Список пока демонстрационный</span>
+          <span className="muted">
+            {selectedCampaign ? `${selectedCampaign.scenes.length} в открытой кампании` : 'Откройте кампанию'}
+          </span>
         </div>
+        <form
+          className="scene-strip__actions"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void handleCreateScene()
+          }}
+        >
+          <input
+            disabled={selectedCampaign === null || isStorageBusy}
+            onChange={(event) => setNewSceneName(event.target.value)}
+            placeholder="Например: Ритуальный зал"
+            value={newSceneName}
+          />
+          <input
+            disabled={selectedCampaign === null || isStorageBusy}
+            onChange={(event) => setNewSceneDescription(event.target.value)}
+            placeholder="Короткое описание сцены"
+            value={newSceneDescription}
+          />
+          <button className="button" disabled={selectedCampaign === null || isStorageBusy} type="submit">
+            Создать сцену
+          </button>
+        </form>
         <div className="scene-strip__items">
-          {sceneNavigationItems.map((scene) => (
-            <button
-              className={scene.isActive ? 'scene-tab scene-tab--active' : 'scene-tab'}
-              disabled={!scene.isActive}
-              key={scene.id}
-              type="button"
-            >
-              <span>{scene.title}</span>
-              <small>{scene.meta}</small>
-              <span className="scene-tab__status">{scene.status}</span>
-            </button>
-          ))}
+          {selectedCampaign === null ? (
+            <p className="scene-strip__empty">Создайте или откройте кампанию, чтобы добавить сцены.</p>
+          ) : selectedCampaign.scenes.length === 0 ? (
+            <p className="scene-strip__empty">Сцен пока нет. Первая созданная сцена станет активной.</p>
+          ) : (
+            selectedCampaign.scenes.map((scene) => (
+              <button
+                className={scene.isActive ? 'scene-tab scene-tab--active' : 'scene-tab'}
+                disabled={isStorageBusy}
+                key={scene.id}
+                onClick={() => void handleActivateScene(scene.id)}
+                type="button"
+              >
+                <span>{scene.name}</span>
+                <small>{scene.description ?? 'Без описания'}</small>
+                <span className="scene-tab__status">{scene.isActive ? 'active' : 'draft'}</span>
+              </button>
+            ))
+          )}
         </div>
+        <p className="scene-strip__status">{sceneActionStatus}</p>
       </section>
 
       <div className="master-workbench">
@@ -270,23 +330,50 @@ export function MasterDashboardPage() {
             <div className="workspace-board__toolbar">
               <div>
                 <p className="eyebrow">Scene Workspace</p>
-                <h2>Рабочая область сцены</h2>
+                <h2>{activeScene?.name ?? 'Рабочая область сцены'}</h2>
               </div>
               <div className="workspace-board__meta">
-                <span>Canvas: next stage</span>
+                <span>Canvas: Stage 5</span>
                 <span>Player mode: {playerStatus.state.mode}</span>
               </div>
             </div>
 
             <div className="workspace-board__surface">
               <div className="workspace-board__grid" aria-hidden="true" />
-              <div className="workspace-board__empty">
-                <span className="status-badge status-badge--neutral">Stage 2 shell</span>
-                <h3>Центральная область готова под сцену</h3>
-                <p>
-                  Здесь позже появятся canvas, карта, сетка и объекты. Сейчас это только стабильный layout для следующих
-                  этапов.
-                </p>
+              <div className="workspace-board__empty workspace-board__empty--scene">
+                {activeScene ? (
+                  <>
+                    <span className="status-badge">Активная сцена</span>
+                    <h3>{activeScene.name}</h3>
+                    <p>{activeScene.description ?? 'Описание можно добавить при создании следующей сцены.'}</p>
+                    <dl className="scene-detail-grid">
+                      <div>
+                        <dt>Сетка</dt>
+                        <dd>{activeScene.grid.enabled ? `${activeScene.grid.size}px` : 'выключена'}</dd>
+                      </div>
+                      <div>
+                        <dt>Токены</dt>
+                        <dd>{activeScene.tokens.length}</dd>
+                      </div>
+                      <div>
+                        <dt>Player preview</dt>
+                        <dd>{playerStatus.state.activeSceneId === activeScene.id ? 'синхронизирован' : 'не отправлен'}</dd>
+                      </div>
+                    </dl>
+                    <button className="button" disabled={isStorageBusy} onClick={() => void handleSendActiveSceneToPlayers()} type="button">
+                      Показать активную сцену игрокам
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="status-badge status-badge--neutral">Stage 4</span>
+                    <h3>Сцена не выбрана</h3>
+                    <p>
+                      Откройте кампанию и создайте первую сцену. Canvas, карта, токены и fog of war останутся будущими
+                      этапами.
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           </section>

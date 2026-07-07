@@ -5,22 +5,25 @@ import {
   type CampaignId,
   type CampaignSummary,
   type PlayerScreenCommandResult,
+  type PlayerScreenState,
   type PlayerScreenStatus,
 } from '@shared/types'
 
 const browserFallbackReason = 'desktop-api-unavailable'
-const browserFallbackState = createDefaultPlayerScreenState()
+let browserFallbackState = createDefaultPlayerScreenState()
 const browserFallbackCampaigns = new Map<CampaignId, Campaign>()
 const browserFallbackStatus: PlayerScreenStatus = {
   isOpen: false,
   isFullscreen: false,
   state: browserFallbackState,
 }
+const browserFallbackStateListeners = new Set<(state: PlayerScreenState) => void>()
+const browserFallbackStatusListeners = new Set<(status: PlayerScreenStatus) => void>()
 
-function createBrowserFallbackResult(): PlayerScreenCommandResult {
+function createBrowserFallbackResult(ok = false, reason: string | undefined = browserFallbackReason): PlayerScreenCommandResult {
   return {
-    ok: false,
-    reason: browserFallbackReason,
+    ok,
+    reason,
     ...browserFallbackStatus,
   }
 }
@@ -52,12 +55,26 @@ const browserFallbackApi: DesktopApi = {
     setFullscreen: async () => createBrowserFallbackResult(),
     toggleFullscreen: async () => createBrowserFallbackResult(),
     getState: async () => browserFallbackState,
-    updateState: async () => createBrowserFallbackResult(),
-    resetState: async () => createBrowserFallbackResult(),
-    hide: async () => createBrowserFallbackResult(),
-    show: async () => createBrowserFallbackResult(),
-    onStateUpdated: () => () => undefined,
-    onStatusChanged: () => () => undefined,
+    updateState: async (state: PlayerScreenState) => updateBrowserFallbackState(state),
+    resetState: async () => updateBrowserFallbackState(createDefaultPlayerScreenState()),
+    hide: async () =>
+      updateBrowserFallbackState({
+        ...browserFallbackState,
+        isHidden: true,
+      }),
+    show: async () =>
+      updateBrowserFallbackState({
+        ...browserFallbackState,
+        isHidden: false,
+      }),
+    onStateUpdated: (listener) => {
+      browserFallbackStateListeners.add(listener)
+      return () => browserFallbackStateListeners.delete(listener)
+    },
+    onStatusChanged: (listener) => {
+      browserFallbackStatusListeners.add(listener)
+      return () => browserFallbackStatusListeners.delete(listener)
+    },
   },
 }
 
@@ -73,4 +90,24 @@ function createCampaignSummary(campaign: Campaign): CampaignSummary {
     assetCount: campaign.assets.length,
     characterCount: campaign.characterCards.length,
   }
+}
+
+function updateBrowserFallbackState(state: PlayerScreenState): PlayerScreenCommandResult {
+  browserFallbackState = {
+    ...state,
+    visibleTokenIds: [...state.visibleTokenIds],
+    revealedAssetIds: [...state.revealedAssetIds],
+    updatedAt: new Date().toISOString(),
+  }
+  browserFallbackStatus.state = browserFallbackState
+
+  for (const listener of browserFallbackStateListeners) {
+    listener(browserFallbackState)
+  }
+
+  for (const listener of browserFallbackStatusListeners) {
+    listener(browserFallbackStatus)
+  }
+
+  return createBrowserFallbackResult(true, undefined)
 }

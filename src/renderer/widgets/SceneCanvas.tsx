@@ -18,6 +18,7 @@ import type { SceneMeasurementTemplate } from '@renderer/stores/sceneToolsFactor
 interface SceneCanvasProps {
   scene: Scene | null
   mapAsset: Asset | null
+  assets: Asset[]
   isPlayerSynced: boolean
   isStorageBusy: boolean
   onAddMeasurement(template: SceneMeasurementTemplate): void
@@ -30,6 +31,7 @@ interface SceneCanvasProps {
 export function SceneCanvas({
   scene,
   mapAsset,
+  assets,
   isPlayerSynced,
   isStorageBusy,
   onAddMeasurement,
@@ -42,7 +44,7 @@ export function SceneCanvas({
     return (
       <div className="scene-canvas scene-canvas--empty">
         <div className="scene-canvas__empty">
-          <span className="status-badge status-badge--neutral">Stage 7</span>
+          <span className="status-badge status-badge--neutral">Stage 8</span>
           <h3>Сцена не выбрана</h3>
           <p>Откройте кампанию и создайте первую сцену.</p>
         </div>
@@ -52,7 +54,8 @@ export function SceneCanvas({
 
   const canvas = getSceneCanvasState(scene)
   const layerSummary = getSceneCanvasLayerSummary(scene)
-  const playerProjection = createPlayerSceneCanvasProjection(scene, mapAsset ? [mapAsset] : [])
+  const assetsById = new Map(assets.map((asset) => [asset.id, asset]))
+  const playerProjection = createPlayerSceneCanvasProjection(scene, assets)
   const viewportTransform: CSSProperties = {
     transform: `translate(${canvas.viewport.panX}px, ${canvas.viewport.panY}px) scale(${canvas.viewport.zoom})`,
   }
@@ -83,13 +86,13 @@ export function SceneCanvas({
 
             <div className="scene-canvas__objects">
               {canvas.objects.map((object) => (
-                <div
-                  className={object.isPlayerVisible ? 'scene-canvas-object' : 'scene-canvas-object scene-canvas-object--master'}
+                <CanvasObject
+                  asset={object.assetId ? assetsById.get(object.assetId) : undefined}
+                  canvasHeight={canvas.height}
+                  canvasWidth={canvas.width}
                   key={object.id}
-                  style={getCanvasObjectStyle(object, canvas.width, canvas.height)}
-                >
-                  <span>{object.text ?? object.name}</span>
-                </div>
+                  object={object}
+                />
               ))}
             </div>
 
@@ -396,6 +399,35 @@ function CanvasMeasurement({
       style={getAreaMeasurementStyle(measurement, canvasWidth, canvasHeight)}
     >
       <span>{measurement.label}</span>
+    </div>
+  )
+}
+
+function CanvasObject({
+  asset,
+  canvasHeight,
+  canvasWidth,
+  object,
+}: {
+  asset: Asset | undefined
+  canvasHeight: number
+  canvasWidth: number
+  object: SceneCanvasObject
+}) {
+  const classNames = ['scene-canvas-object']
+
+  if (!object.isPlayerVisible) {
+    classNames.push('scene-canvas-object--master')
+  }
+
+  if (asset) {
+    classNames.push('scene-canvas-object--asset')
+  }
+
+  return (
+    <div className={classNames.join(' ')} style={getCanvasObjectStyle(object, canvasWidth, canvasHeight)}>
+      {asset ? <img alt="" src={asset.filePath} /> : null}
+      <span>{object.text ?? object.name}</span>
     </div>
   )
 }

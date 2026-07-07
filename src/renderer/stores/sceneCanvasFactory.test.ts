@@ -57,6 +57,7 @@ describe('sceneCanvasFactory', () => {
         height: 80,
         rotation: 0,
         color: '#2c806f',
+        assetId: 'asset-map',
         isPlayerVisible: true,
       },
       {
@@ -126,6 +127,10 @@ describe('sceneCanvasFactory', () => {
     expect(projection.viewport).toEqual({ zoom: 1.2, panX: 40, panY: -20 })
     expect(projection.layers.map((layer) => layer.kind)).toEqual(['map', 'grid', 'object', 'token'])
     expect(projection.objects.map((object) => object.id)).toEqual(['object-visible'])
+    expect(projection.objects[0].asset).toMatchObject({
+      id: 'asset-map',
+      filePath: 'file:///tmp/map.png',
+    })
     expect(projection.measurements.map((measurement) => measurement.id)).toEqual(['measurement-visible'])
   })
 
@@ -168,6 +173,7 @@ function createAssetFixture(): Asset {
     kind: 'map',
     name: 'Imported map',
     filePath: 'file:///tmp/map.png',
+    tags: [],
     createdAt: '2026-07-07T00:00:00.000Z',
   }
 }

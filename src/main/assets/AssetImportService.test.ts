@@ -25,6 +25,7 @@ describe('AssetImportService', () => {
       campaignId: 'campaign-test',
       kind: 'map',
       suggestedName: '  Карта ритуального зала  ',
+      tags: [' ночь ', 'ритуал', 'ночь', ''],
       sourceFilePath,
     })
 
@@ -41,6 +42,7 @@ describe('AssetImportService', () => {
       campaignId: 'campaign-test',
       kind: 'map',
       name: 'Карта ритуального зала',
+      tags: ['ночь', 'ритуал'],
       metadata: {
         originalFileName: 'ritual-map.png',
         fileExtension: 'png',

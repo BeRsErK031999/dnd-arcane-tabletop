@@ -104,6 +104,7 @@ export interface PlayerSceneCanvasObject {
   color: string
   text?: string
   assetId?: AssetId
+  asset?: PlayerSceneCanvasAsset
 }
 
 export interface PlayerSceneCanvasMeasurement {

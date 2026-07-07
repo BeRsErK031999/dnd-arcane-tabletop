@@ -11,6 +11,7 @@ export interface Asset {
   kind: AssetKind
   name: string
   filePath: string
+  tags: string[]
   createdAt: IsoDateString
   metadata?: Record<string, string | number | boolean | null>
 }
@@ -19,6 +20,7 @@ export interface ImportImageAssetRequest {
   campaignId: CampaignId
   kind: ImageAssetKind
   suggestedName?: string
+  tags?: string[]
   sourceFilePath?: string
 }
 

@@ -11,7 +11,12 @@ import type {
   SceneGrid,
   SceneId,
 } from '@shared/types'
-import { createCampaignWithAssetPreview, createCampaignWithImportedAsset } from './assetFactory'
+import {
+  createCampaignWithAssetInActiveScene,
+  createCampaignWithAssetPreview,
+  createCampaignWithAssetTags,
+  createCampaignWithImportedAsset,
+} from './assetFactory'
 import { createEmptyCampaign, createUpdatedCampaignMetadata } from './campaignFactory'
 import {
   createCampaignWithActiveScene,
@@ -341,7 +346,7 @@ export function useCampaignsStore() {
   }, [selectedCampaign])
 
   const importImageAsset = useCallback(
-    async (kind: ImageAssetKind, suggestedName?: string): Promise<AssetMutationResult> => {
+    async (kind: ImageAssetKind, suggestedName?: string, tags?: string[]): Promise<AssetMutationResult> => {
       if (selectedCampaign === null) {
         setLastError('Нет открытой кампании для импорта изображения.')
         return { ok: false, reason: 'campaign-not-selected' }
@@ -355,6 +360,7 @@ export function useCampaignsStore() {
           campaignId: selectedCampaign.id,
           kind,
           suggestedName,
+          tags,
         })
 
         if (!result.ok) {
@@ -377,6 +383,58 @@ export function useCampaignsStore() {
         setLastError('Не удалось импортировать изображение.')
         setStatus('error')
         return { ok: false, reason: 'import-image-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const updateAssetTags = useCallback(
+    async (assetId: AssetId, tags: string): Promise<AssetMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для редактирования ассета.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithAssetTags(selectedCampaign, assetId, tags)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign, assetId }
+      } catch {
+        setLastError('Не удалось сохранить теги ассета.')
+        setStatus('error')
+        return { ok: false, reason: 'update-asset-tags-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const applyAssetToActiveScene = useCallback(
+    async (assetId: AssetId): Promise<AssetMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для использования ассета.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithAssetInActiveScene(selectedCampaign, assetId)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign, assetId }
+      } catch {
+        setLastError('Не удалось добавить ассет в активную сцену.')
+        setStatus('error')
+        return { ok: false, reason: 'use-asset-failed' }
       }
     },
     [selectedCampaign],
@@ -438,6 +496,8 @@ export function useCampaignsStore() {
     addActiveSceneMeasurement,
     clearActiveSceneMeasurements,
     importImageAsset,
+    updateAssetTags,
+    applyAssetToActiveScene,
     sendAssetToPlayers,
   }
 }

@@ -2,6 +2,7 @@ import type {
   Asset,
   IsoDateString,
   PlayerSceneCanvasProjection,
+  PlayerSceneCanvasAsset,
   Scene,
   SceneGrid,
   SceneCanvasLayer,
@@ -105,19 +106,24 @@ export function createPlayerSceneCanvasProjection(
     objects: canvas.objects
       .filter((object) => object.isPlayerVisible && playerLayerIds.has(object.layerId))
       .sort(sortObjects)
-      .map(({ id, kind, name, x, y, width, height, rotation, color, text, assetId }) => ({
-        id,
-        kind,
-        name,
-        x,
-        y,
-        width,
-        height,
-        rotation,
-        color,
-        text,
-        assetId,
-      })),
+      .map(({ id, kind, name, x, y, width, height, rotation, color, text, assetId }) => {
+        const objectAsset = assetId ? assets.find((asset) => asset.id === assetId) : undefined
+
+        return {
+          id,
+          kind,
+          name,
+          x,
+          y,
+          width,
+          height,
+          rotation,
+          color,
+          text,
+          assetId,
+          asset: objectAsset ? createPlayerSceneCanvasAsset(objectAsset) : undefined,
+        }
+      }),
     measurements: canvas.measurements
       .filter((measurement) => measurement.isPlayerVisible)
       .map(({ id, kind, shape, name, originX, originY, targetX, targetY, radius, color, label }) => ({
@@ -134,6 +140,14 @@ export function createPlayerSceneCanvasProjection(
         label,
       })),
     updatedAt: canvas.updatedAt,
+  }
+}
+
+function createPlayerSceneCanvasAsset(asset: Asset): PlayerSceneCanvasAsset {
+  return {
+    id: asset.id,
+    name: asset.name,
+    filePath: asset.filePath,
   }
 }
 

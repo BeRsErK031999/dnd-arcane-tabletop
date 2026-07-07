@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
+import {
+  createAssetLibraryView,
+  normalizeAssetTags,
+  type AssetLibraryKindFilter,
+} from '@renderer/stores/assetFactory'
 import { desktopApi } from '@renderer/services/desktopApi'
 import { useCampaignsStore } from '@renderer/stores/useCampaignsStore'
 import type { SceneMeasurementTemplate } from '@renderer/stores/sceneToolsFactory'
@@ -7,6 +12,7 @@ import {
   createDefaultPlayerScreenState,
   type Asset,
   type AssetId,
+  type AssetKind,
   type ImageAssetKind,
   type PlayerScreenCommandResult,
   type PlayerScreenOpenResult,
@@ -70,6 +76,8 @@ export function MasterDashboardPage() {
     addActiveSceneMeasurement,
     clearActiveSceneMeasurements,
     importImageAsset,
+    updateAssetTags,
+    applyAssetToActiveScene,
     sendAssetToPlayers,
   } = useCampaignsStore()
   const [activeRightPanel, setActiveRightPanel] = useState<RightPanelTab>('assets')
@@ -82,7 +90,12 @@ export function MasterDashboardPage() {
   const [newSceneDescription, setNewSceneDescription] = useState('')
   const [sceneActionStatus, setSceneActionStatus] = useState('Откройте кампанию, чтобы управлять сценами.')
   const [assetKind, setAssetKind] = useState<ImageAssetKind>('map')
+  const [assetKindFilter, setAssetKindFilter] = useState<AssetLibraryKindFilter>('all')
   const [assetName, setAssetName] = useState('')
+  const [assetImportTags, setAssetImportTags] = useState('')
+  const [assetSearchQuery, setAssetSearchQuery] = useState('')
+  const [assetSelectedTags, setAssetSelectedTags] = useState<string[]>([])
+  const [assetTagDrafts, setAssetTagDrafts] = useState<Record<AssetId, string>>({})
   const [assetActionStatus, setAssetActionStatus] = useState('Откройте кампанию, чтобы импортировать изображения.')
   const [playerStatus, setPlayerStatus] = useState<PlayerScreenStatus>(() => ({
     isOpen: false,
@@ -143,6 +156,15 @@ export function MasterDashboardPage() {
     setEditorName(selectedCampaign?.name ?? '')
     setEditorDescription(selectedCampaign?.description ?? '')
   }, [selectedCampaign])
+
+  useEffect(() => {
+    const assets = selectedCampaign?.assets ?? []
+    setAssetTagDrafts(Object.fromEntries(assets.map((asset) => [asset.id, asset.tags.join(', ')])))
+    setAssetSelectedTags((tags) => {
+      const availableTags = new Set(assets.flatMap((asset) => asset.tags))
+      return tags.filter((tag) => availableTags.has(tag))
+    })
+  }, [selectedCampaign?.assets])
 
   async function handleCreateCampaign(): Promise<void> {
     const result = await createCampaign(newCampaignName, newCampaignDescription)
@@ -270,11 +292,12 @@ export function MasterDashboardPage() {
   }
 
   async function handleImportImageAsset(): Promise<void> {
-    const result = await importImageAsset(assetKind, assetName)
+    const result = await importImageAsset(assetKind, assetName, normalizeAssetTags(assetImportTags))
 
     if (result.ok) {
       const asset = result.campaign.assets.find((candidate) => candidate.id === result.assetId)
       setAssetName('')
+      setAssetImportTags('')
       setAssetActionStatus(`Изображение "${asset?.name ?? 'без названия'}" импортировано.`)
 
       if (asset?.kind === 'map') {
@@ -285,6 +308,39 @@ export function MasterDashboardPage() {
     }
 
     setAssetActionStatus(result.reason === 'cancelled' ? 'Импорт изображения отменен.' : 'Не удалось импортировать изображение.')
+  }
+
+  async function handleUpdateAssetTags(assetId: AssetId): Promise<void> {
+    const result = await updateAssetTags(assetId, assetTagDrafts[assetId] ?? '')
+
+    if (result.ok) {
+      const asset = result.campaign.assets.find((candidate) => candidate.id === assetId)
+      setAssetActionStatus(`Теги ассета "${asset?.name ?? 'без названия'}" сохранены.`)
+      return
+    }
+
+    setAssetActionStatus('Не удалось сохранить теги ассета.')
+  }
+
+  async function handleUseAssetInActiveScene(assetId: AssetId): Promise<void> {
+    const result = await applyAssetToActiveScene(assetId)
+
+    if (result.ok) {
+      const asset = result.campaign.assets.find((candidate) => candidate.id === assetId)
+      const assetName = asset?.name ?? 'ассет'
+
+      if (asset?.kind === 'map') {
+        setSceneActionStatus(`Карта "${assetName}" привязана к активной сцене.`)
+        setAssetActionStatus(`Карта "${assetName}" используется как фон сцены.`)
+        return
+      }
+
+      setSceneActionStatus(`Ассет "${assetName}" добавлен в активную сцену.`)
+      setAssetActionStatus(`Ассет "${assetName}" добавлен в активную сцену.`)
+      return
+    }
+
+    setAssetActionStatus('Не удалось добавить ассет в активную сцену.')
   }
 
   async function handleSendAssetToPlayers(assetId: AssetId): Promise<void> {
@@ -319,11 +375,11 @@ export function MasterDashboardPage() {
         <div>
           <p className="eyebrow">Master Console</p>
           <h1>Панель мастера</h1>
-          <p className="muted">Stage 7: сетка, масштаб и измерения сцены.</p>
+          <p className="muted">Stage 8: библиотека ассетов, теги и быстрый preview.</p>
         </div>
         <div className="button-row">
           {selectedCampaign ? <span className="status-badge">Открыта: {selectedCampaign.name}</span> : null}
-          <span className="status-badge">Этап 7</span>
+          <span className="status-badge">Этап 8</span>
           <button className="button button--secondary" type="button" onClick={refresh}>
             Обновить
           </button>
@@ -419,12 +475,13 @@ export function MasterDashboardPage() {
                 <h2>{activeScene?.name ?? 'Рабочая область сцены'}</h2>
               </div>
               <div className="workspace-board__meta">
-                <span>Grid: Stage 7</span>
+                <span>Assets: Stage 8</span>
                 <span>Player mode: {playerStatus.state.mode}</span>
               </div>
             </div>
 
             <SceneCanvas
+              assets={selectedCampaign?.assets ?? []}
               isPlayerSynced={Boolean(activeScene && playerStatus.state.activeSceneId === activeScene.id)}
               isStorageBusy={isStorageBusy}
               mapAsset={activeMapAsset}
@@ -588,7 +645,7 @@ export function MasterDashboardPage() {
               <p className="eyebrow">Library</p>
               <h2>Материалы</h2>
             </div>
-            <span className="status-badge status-badge--neutral">placeholder</span>
+            <span className="status-badge status-badge--neutral">Stage 8</span>
           </div>
           <div className="tab-list" role="tablist" aria-label="Материалы мастера">
             {rightPanelTabs.map((tab) => (
@@ -608,15 +665,32 @@ export function MasterDashboardPage() {
           {renderRightPanelContent({
             activeRightPanel,
             assetActionStatus,
+            assetImportTags,
             assetKind,
+            assetKindFilter,
             assetName,
+            assetSearchQuery,
+            assetSelectedTags,
+            assetTagDrafts,
             assets: selectedCampaign?.assets ?? [],
             canImportAssets: selectedCampaign !== null,
+            canUseAssetsInScene: selectedCampaign !== null && activeScene !== null,
             isStorageBusy,
+            onAssetImportTagsChange: setAssetImportTags,
             onAssetKindChange: setAssetKind,
+            onAssetKindFilterChange: setAssetKindFilter,
             onAssetNameChange: setAssetName,
+            onAssetSearchQueryChange: setAssetSearchQuery,
+            onAssetTagDraftChange: (assetId, value) =>
+              setAssetTagDrafts((drafts) => ({
+                ...drafts,
+                [assetId]: value,
+              })),
+            onAssetTagToggle: setAssetSelectedTags,
             onImportImageAsset: handleImportImageAsset,
             onSendAssetToPlayers: handleSendAssetToPlayers,
+            onUpdateAssetTags: handleUpdateAssetTags,
+            onUseAssetInActiveScene: handleUseAssetInActiveScene,
             totals,
           })}
         </aside>
@@ -760,15 +834,28 @@ function PlayerScreenControls({ playerActionStatus, playerStatus, runPlayerActio
 interface RightPanelContentProps {
   activeRightPanel: RightPanelTab
   assetActionStatus: string
+  assetImportTags: string
   assetKind: ImageAssetKind
+  assetKindFilter: AssetLibraryKindFilter
   assetName: string
+  assetSearchQuery: string
+  assetSelectedTags: string[]
+  assetTagDrafts: Record<AssetId, string>
   assets: Asset[]
   canImportAssets: boolean
+  canUseAssetsInScene: boolean
   isStorageBusy: boolean
+  onAssetImportTagsChange(tags: string): void
   onAssetKindChange(kind: ImageAssetKind): void
+  onAssetKindFilterChange(kind: AssetLibraryKindFilter): void
   onAssetNameChange(name: string): void
+  onAssetSearchQueryChange(query: string): void
+  onAssetTagDraftChange(assetId: AssetId, value: string): void
+  onAssetTagToggle(tags: string[]): void
   onImportImageAsset(): Promise<void>
   onSendAssetToPlayers(assetId: AssetId): Promise<void>
+  onUpdateAssetTags(assetId: AssetId): Promise<void>
+  onUseAssetInActiveScene(assetId: AssetId): Promise<void>
   totals: { assets: number; characters: number }
 }
 
@@ -828,16 +915,35 @@ function renderRightPanelContent(props: RightPanelContentProps) {
 
 function AssetPanel({
   assetActionStatus,
+  assetImportTags,
   assetKind,
+  assetKindFilter,
   assetName,
+  assetSearchQuery,
+  assetSelectedTags,
+  assetTagDrafts,
   assets,
   canImportAssets,
+  canUseAssetsInScene,
   isStorageBusy,
+  onAssetImportTagsChange,
   onAssetKindChange,
+  onAssetKindFilterChange,
   onAssetNameChange,
+  onAssetSearchQueryChange,
+  onAssetTagDraftChange,
+  onAssetTagToggle,
   onImportImageAsset,
   onSendAssetToPlayers,
+  onUpdateAssetTags,
+  onUseAssetInActiveScene,
 }: RightPanelContentProps) {
+  const libraryView = createAssetLibraryView(assets, {
+    kind: assetKindFilter,
+    searchQuery: assetSearchQuery,
+    selectedTags: assetSelectedTags,
+  })
+
   return (
     <section className="context-panel__body" role="tabpanel">
       <form
@@ -870,6 +976,15 @@ function AssetPanel({
             value={assetName}
           />
         </label>
+        <label>
+          <span>Теги</span>
+          <input
+            disabled={!canImportAssets || isStorageBusy}
+            onChange={(event) => onAssetImportTagsChange(event.target.value)}
+            placeholder="например: лес, ночь, босс"
+            value={assetImportTags}
+          />
+        </label>
         <button className="button" disabled={!canImportAssets || isStorageBusy} type="submit">
           Импортировать изображение
         </button>
@@ -881,27 +996,125 @@ function AssetPanel({
           <p>Импортированная карта привяжется к активной сцене, остальные изображения останутся в библиотеке.</p>
         </div>
       ) : (
-        <ul className="asset-list">
-          {assets.map((asset) => (
-            <li className="asset-item" key={asset.id}>
-              <div className="asset-thumb">
-                <img alt="" src={asset.filePath} />
-              </div>
-              <div>
-                <span>{asset.name}</span>
-                <small>{getAssetKindLabel(asset.kind)}</small>
-              </div>
-              <button
-                className="button button--secondary"
-                disabled={isStorageBusy}
-                onClick={() => void onSendAssetToPlayers(asset.id)}
-                type="button"
+        <>
+          <div className="asset-library-tools">
+            <label>
+              <span>Поиск</span>
+              <input
+                onChange={(event) => onAssetSearchQueryChange(event.target.value)}
+                placeholder="название, тип или тег"
+                value={assetSearchQuery}
+              />
+            </label>
+            <label>
+              <span>Тип</span>
+              <select
+                onChange={(event) => onAssetKindFilterChange(event.target.value as AssetLibraryKindFilter)}
+                value={assetKindFilter}
               >
-                Показать
-              </button>
-            </li>
-          ))}
-        </ul>
+                <option value="all">Все</option>
+                <option value="map">Карты</option>
+                <option value="handout">Handouts</option>
+                <option value="portrait">Портреты</option>
+                <option value="token">Токены</option>
+                <option value="other">Другое</option>
+              </select>
+            </label>
+            {libraryView.tags.length > 0 ? (
+              <div className="asset-tag-filter-list" aria-label="Фильтр по тегам">
+                {libraryView.tags.map((tag) => {
+                  const isSelected = assetSelectedTags.includes(tag.name)
+                  const nextTags = isSelected
+                    ? assetSelectedTags.filter((selectedTag) => selectedTag !== tag.name)
+                    : [...assetSelectedTags, tag.name]
+
+                  return (
+                    <button
+                      className={isSelected ? 'asset-tag asset-tag--active' : 'asset-tag'}
+                      key={tag.name}
+                      onClick={() => onAssetTagToggle(nextTags)}
+                      type="button"
+                    >
+                      {tag.name}
+                      <small>{tag.count}</small>
+                    </button>
+                  )
+                })}
+              </div>
+            ) : null}
+          </div>
+
+          {libraryView.assets.length === 0 ? (
+            <div className="empty-panel-state">
+              <h3>Ассеты не найдены</h3>
+              <p>Измените поиск, тип или выбранные теги.</p>
+            </div>
+          ) : (
+            <ul className="asset-list">
+              {libraryView.assets.map((asset) => (
+                <li className="asset-item" key={asset.id}>
+                  <div className="asset-thumb">
+                    <img alt="" src={asset.filePath} />
+                  </div>
+                  <div className="asset-item__content">
+                    <div>
+                      <span>{asset.name}</span>
+                      <small>
+                        {getAssetKindLabel(asset.kind)} · {formatTimestamp(asset.createdAt)}
+                      </small>
+                    </div>
+                    <div className="asset-tags">
+                      {asset.tags.length > 0 ? (
+                        asset.tags.map((tag) => (
+                          <span className="asset-tag" key={tag}>
+                            {tag}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="asset-tag asset-tag--muted">без тегов</span>
+                      )}
+                    </div>
+                    <label className="asset-tag-editor">
+                      <span>Теги</span>
+                      <input
+                        aria-label={`Теги ассета ${asset.name}`}
+                        disabled={isStorageBusy}
+                        onChange={(event) => onAssetTagDraftChange(asset.id, event.target.value)}
+                        value={assetTagDrafts[asset.id] ?? asset.tags.join(', ')}
+                      />
+                    </label>
+                  </div>
+                  <div className="asset-item__actions">
+                    <button
+                      className="button button--secondary"
+                      disabled={!canUseAssetsInScene || isStorageBusy}
+                      onClick={() => void onUseAssetInActiveScene(asset.id)}
+                      type="button"
+                    >
+                      В сцену
+                    </button>
+                    <button
+                      className="button button--secondary"
+                      disabled={isStorageBusy}
+                      onClick={() => void onUpdateAssetTags(asset.id)}
+                      type="button"
+                    >
+                      Теги
+                    </button>
+                    <button
+                      className="button button--secondary"
+                      disabled={isStorageBusy}
+                      onClick={() => void onSendAssetToPlayers(asset.id)}
+                      type="button"
+                    >
+                      Показать
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
 
       <p className="form-status">{assetActionStatus}</p>
@@ -971,7 +1184,7 @@ function getPlayerActionLabel(label: string, result: PlayerActionResult): string
   return label
 }
 
-function getAssetKindLabel(kind: Asset['kind']): string {
+function getAssetKindLabel(kind: AssetKind): string {
   switch (kind) {
     case 'map':
       return 'Карта'

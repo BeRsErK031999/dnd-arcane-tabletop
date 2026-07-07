@@ -105,6 +105,8 @@ Player window не получает raw `Scene.canvas`. Master renderer стро
 
 На этапе 7 canvas state дополнительно хранит `viewport` и `measurements`, а `SceneGrid` хранит игровые параметры сетки: `distancePerCell`, `unitLabel` и `snapToGrid`. Эти поля нормализуются фабриками перед сохранением и входят в `PlayerSceneCanvasProjection` только как display-ready данные. Измерения фильтруются по `isPlayerVisible`, поэтому player window получает ruler/area overlays без master-only записей.
 
+На этапе 8 `Asset` хранит локальные library tags, а renderer строит фильтрованное представление через `createAssetLibraryView`. Использование ассета в сцене не передает raw campaign data игрокам: canvas object хранит `assetId`, а `PlayerSceneCanvasProjection` добавляет только embedded preview `{ id, name, filePath }` для объектов, которые уже прошли `player-visible` фильтр.
+
 ## IPC
 
 IPC channel names хранятся централизованно в `src/shared/constants/ipc.ts`.

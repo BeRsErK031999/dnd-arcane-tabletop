@@ -326,32 +326,48 @@
 
 ## Этап 8. Библиотека ассетов
 
+Статус: выполнено.
+
 Цель: добавить библиотеку карт, токенов, артов, handouts и объектов с поиском, тегами и drag-and-drop.
 
 Входит:
 - Asset browser.
 - Теги и поиск.
-- Drag-and-drop в сцену.
+- Быстрое добавление ассета в активную сцену.
 - Preview ассета.
+- Редактирование тегов после импорта.
+- Player projection для asset-backed canvas objects.
 
 Не входит:
 - Marketplace.
 - Онлайн-каталог.
 - Генерация ассетов.
+- Полноценный drag-and-drop с координатами указателя.
+- Move, duplicate и hide для размещённых объектов.
 
 Критерии готовности:
 - Ассеты можно найти и использовать в сцене.
 - Библиотека работает локально.
 - Метаданные сохраняются в JSON.
+- Map asset можно применить к активной сцене.
+- Non-map image asset можно добавить как canvas object.
+- `npm run lint`, `npm run typecheck`, `npm run test`, `npm run dev` проходят или блокеры явно описаны.
 
 Затрагивается:
-- asset types
-- storage layer
-- renderer panels
+- `src/shared/types/asset.ts`
+- `src/shared/types/sceneCanvas.ts`
+- `src/main/assets/AssetImportService.ts`
+- `src/renderer/stores/assetFactory.ts`
+- `src/renderer/stores/useCampaignsStore.ts`
+- `src/renderer/pages/MasterDashboardPage.tsx`
+- `src/renderer/widgets/SceneCanvas.tsx`
+- `src/renderer/pages/PlayerScreenPlaceholderPage.tsx`
+- `src/renderer/app/styles.css`
 
 Риски:
 - Слишком тяжелая библиотека без индексации.
 - Неочевидное различие map/token/handout.
+- Слишком раннее расширение Stage 8 до полноценного token editor.
 
 ## Этап 9. Токены и объекты на карте
 

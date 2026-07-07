@@ -44,6 +44,7 @@ export class AssetImportService {
           kind: request.kind,
           name: normalizeAssetName(request.suggestedName ?? path.parse(originalFileName).name),
           filePath: pathToFileURL(targetFilePath).toString(),
+          tags: normalizeAssetTags(request.tags),
           createdAt: timestamp,
           metadata: {
             originalFileName,
@@ -78,4 +79,14 @@ function createAssetId(): AssetId {
 function normalizeAssetName(name: string): string {
   const trimmedName = name.trim()
   return trimmedName === '' ? 'Новое изображение' : trimmedName
+}
+
+function normalizeAssetTags(tags: string[] | undefined): string[] {
+  if (!Array.isArray(tags)) {
+    return []
+  }
+
+  return [...new Set(tags.map((tag) => tag.trim()).filter(Boolean))].sort((left, right) =>
+    left.localeCompare(right, 'ru'),
+  )
 }

@@ -130,6 +130,7 @@ function createBrowserFallbackAsset(request: ImportImageAssetRequest): Asset {
     kind: request.kind,
     name,
     filePath: createBrowserFallbackImageDataUrl(name),
+    tags: request.tags ?? [],
     createdAt: new Date().toISOString(),
     metadata: {
       browserFallback: true,

@@ -135,10 +135,11 @@ function PlayerSceneCanvas({ canvas }: { canvas: PlayerSceneCanvasProjection }) 
         <div className="player-scene-canvas__objects">
           {canvas.objects.map((object) => (
             <div
-              className="player-scene-canvas-object"
+              className={object.asset ? 'player-scene-canvas-object player-scene-canvas-object--asset' : 'player-scene-canvas-object'}
               key={object.id}
               style={getPlayerCanvasObjectStyle(object, canvas.width, canvas.height)}
             >
+              {object.asset ? <img alt="" src={object.asset.filePath} /> : null}
               <span>{object.text ?? object.name}</span>
             </div>
           ))}

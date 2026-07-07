@@ -1,5 +1,34 @@
-import type { Asset, AssetId, Campaign, IsoDateString, PlayerScreenState } from '@shared/types'
+import type {
+  Asset,
+  AssetId,
+  AssetKind,
+  Campaign,
+  IsoDateString,
+  PlayerScreenState,
+  Scene,
+  SceneCanvasObject,
+  SceneGrid,
+} from '@shared/types'
+import { getSceneCanvasState } from './sceneCanvasFactory'
 import { createSceneWithHydratedState, getActiveCampaignScene } from './sceneFactory'
+
+export type AssetLibraryKindFilter = AssetKind | 'all'
+
+export interface AssetLibraryFilters {
+  searchQuery?: string
+  kind?: AssetLibraryKindFilter
+  selectedTags?: string[]
+}
+
+export interface AssetLibraryTag {
+  name: string
+  count: number
+}
+
+export interface AssetLibraryView {
+  assets: Asset[]
+  tags: AssetLibraryTag[]
+}
 
 export function createCampaignWithImportedAsset(
   campaign: Campaign,
@@ -8,22 +37,99 @@ export function createCampaignWithImportedAsset(
 ): Campaign {
   const activeScene = getActiveCampaignScene(campaign)
   const hydratedScenes = campaign.scenes.map(createSceneWithHydratedState)
+  const normalizedAsset = normalizeAsset(asset)
 
   return {
     ...campaign,
     updatedAt,
-    assets: [...campaign.assets, asset],
+    assets: [...campaign.assets.map(normalizeAsset), normalizedAsset],
     scenes:
-      asset.kind === 'map' && activeScene
+      normalizedAsset.kind === 'map' && activeScene
         ? hydratedScenes.map((scene) =>
             scene.id === activeScene.id
               ? {
                   ...scene,
-                  backgroundAssetId: asset.id,
+                  backgroundAssetId: normalizedAsset.id,
                 }
               : scene,
           )
         : hydratedScenes,
+  }
+}
+
+export function createAssetLibraryView(assets: Asset[], filters: AssetLibraryFilters = {}): AssetLibraryView {
+  const normalizedAssets = assets.map(normalizeAsset)
+  const searchQuery = normalizeSearchQuery(filters.searchQuery)
+  const kindFilter = filters.kind ?? 'all'
+  const selectedTags = normalizeAssetTags(filters.selectedTags)
+  const filteredAssets = normalizedAssets
+    .filter((asset) => kindFilter === 'all' || asset.kind === kindFilter)
+    .filter((asset) => selectedTags.every((tag) => asset.tags.includes(tag)))
+    .filter((asset) => searchQuery === '' || createAssetSearchText(asset).includes(searchQuery))
+    .sort(sortAssetsByCreatedAt)
+
+  return {
+    assets: filteredAssets,
+    tags: createAssetTags(normalizedAssets),
+  }
+}
+
+export function createCampaignWithAssetTags(
+  campaign: Campaign,
+  assetId: AssetId,
+  tags: string[] | string,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): Campaign {
+  findAssetOrThrow(campaign, assetId)
+
+  return {
+    ...campaign,
+    updatedAt,
+    assets: campaign.assets.map((asset) =>
+      asset.id === assetId
+        ? {
+            ...normalizeAsset(asset),
+            tags: normalizeAssetTags(tags),
+          }
+        : normalizeAsset(asset),
+    ),
+  }
+}
+
+export function createCampaignWithAssetInActiveScene(
+  campaign: Campaign,
+  assetId: AssetId,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): Campaign {
+  const asset = findAssetOrThrow(campaign, assetId)
+  const hydratedScenes = campaign.scenes.map(createSceneWithHydratedState)
+  const activeScene = getActiveCampaignScene({
+    ...campaign,
+    scenes: hydratedScenes,
+  })
+
+  if (activeScene === null) {
+    throw new Error('scene-not-selected')
+  }
+
+  return {
+    ...campaign,
+    updatedAt,
+    assets: campaign.assets.map(normalizeAsset),
+    scenes: hydratedScenes.map((scene) => {
+      if (scene.id !== activeScene.id) {
+        return scene
+      }
+
+      if (asset.kind === 'map') {
+        return {
+          ...scene,
+          backgroundAssetId: asset.id,
+        }
+      }
+
+      return createSceneWithAssetObject(scene, asset, updatedAt)
+    }),
   }
 }
 
@@ -42,23 +148,120 @@ export function createCampaignWithAssetPreview(
 }
 
 function createAssetPlayerScreenState(campaign: Campaign, asset: Asset, updatedAt: IsoDateString): PlayerScreenState {
+  const normalizedAsset = normalizeAsset(asset)
+
   return {
     ...campaign.playerScreenState,
     mode: 'image',
     isHidden: false,
-    title: asset.name,
-    message: asset.kind === 'map' ? 'Карта готова к показу игрокам.' : 'Материал готов к показу игрокам.',
+    title: normalizedAsset.name,
+    message: normalizedAsset.kind === 'map' ? 'Карта готова к показу игрокам.' : 'Материал готов к показу игрокам.',
     campaignId: campaign.id,
     handoutPreview: {
-      id: asset.id,
-      name: asset.name,
-      description: createAssetDescription(asset),
-      kind: asset.kind === 'map' ? 'image' : 'handout',
-      sourceLabel: getAssetKindLabel(asset.kind),
+      id: normalizedAsset.id,
+      name: normalizedAsset.name,
+      description: createAssetDescription(normalizedAsset),
+      kind: normalizedAsset.kind === 'map' ? 'image' : 'handout',
+      sourceLabel: getAssetKindLabel(normalizedAsset.kind),
     },
-    revealedAssetIds: [asset.id],
+    revealedAssetIds: [normalizedAsset.id],
     updatedAt,
   }
+}
+
+function createSceneWithAssetObject(scene: Scene, asset: Asset, updatedAt: IsoDateString): Scene {
+  const canvas = getSceneCanvasState(scene)
+  const object = createAssetCanvasObject(asset, scene.grid, canvas.width, canvas.height)
+
+  return {
+    ...scene,
+    canvas: {
+      ...canvas,
+      objects: [...canvas.objects, object],
+      updatedAt,
+    },
+  }
+}
+
+function createAssetCanvasObject(
+  asset: Asset,
+  grid: SceneGrid,
+  canvasWidth: number,
+  canvasHeight: number,
+): SceneCanvasObject {
+  const { width, height, layerId, kind } = getAssetObjectPlacement(asset.kind, grid)
+
+  return {
+    id: createSceneAssetObjectId(),
+    layerId,
+    kind,
+    name: asset.name,
+    x: Math.round(canvasWidth / 2 - width / 2),
+    y: Math.round(canvasHeight / 2 - height / 2),
+    width,
+    height,
+    rotation: 0,
+    color: getAssetObjectColor(asset.kind),
+    text: asset.name,
+    assetId: asset.id,
+    isPlayerVisible: true,
+  }
+}
+
+function getAssetObjectPlacement(
+  kind: AssetKind,
+  grid: SceneGrid,
+): Pick<SceneCanvasObject, 'height' | 'kind' | 'layerId' | 'width'> {
+  if (kind === 'token') {
+    return {
+      layerId: 'scene-layer-tokens',
+      kind: 'token-placeholder',
+      width: grid.size,
+      height: grid.size,
+    }
+  }
+
+  if (kind === 'portrait') {
+    return {
+      layerId: 'scene-layer-objects',
+      kind: 'marker',
+      width: 160,
+      height: 220,
+    }
+  }
+
+  return {
+    layerId: 'scene-layer-objects',
+    kind: 'marker',
+    width: 220,
+    height: 140,
+  }
+}
+
+function getAssetObjectColor(kind: AssetKind): string {
+  switch (kind) {
+    case 'token':
+      return '#2c806f'
+    case 'portrait':
+      return '#49625f'
+    case 'handout':
+      return '#9f2d3c'
+    case 'other':
+      return '#8b7a5a'
+    case 'map':
+    case 'audio':
+      return '#d8a86a'
+  }
+}
+
+function createSceneAssetObjectId(): string {
+  const randomId = globalThis.crypto?.randomUUID?.()
+
+  if (randomId) {
+    return `object-${randomId}`
+  }
+
+  return `object-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 function createAssetDescription(asset: Asset): string {
@@ -90,5 +293,55 @@ function findAssetOrThrow(campaign: Campaign, assetId: AssetId): Asset {
     throw new Error('asset-not-found')
   }
 
-  return asset
+  return normalizeAsset(asset)
+}
+
+function normalizeAsset(asset: Asset): Asset {
+  return {
+    ...asset,
+    tags: normalizeAssetTags(asset.tags),
+  }
+}
+
+export function normalizeAssetTags(tags: readonly string[] | string | undefined): string[] {
+  const sourceTags = typeof tags === 'string' ? tags.split(',') : tags
+
+  if (!Array.isArray(sourceTags)) {
+    return []
+  }
+
+  return [...new Set(sourceTags.map((tag) => tag.trim()).filter(Boolean))].sort((left, right) =>
+    left.localeCompare(right, 'ru'),
+  )
+}
+
+function createAssetTags(assets: Asset[]): AssetLibraryTag[] {
+  const tagCounts = new Map<string, number>()
+
+  for (const asset of assets) {
+    for (const tag of asset.tags) {
+      tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1)
+    }
+  }
+
+  return Array.from(tagCounts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((left, right) => left.name.localeCompare(right.name, 'ru'))
+}
+
+function createAssetSearchText(asset: Asset): string {
+  return normalizeSearchQuery([
+    asset.name,
+    asset.kind,
+    asset.tags.join(' '),
+    typeof asset.metadata?.originalFileName === 'string' ? asset.metadata.originalFileName : '',
+  ].join(' '))
+}
+
+function normalizeSearchQuery(value: string | undefined): string {
+  return value?.trim().toLocaleLowerCase('ru') ?? ''
+}
+
+function sortAssetsByCreatedAt(left: Asset, right: Asset): number {
+  return right.createdAt.localeCompare(left.createdAt)
 }

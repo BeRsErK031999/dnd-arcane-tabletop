@@ -1,18 +1,22 @@
-import { app, BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow, dialog, Menu } from 'electron'
 import { AssetImportService } from './assets/AssetImportService.js'
 import { createMasterWindow } from './windows/masterWindow.js'
 import { registerIpcHandlers } from './ipc/index.js'
 import { PlayerScreenController } from './playerScreen/PlayerScreenController.js'
 import { JsonStorageService } from './storage/JsonStorageService.js'
 import { getCampaignsDirectory } from './storage/storagePaths.js'
+import { seedReferenceCampaign } from './storage/referenceCampaignSeed.js'
 
 const playerScreenController = new PlayerScreenController()
 
 async function bootstrap(): Promise<void> {
+  Menu.setApplicationMenu(null)
+
   const campaignsDirectory = getCampaignsDirectory()
   const storageService = new JsonStorageService(campaignsDirectory)
   const assetImportService = new AssetImportService(campaignsDirectory, pickImageFile)
   await storageService.initialize()
+  await seedReferenceCampaign(storageService, campaignsDirectory)
 
   createMasterWindow()
 

@@ -14,7 +14,8 @@ dist-ssr
 release
 *.local
 
-data/campaigns/*.json
+data/campaigns/*
+data/campaigns/.*
 !data/campaigns/.gitkeep
 
 # Editor directories and files

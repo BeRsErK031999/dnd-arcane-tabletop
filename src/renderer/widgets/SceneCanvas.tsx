@@ -75,7 +75,7 @@ export function SceneCanvas({
     return (
       <div className="scene-canvas scene-canvas--empty">
         <div className="scene-canvas__empty">
-          <span className="status-badge status-badge--neutral">Stage 11</span>
+          <span className="status-badge status-badge--neutral">Сцены</span>
           <h3>Сцена не выбрана</h3>
           <p>Откройте кампанию и создайте первую сцену.</p>
         </div>
@@ -93,7 +93,7 @@ export function SceneCanvas({
 
   return (
     <div className="scene-canvas">
-      <div className="scene-canvas__stage">
+      <div className="scene-canvas__main">
         <div className="scene-canvas__viewport" style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}>
           <div className="scene-canvas__content" style={viewportTransform}>
             {mapAsset ? (

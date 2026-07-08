@@ -7,6 +7,7 @@ import {
 import { createCharacterCardList, type CharacterCardInput } from '@renderer/stores/characterCardFactory'
 import { createCombatParticipantList, type CombatParticipantInput } from '@renderer/stores/combatFactory'
 import { createNoteList, type NoteInput } from '@renderer/stores/noteFactory'
+import { WORKSPACE_NAVIGATION_EVENT } from '@shared/constants'
 import { desktopApi } from '@renderer/services/desktopApi'
 import { getSceneCanvasState } from '@renderer/stores/sceneCanvasFactory'
 import { useCampaignsStore } from '@renderer/stores/useCampaignsStore'
@@ -45,6 +46,7 @@ import {
 
 type PlayerActionResult = PlayerScreenCommandResult | PlayerScreenOpenResult
 type RightPanelTab = 'assets' | 'characters' | 'notes'
+type WorkspaceSection = 'campaigns' | 'scenes' | 'combat' | 'notes' | 'players'
 
 interface CharacterCardDraft {
   name: string
@@ -102,34 +104,35 @@ const emptyCombatParticipantDraft: CombatParticipantDraft = {
 
 interface ToolItem {
   label: string
+  icon: string
   shortcut: string
-  status: string
+  description: string
 }
 
 const toolGroups: Array<{ title: string; items: ToolItem[] }> = [
   {
     title: 'Навигация',
     items: [
-      { label: 'Обзор', shortcut: 'V', status: 'active' },
-      { label: 'Панорама', shortcut: 'Space', status: 'active' },
-      { label: 'Масштаб', shortcut: 'Z', status: 'active' },
+      { label: 'Обзор', icon: 'V', shortcut: 'V', description: 'Обзор сцены' },
+      { label: 'Панорама', icon: 'P', shortcut: 'Space', description: 'Панорамирование сцены' },
+      { label: 'Масштаб', icon: 'Z', shortcut: 'Z', description: 'Масштаб сцены' },
     ],
   },
   {
     title: 'Сцена',
     items: [
-      { label: 'Сетка', shortcut: 'G', status: 'active' },
-      { label: 'Измерение', shortcut: 'M', status: 'active' },
-      { label: 'Область', shortcut: 'A', status: 'active' },
-      { label: 'Туман', shortcut: 'F', status: 'active' },
-      { label: 'Инициатива', shortcut: 'I', status: 'active' },
+      { label: 'Сетка', icon: '#', shortcut: 'G', description: 'Настройки сетки' },
+      { label: 'Измерение', icon: 'M', shortcut: 'M', description: 'Линейки и области' },
+      { label: 'Область', icon: 'A', shortcut: 'A', description: 'Шаблоны областей' },
+      { label: 'Туман', icon: 'F', shortcut: 'F', description: 'Туман войны' },
+      { label: 'Инициатива', icon: 'I', shortcut: 'I', description: 'Tracker инициативы' },
     ],
   },
   {
     title: 'Показ игрокам',
     items: [
-      { label: 'Scene preview', shortcut: 'P', status: 'stage 1' },
-      { label: 'Handout preview', shortcut: 'H', status: 'active' },
+      { label: 'Сцена игрокам', icon: 'S', shortcut: 'P', description: 'Отправить сцену игрокам' },
+      { label: 'Handout', icon: 'H', shortcut: 'H', description: 'Показать handout игрокам' },
     ],
   },
 ]
@@ -270,6 +273,62 @@ export function MasterDashboardPage() {
     () => (selectedCampaign?.assets ?? []).filter((asset) => asset.kind === 'portrait' || asset.kind === 'token'),
     [selectedCampaign?.assets],
   )
+
+  useEffect(() => {
+    window.history.scrollRestoration = 'manual'
+    window.scrollTo({ top: 0, left: 0 })
+  }, [])
+
+  useEffect(() => {
+    function handleWorkspaceNavigation(event: Event): void {
+      const section = getWorkspaceNavigationSection(event)
+
+      if (section === null) {
+        return
+      }
+
+      if (section === 'notes') {
+        setActiveRightPanel('notes')
+      }
+
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, left: 0 })
+
+        if (section === 'notes') {
+          document.querySelector('.context-panel__body')?.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
+          return
+        }
+
+        if (section === 'scenes') {
+          document.querySelector('.scene-strip__items')?.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
+          return
+        }
+
+        const targetIdBySection: Record<Exclude<WorkspaceSection, 'notes' | 'scenes'>, string> = {
+          campaigns: 'section-campaigns',
+          combat: 'section-combat',
+          players: 'section-players',
+        }
+        const lowerGrid = document.querySelector('.workspace-lower-grid')
+        const target = document.getElementById(targetIdBySection[section])
+
+        if (!lowerGrid || !target) {
+          return
+        }
+
+        const lowerRect = lowerGrid.getBoundingClientRect()
+        const targetRect = target.getBoundingClientRect()
+        const targetTop = targetRect.top - lowerRect.top + lowerGrid.scrollTop - 8
+        lowerGrid.scrollTo({ top: Math.max(0, targetTop), left: 0, behavior: 'smooth' })
+      })
+    }
+
+    window.addEventListener(WORKSPACE_NAVIGATION_EVENT, handleWorkspaceNavigation)
+
+    return () => {
+      window.removeEventListener(WORKSPACE_NAVIGATION_EVENT, handleWorkspaceNavigation)
+    }
+  }, [])
 
   useEffect(() => {
     if (selectedSceneObjectId === null) {
@@ -1126,19 +1185,24 @@ export function MasterDashboardPage() {
         <div>
           <p className="eyebrow">Master Console</p>
           <h1>Панель мастера</h1>
-          <p className="muted">Stage 15: release polish, hotkeys и exe-сборка.</p>
+          <p className="muted">Готовое локальное приложение для подготовки и ведения D&D-сессии.</p>
         </div>
         <div className="button-row">
           {selectedCampaign ? <span className="status-badge">Открыта: {selectedCampaign.name}</span> : null}
-          <span className="status-badge">Этап 15</span>
           <span className={getCampaignSaveBadgeClassName(saveState.status)}>{saveStatusLabel}</span>
-          <button className="button button--secondary" type="button" onClick={refresh}>
-            Обновить
+          <button
+            aria-label="Обновить список кампаний"
+            className="button button--secondary icon-button"
+            title="Обновить"
+            type="button"
+            onClick={refresh}
+          >
+            ↻
           </button>
         </div>
       </header>
 
-      <section className="scene-strip" aria-label="Сцены">
+      <section className="scene-strip" id="section-scenes" aria-label="Сцены">
         <div className="scene-strip__header">
           <span>Сцены</span>
           <span className="muted">
@@ -1184,7 +1248,7 @@ export function MasterDashboardPage() {
               >
                 <span>{scene.name}</span>
                 <small>{scene.description ?? 'Без описания'}</small>
-                <span className="scene-tab__status">{scene.isActive ? 'active' : 'draft'}</span>
+                <span className="scene-tab__status">{scene.isActive ? 'активна' : 'черновик'}</span>
               </button>
             ))
           )}
@@ -1196,7 +1260,6 @@ export function MasterDashboardPage() {
         <aside className="tool-rail" aria-label="Инструменты мастера">
           <div className="tool-rail__header">
             <h2>Инструменты</h2>
-            <span className="status-badge status-badge--neutral">layout</span>
           </div>
           {toolGroups.map((group) => (
             <section className="tool-group" key={group.title}>
@@ -1204,14 +1267,17 @@ export function MasterDashboardPage() {
               <div className="tool-list">
                 {group.items.map((tool) => (
                   <button
-                    className={tool.status === 'active' ? 'tool-button tool-button--active' : 'tool-button'}
-                    disabled={tool.status !== 'active'}
+                    aria-label={`${tool.label}: ${tool.description}. Горячая клавиша ${tool.shortcut}`}
+                    className="tool-button tool-button--active"
                     key={tool.label}
+                    title={`${tool.label}: ${tool.description}. Горячая клавиша ${tool.shortcut}`}
                     type="button"
                   >
-                    <span>{tool.label}</span>
+                    <span className="tool-button__icon" aria-hidden="true">
+                      {tool.icon}
+                    </span>
                     <kbd>{tool.shortcut}</kbd>
-                    <small>{tool.status}</small>
+                    <span className="sr-only">{tool.description}</span>
                   </button>
                 ))}
               </div>
@@ -1219,7 +1285,7 @@ export function MasterDashboardPage() {
           ))}
         </aside>
 
-        <main className="master-stage" aria-label="Рабочая область сцены">
+        <main className="master-workspace-panel" aria-label="Рабочая область сцены">
           <section className="workspace-board">
             <div className="workspace-board__toolbar">
               <div>
@@ -1227,11 +1293,10 @@ export function MasterDashboardPage() {
                 <h2>{activeScene?.name ?? 'Рабочая область сцены'}</h2>
               </div>
               <div className="workspace-board__meta">
-                <span>Fog: Stage 11</span>
-                <span>Handouts: Stage 12</span>
-                <span>Initiative: Stage 13</span>
-                <span>Polish: Stage 15</span>
-                <span>Player mode: {playerStatus.state.mode}</span>
+                <span>Туман войны</span>
+                <span>Handouts</span>
+                <span>Инициатива</span>
+                <span>Экран игроков: {getPlayerModeLabel(playerStatus.state.mode)}</span>
               </div>
             </div>
 
@@ -1265,7 +1330,7 @@ export function MasterDashboardPage() {
           </section>
 
           <div className="workspace-lower-grid">
-            <section className="campaign-summary campaign-manager" aria-label="Кампании">
+            <section className="campaign-summary campaign-manager" id="section-campaigns" aria-label="Кампании">
               <div className="module-header">
                 <div>
                   <p className="eyebrow">Campaigns</p>
@@ -1297,22 +1362,24 @@ export function MasterDashboardPage() {
                 </div>
                 <div className="save-control-strip__actions">
                   <button
-                    className="button button--secondary"
+                    aria-label="Отменить последнее действие"
+                    className="button button--secondary icon-button"
                     disabled={selectedCampaign === null || isStorageBusy || historyState.undoCount === 0}
                     onClick={() => void handleUndoCampaign()}
-                    title="Ctrl+Z"
+                    title="Отменить (Ctrl+Z)"
                     type="button"
                   >
-                    Undo
+                    ↶
                   </button>
                   <button
-                    className="button button--secondary"
+                    aria-label="Повторить действие"
+                    className="button button--secondary icon-button"
                     disabled={selectedCampaign === null || isStorageBusy || historyState.redoCount === 0}
                     onClick={() => void handleRedoCampaign()}
-                    title="Ctrl+Y"
+                    title="Повторить (Ctrl+Y)"
                     type="button"
                   >
-                    Redo
+                    ↷
                   </button>
                 </div>
                 <div className="save-control-strip__history">
@@ -1398,11 +1465,11 @@ export function MasterDashboardPage() {
 
               <section className="campaign-list" aria-label="Сохраненные кампании">
                 <div className="campaign-list__header">
-                  <h3>JSON-файлы</h3>
+                  <h3>Кампании</h3>
                   <span>{campaigns.length}</span>
                 </div>
                 {campaigns.length === 0 ? (
-                  <p className="muted">Кампаний пока нет. Новая запись сохранится в `data/campaigns`.</p>
+                  <p className="muted">Кампаний пока нет. Создайте новую или откройте эталонную после первого запуска.</p>
                 ) : (
                   <ul className="campaign-list__items">
                     {campaigns.map((campaign) => (
@@ -1471,13 +1538,12 @@ export function MasterDashboardPage() {
           </div>
         </main>
 
-        <aside className="context-panel" aria-label="Правая панель">
+        <aside className="context-panel" id="section-notes" aria-label="Правая панель">
           <div className="context-panel__header">
             <div>
               <p className="eyebrow">Library</p>
               <h2>Материалы</h2>
             </div>
-            <span className="status-badge status-badge--neutral">Stage 12</span>
           </div>
           <div className="tab-list" role="tablist" aria-label="Материалы мастера">
             {rightPanelTabs.map((tab) => (
@@ -1621,7 +1687,7 @@ function CombatTrackerPanel({
   const isCombatActive = Boolean(combatState?.isActive)
 
   return (
-    <section className="combat-tracker-panel" aria-label="Инициатива">
+    <section className="combat-tracker-panel" id="section-combat" aria-label="Инициатива">
       <div className="module-header">
         <div>
           <p className="eyebrow">Initiative</p>
@@ -1820,7 +1886,7 @@ function CombatTrackerPanel({
 
 function PlayerScreenControls({ playerActionStatus, playerStatus, runPlayerAction }: PlayerScreenControlsProps) {
   return (
-    <section className="player-control-panel" aria-label="Экран игроков">
+    <section className="player-control-panel" id="section-players" aria-label="Экран игроков">
       <div className="module-header">
         <div>
           <p className="eyebrow">Player Screen</p>
@@ -1870,28 +1936,6 @@ function PlayerScreenControls({ playerActionStatus, playerStatus, runPlayerActio
           }
         >
           Выйти из fullscreen
-        </button>
-        <button
-          className="button"
-          type="button"
-          onClick={() =>
-            void runPlayerAction('Тестовая сцена отправлена игрокам.', () =>
-              desktopApi.playerScreen.updateState(createTestSceneState()),
-            )
-          }
-        >
-          Показать тестовую сцену
-        </button>
-        <button
-          className="button"
-          type="button"
-          onClick={() =>
-            void runPlayerAction('Тестовое изображение отправлено игрокам.', () =>
-              desktopApi.playerScreen.updateState(createTestImageState()),
-            )
-          }
-        >
-          Показать тестовое изображение
         </button>
         <button
           className="button button--secondary"
@@ -2200,7 +2244,7 @@ function CharacterPanel({
       >
         <div className="character-card-form__header">
           <div>
-            <p className="eyebrow">Stage 10</p>
+            <p className="eyebrow">Карточка</p>
             <h3>{selectedCard ? 'Редактирование карточки' : 'Новая карточка'}</h3>
           </div>
           <button className="button button--secondary" disabled={!canEditCharacters || isStorageBusy} onClick={onNewCharacterCardDraft} type="button">
@@ -2622,38 +2666,44 @@ function AssetPanel({
   )
 }
 
-function createTestSceneState(): PlayerScreenState {
-  return {
-    ...createDefaultPlayerScreenState(),
-    mode: 'scene',
-    title: 'Тестовая сцена',
-    message: 'Зал старого совета готов к показу игрокам.',
-    scenePreview: {
-      name: 'Зал старого совета',
-      description: 'Каменные колонны, длинный стол и тусклые магические огни по периметру.',
-      locationLabel: 'Mock scene',
-    },
-    initiativeVisible: true,
+function getWorkspaceNavigationSection(event: Event): WorkspaceSection | null {
+  if (!(event instanceof CustomEvent) || !isRecord(event.detail)) {
+    return null
   }
+
+  const section = event.detail.section
+  return isWorkspaceSection(section) ? section : null
 }
 
-function createTestImageState(): PlayerScreenState {
-  return {
-    ...createDefaultPlayerScreenState(),
-    mode: 'image',
-    title: 'Тестовое изображение',
-    message: 'Handout без реального файла, только проверка канала master → player.',
-    handoutPreview: {
-      name: 'Герб забытого дома',
-      description: 'Серебряный знак на темном фоне, подготовленный как демонстрационный handout.',
-      kind: 'image',
-      sourceLabel: 'Mock handout',
-    },
-  }
+function isWorkspaceSection(value: unknown): value is WorkspaceSection {
+  return (
+    value === 'campaigns' ||
+    value === 'scenes' ||
+    value === 'combat' ||
+    value === 'notes' ||
+    value === 'players'
+  )
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 function getActiveSceneFromCampaign(campaign: Campaign) {
   return campaign.scenes.find((scene) => scene.isActive) ?? campaign.scenes[0] ?? null
+}
+
+function getPlayerModeLabel(mode: PlayerScreenState['mode']): string {
+  switch (mode) {
+    case 'scene':
+      return 'сцена'
+    case 'image':
+      return 'изображение'
+    case 'split':
+      return 'сплит'
+    case 'blank':
+      return 'пусто'
+  }
 }
 
 function createCharacterCardInput(draft: CharacterCardDraft): CharacterCardInput {

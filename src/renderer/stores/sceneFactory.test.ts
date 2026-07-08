@@ -9,7 +9,7 @@ import {
 } from './sceneFactory'
 
 describe('sceneFactory', () => {
-  it('creates an empty scene with stage 7 defaults', () => {
+  it('creates an empty scene with canvas defaults', () => {
     const scene = createEmptyScene({
       campaignId: 'campaign-test',
       id: 'scene-test',

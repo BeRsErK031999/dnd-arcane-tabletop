@@ -8,7 +8,7 @@ import {
 } from './sceneCanvasFactory'
 
 describe('sceneCanvasFactory', () => {
-  it('creates stage 7 canvas state for a new scene', () => {
+  it('creates canvas state defaults for a new scene', () => {
     const scene = createEmptyScene({
       campaignId: 'campaign-test',
       id: 'scene-test',

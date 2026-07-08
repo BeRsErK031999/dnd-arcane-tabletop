@@ -25,7 +25,7 @@ npm run build
 npm run dist:win
 ```
 
-`npm run dev` запускает Vite renderer и Electron master window. `npm run dist:win` собирает Windows installer через electron-builder.
+`npm run dev` запускает Vite renderer и Electron master window. `npm run dist:win` собирает Windows installer через electron-builder и локальный `node_modules/electron/dist`.
 
 ## Structure
 
@@ -51,6 +51,7 @@ data/
   campaigns/      Development JSON campaign files
 docs/
   PROJECT_RULES.md
+  USER_GUIDE.md
 ```
 
 ## Storage
@@ -65,12 +66,17 @@ data/campaigns
 
 In a packaged build the storage directory is resolved from Electron `userData`.
 
-## Stage 1 Check
+## User Guide
+
+Основная инструкция пользователя и сборки лежит в [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+
+## Local Verification
 
 1. Run `npm install`.
 2. Run `npm run lint`.
 3. Run `npm run typecheck`.
 4. Run `npm run test`.
 5. Run `npm run build`.
-6. Run `npm run dev`.
-7. Confirm that the master window opens and shows the master dashboard.
+6. Run `npm run dist:win`.
+7. Run `npm run dev`.
+8. Confirm that the master window opens and shows the master dashboard.

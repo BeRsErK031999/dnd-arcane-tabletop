@@ -333,6 +333,78 @@ export function MasterDashboardPage() {
   }, [selectedCampaign?.name, selectedCampaign?.description])
 
   useEffect(() => {
+    function handleKeyboardShortcut(event: KeyboardEvent): void {
+      const hasShortcutModifier = event.ctrlKey || event.metaKey
+
+      if (!hasShortcutModifier || event.altKey) {
+        return
+      }
+
+      const key = event.key.toLowerCase()
+
+      if (key === 's') {
+        event.preventDefault()
+
+        if (!hasSelectedCampaign || isStorageBusy) {
+          return
+        }
+
+        void saveSelectedCampaign(editorName, editorDescription).then((result) => {
+          setCampaignActionStatus(
+            result.ok ? `Кампания "${result.campaign.name}" сохранена в JSON.` : 'Не удалось сохранить кампанию.',
+          )
+        })
+        return
+      }
+
+      if (isEditableShortcutTarget(event.target)) {
+        return
+      }
+
+      if (key === 'z' && !event.shiftKey) {
+        event.preventDefault()
+
+        if (!hasSelectedCampaign || isStorageBusy || historyState.undoCount === 0) {
+          return
+        }
+
+        void undoSelectedCampaign().then((result) => {
+          setCampaignActionStatus(result.ok ? 'Последнее действие отменено.' : 'Нет действия для отмены.')
+        })
+        return
+      }
+
+      if (key === 'y' || (key === 'z' && event.shiftKey)) {
+        event.preventDefault()
+
+        if (!hasSelectedCampaign || isStorageBusy || historyState.redoCount === 0) {
+          return
+        }
+
+        void redoSelectedCampaign().then((result) => {
+          setCampaignActionStatus(result.ok ? 'Действие повторено.' : 'Нет действия для повтора.')
+        })
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyboardShortcut)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyboardShortcut)
+    }
+  }, [
+    editorDescription,
+    editorName,
+    hasSelectedCampaign,
+    historyState.redoCount,
+    historyState.undoCount,
+    isStorageBusy,
+    redoSelectedCampaign,
+    saveSelectedCampaign,
+    undoSelectedCampaign,
+  ])
+
+  useEffect(() => {
     setSelectedCharacterCardId(null)
     setCharacterDraft(emptyCharacterCardDraft)
     setCharacterActionStatus(
@@ -1054,11 +1126,11 @@ export function MasterDashboardPage() {
         <div>
           <p className="eyebrow">Master Console</p>
           <h1>Панель мастера</h1>
-          <p className="muted">Stage 14: autosave, undo/redo и две backup-копии JSON.</p>
+          <p className="muted">Stage 15: release polish, hotkeys и exe-сборка.</p>
         </div>
         <div className="button-row">
           {selectedCampaign ? <span className="status-badge">Открыта: {selectedCampaign.name}</span> : null}
-          <span className="status-badge">Этап 14</span>
+          <span className="status-badge">Этап 15</span>
           <span className={getCampaignSaveBadgeClassName(saveState.status)}>{saveStatusLabel}</span>
           <button className="button button--secondary" type="button" onClick={refresh}>
             Обновить
@@ -1158,7 +1230,7 @@ export function MasterDashboardPage() {
                 <span>Fog: Stage 11</span>
                 <span>Handouts: Stage 12</span>
                 <span>Initiative: Stage 13</span>
-                <span>Autosave: Stage 14</span>
+                <span>Polish: Stage 15</span>
                 <span>Player mode: {playerStatus.state.mode}</span>
               </div>
             </div>
@@ -1228,6 +1300,7 @@ export function MasterDashboardPage() {
                     className="button button--secondary"
                     disabled={selectedCampaign === null || isStorageBusy || historyState.undoCount === 0}
                     onClick={() => void handleUndoCampaign()}
+                    title="Ctrl+Z"
                     type="button"
                   >
                     Undo
@@ -1236,6 +1309,7 @@ export function MasterDashboardPage() {
                     className="button button--secondary"
                     disabled={selectedCampaign === null || isStorageBusy || historyState.redoCount === 0}
                     onClick={() => void handleRedoCampaign()}
+                    title="Ctrl+Y"
                     type="button"
                   >
                     Redo
@@ -2751,6 +2825,19 @@ function getCampaignSaveBadgeClassName(status: string): string {
   }
 
   return 'status-badge'
+}
+
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  if (target.isContentEditable) {
+    return true
+  }
+
+  const tagName = target.tagName.toLowerCase()
+  return tagName === 'input' || tagName === 'textarea' || tagName === 'select'
 }
 
 function getAssetKindLabel(kind: AssetKind): string {

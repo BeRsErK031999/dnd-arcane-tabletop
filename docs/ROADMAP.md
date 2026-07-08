@@ -621,6 +621,8 @@
 
 ## Этап 15. Полировка и exe-сборка
 
+Статус: выполнено.
+
 Цель: довести UX, темы, горячие клавиши, стабильность, инструкцию пользователя и Windows installer.
 
 Входит:
@@ -630,21 +632,29 @@
 - Error boundaries.
 - User guide.
 - `electron-builder` Windows installer.
+- Production build verification.
+- Local Electron distribution for reproducible Windows packaging.
 
 Не входит:
 - Mobile, web или marketplace.
 - Онлайн-сервисы.
+- Новые игровые mechanics.
 
 Критерии готовности:
 - Приложение стабильно собирается в installer.
+- `npm run dist:win` использует локальный `node_modules/electron/dist` вместо повторной загрузки Electron.
 - Основные сценарии мастера проверены вручную.
 - Документация пользователя соответствует фактическому UI.
+- Renderer показывает fallback вместо пустого экрана при runtime error.
+- Save/undo/redo shortcuts работают в master UI.
 
 Затрагивается:
 - весь desktop app
 - docs
 - build configuration
+- renderer shell
 
 Риски:
 - Installer не учитывает локальные пути Windows.
 - Позднее выявление UX-проблем из ранних этапов.
+- Горячие клавиши конфликтуют с редактированием текста.

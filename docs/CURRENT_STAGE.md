@@ -2,13 +2,13 @@
 
 ## Текущий этап
 
-Этап 14. Автосохранение, undo/redo, backup.
+Этап 15. Полировка и exe-сборка.
 
 Статус: выполнено в этом этапе.
 
 ## Цель
 
-Добавить локальный контур сохранности кампаний: debounced autosave раз в несколько секунд после изменений, видимый статус сохранения для мастера, простую историю undo/redo и ротацию 1-2 backup-копий JSON-файла.
+Довести приложение до финального локального desktop-среза: добавить базовую устойчивость renderer, горячие клавиши для основных операций мастера, пользовательскую инструкцию и проверить production build / Windows installer.
 
 ## Уже реализовано до начала этапа
 
@@ -25,65 +25,56 @@
 - Manual fog of war для master/player canvas.
 - Notes panel, secret notes и публичные handouts.
 - Manual combat tracker и public initiative overlay.
+- Autosave status, undo/redo и две backup-копии JSON.
 
 ## Что можно использовать
 
-- `JsonStorageService.saveCampaign`.
-- `useCampaignsStore` как единый слой campaign mutations.
-- `desktopApi.storage.saveCampaign`.
-- `desktopApi.playerScreen.updateState`.
-- Browser fallback storage для renderer smoke checks.
+- `electron-builder` и `npm run dist:win`.
+- `AppErrorBoundary` как renderer fallback.
+- `useCampaignsStore` для save/undo/redo.
+- `docs/USER_GUIDE.md` как пользовательскую инструкцию.
 
 ## Пробелы этапа
 
-- JSON-файл кампании перезаписывался без backup-копии.
-- Мастер видел только общий storage status, но не видел dirty/autosave/error состояние.
-- Campaign mutations не имели общей истории undo/redo.
-- При серии быстрых изменений не было отдельного debounced autosave-индикатора.
+- Renderer не имел error boundary и мог показывать пустой экран при runtime error.
+- Keyboard shortcuts для save/undo/redo не были подключены на уровне master UI.
+- README не ссылался на фактическую пользовательскую инструкцию.
+- Финальный этап еще не фиксировал production build и Windows installer как проверку.
 
 ## Что реализовано
 
-- `JsonStorageService` перед перезаписью кампании вращает две backup-копии в `data/campaigns/.backups`.
-- Backup-файлы не попадают в `listCampaigns`, потому что лежат вне верхнего уровня campaign JSON.
-- `useCampaignsStore` добавляет `CampaignSaveState`: `idle`, `dirty`, `saving`, `saved`, `error`, время последнего сохранения и текст ошибки.
-- После изменений выбранной кампании store ставит dirty state и запускает autosave timer на 3.5 секунды.
-- На закрытие renderer выполняется финальный flush текущего campaign snapshot.
-- Store ведет ограниченную историю snapshots и экспортирует `undoSelectedCampaign` / `redoSelectedCampaign`.
-- Undo/redo восстанавливают campaign snapshot, сохраняют JSON и синхронизируют `playerScreenState`.
-- Master UI показывает Stage 14 save badge, autosave status, время последнего сохранения, счетчики Undo/Redo и кнопки управления историей.
-- Unit test проверяет ротацию двух backup-копий и отсутствие backup-файлов в списке кампаний.
+- Добавлен `AppErrorBoundary` вокруг React-приложения с понятным fallback и кнопкой перезагрузки интерфейса.
+- Master UI получил document-level shortcuts: `Ctrl+S`, `Ctrl+Z`, `Ctrl+Y` и `Ctrl+Shift+Z`.
+- `Ctrl+Z` не перехватывается, когда фокус находится в input, textarea, select или contenteditable.
+- Undo/Redo кнопки получили shortcut hints через `title`.
+- Добавлен `docs/USER_GUIDE.md` с фактическими сценариями кампаний, autosave, player screen, ассетов, заметок, инициативы и сборки installer.
+- README ссылается на user guide и обновляет local verification checklist.
+- Roadmap и architecture docs фиксируют финальный Stage 15.
 
 ## Критерии готовности
 
-- Изменения кампании сохраняются через общий status-aware save pipeline.
-- Autosave status виден мастеру.
-- Ошибка сохранения становится видимой в master UI.
-- Undo/redo доступны для основных campaign mutations.
-- Backup rotation хранит только две последние копии.
-- Backup не засоряет список кампаний.
 - `npm run lint` проходит.
 - `npm run typecheck` проходит.
 - `npm run test` проходит.
-- `npm run dev:renderer` запускается.
-- Master autosave/undo UI проверен в browser route.
+- `npm run build` проходит.
+- `npm run dist:win` собирает Windows installer через локальный `node_modules/electron/dist`.
+- Master route проверен в browser smoke.
+- Документация пользователя соответствует текущему UI.
 
 ## Не входит в этап
 
-- Cloud version history.
-- Collaborative history.
-- Полноценный diff viewer между версиями.
-- Recovery UI для ручного выбора backup-файла.
-- Смена JSON storage на SQLite или другую базу.
+- Mobile, web или marketplace.
+- Онлайн-сервисы.
+- Новая система тем поверх текущего рабочего оформления.
+- Новые игровые mechanics после Stage 14.
 
 ## Следующий этап
 
-Этап 15. Полировка и exe-сборка.
-
-Он не начат.
+Финальный roadmap-срез выполнен. Следующие задачи можно выбирать отдельно: расширение игровых инструментов, полноценный recovery UI для backup, импорт/экспорт кампаний или релизная QA-процедура.
 
 ## Риски и меры
 
-- Риск повреждения JSON при аварийном завершении: перед перезаписью хранится до двух предыдущих копий файла.
-- Риск слишком частых записей: UI autosave использует debounce 3.5 секунды, а текущие прямые сохранения сохранены как страховка от потери данных.
-- Риск роста истории в памяти: undo history ограничена последними 30 snapshots.
-- Риск рассинхронизации player screen при undo/redo: восстановленный snapshot синхронизирует `playerScreenState` через существующий typed player API.
+- Риск пустого renderer-экрана: error boundary показывает fallback с перезагрузкой.
+- Риск конфликтов shortcuts с редактированием текста: campaign undo/redo не перехватывает редактируемые элементы.
+- Риск устаревшей инструкции: user guide описывает текущие кнопки, маршруты и команды.
+- Риск installer-проблем: Stage 15 требует фактического запуска `npm run dist:win`; сборка использует локальный Electron dist и не перекачивает Electron на шаге packaging.

@@ -2,8 +2,10 @@ import type { CharacterCardId } from './characterCard.js'
 import type { CampaignId, EntityId } from './common.js'
 import type { TokenId } from './token.js'
 
+export type CombatParticipantId = EntityId
+
 export interface CombatParticipant {
-  id: EntityId
+  id: CombatParticipantId
   name: string
   initiative: number
   tokenId?: TokenId
@@ -18,4 +20,20 @@ export interface CombatState {
   round: number
   turnIndex: number
   participants: CombatParticipant[]
+}
+
+export interface PlayerInitiativeParticipant {
+  id: CombatParticipantId
+  name: string
+  initiative: number
+  isActive: boolean
+  isPlayerControlled: boolean
+  isDefeated: boolean
+}
+
+export interface PlayerInitiativeTracker {
+  isActive: boolean
+  round: number
+  turnIndex: number
+  participants: PlayerInitiativeParticipant[]
 }

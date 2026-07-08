@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { desktopApi } from '@renderer/services/desktopApi'
 import {
   createDefaultPlayerScreenState,
+  type PlayerInitiativeTracker,
   type PlayerSceneCanvasFogRegion,
   type PlayerSceneCanvasFogProjection,
   type PlayerSceneCanvasMeasurement,
@@ -47,6 +48,9 @@ export function PlayerScreenPlaceholderPage() {
   return (
     <main className={`player-screen player-screen--${playerScreenState.mode}`}>
       {renderPlayerScreenContent(playerScreenState)}
+      {playerScreenState.initiativeVisible && playerScreenState.initiativeTracker ? (
+        <PlayerInitiativePanel tracker={playerScreenState.initiativeTracker} />
+      ) : null}
     </main>
   )
 }
@@ -109,6 +113,38 @@ function renderPlayerScreenContent(state: PlayerScreenState) {
         </section>
       )
   }
+}
+
+function PlayerInitiativePanel({ tracker }: { tracker: PlayerInitiativeTracker }) {
+  return (
+    <aside className="player-screen__initiative" aria-label="Инициатива">
+      <div>
+        <p className="eyebrow">Initiative</p>
+        <h2>{tracker.isActive ? `Раунд ${tracker.round}` : 'Инициатива'}</h2>
+      </div>
+      {tracker.participants.length === 0 ? (
+        <p>Участники пока не добавлены.</p>
+      ) : (
+        <ol>
+          {tracker.participants.map((participant) => (
+            <li
+              className={[
+                participant.isActive ? 'player-initiative-item player-initiative-item--active' : 'player-initiative-item',
+                participant.isDefeated ? 'player-initiative-item--defeated' : '',
+              ].filter(Boolean).join(' ')}
+              key={participant.id}
+            >
+              <span>{participant.initiative}</span>
+              <div>
+                <strong>{participant.name}</strong>
+                <small>{participant.isPlayerControlled ? 'игрок' : 'мастер'}</small>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </aside>
+  )
 }
 
 function PlayerSceneCanvas({ canvas }: { canvas: PlayerSceneCanvasProjection }) {

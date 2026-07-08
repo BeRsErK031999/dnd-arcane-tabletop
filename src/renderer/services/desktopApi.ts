@@ -205,6 +205,12 @@ function cloneBrowserFallbackState(state: PlayerScreenState): PlayerScreenState 
     ...state,
     visibleTokenIds: [...state.visibleTokenIds],
     revealedAssetIds: [...state.revealedAssetIds],
+    initiativeTracker: state.initiativeTracker
+      ? {
+          ...state.initiativeTracker,
+          participants: state.initiativeTracker.participants.map((participant) => ({ ...participant })),
+        }
+      : undefined,
     sceneCanvas: state.sceneCanvas
         ? {
           ...state.sceneCanvas,

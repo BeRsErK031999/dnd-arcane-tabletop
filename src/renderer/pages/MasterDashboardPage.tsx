@@ -5,6 +5,7 @@ import {
   type AssetLibraryKindFilter,
 } from '@renderer/stores/assetFactory'
 import { createCharacterCardList, type CharacterCardInput } from '@renderer/stores/characterCardFactory'
+import { createCombatParticipantList, type CombatParticipantInput } from '@renderer/stores/combatFactory'
 import { createNoteList, type NoteInput } from '@renderer/stores/noteFactory'
 import { desktopApi } from '@renderer/services/desktopApi'
 import { getSceneCanvasState } from '@renderer/stores/sceneCanvasFactory'
@@ -24,6 +25,9 @@ import {
   type CharacterCard,
   type CharacterCardId,
   type CharacterCardKind,
+  type CombatParticipant,
+  type CombatParticipantId,
+  type CombatState,
   type ImageAssetKind,
   type Note,
   type NoteId,
@@ -82,6 +86,20 @@ const emptyNoteDraft: NoteDraft = {
   scope: 'master',
 }
 
+interface CombatParticipantDraft {
+  name: string
+  initiative: string
+  isPlayerControlled: boolean
+  isDefeated: boolean
+}
+
+const emptyCombatParticipantDraft: CombatParticipantDraft = {
+  name: '',
+  initiative: '',
+  isPlayerControlled: false,
+  isDefeated: false,
+}
+
 interface ToolItem {
   label: string
   shortcut: string
@@ -104,6 +122,7 @@ const toolGroups: Array<{ title: string; items: ToolItem[] }> = [
       { label: 'Измерение', shortcut: 'M', status: 'active' },
       { label: 'Область', shortcut: 'A', status: 'active' },
       { label: 'Туман', shortcut: 'F', status: 'active' },
+      { label: 'Инициатива', shortcut: 'I', status: 'active' },
     ],
   },
   {
@@ -145,6 +164,14 @@ export function MasterDashboardPage() {
     deleteNote,
     sendNoteToPlayers,
     hidePlayerHandout,
+    createCombatParticipant,
+    updateCombatParticipant,
+    deleteCombatParticipant,
+    startCombat,
+    stopCombat,
+    advanceCombatTurn,
+    advanceCombatRound,
+    setPlayerInitiativeVisible,
     moveActiveSceneObject,
     duplicateActiveSceneObject,
     setActiveSceneObjectVisibility,
@@ -178,6 +205,9 @@ export function MasterDashboardPage() {
   const [selectedNoteId, setSelectedNoteId] = useState<NoteId | null>(null)
   const [noteDraft, setNoteDraft] = useState<NoteDraft>(emptyNoteDraft)
   const [noteActionStatus, setNoteActionStatus] = useState('Откройте кампанию, чтобы вести заметки.')
+  const [selectedCombatParticipantId, setSelectedCombatParticipantId] = useState<CombatParticipantId | null>(null)
+  const [combatDraft, setCombatDraft] = useState<CombatParticipantDraft>(emptyCombatParticipantDraft)
+  const [combatActionStatus, setCombatActionStatus] = useState('Откройте кампанию, чтобы вести инициативу.')
   const [playerStatus, setPlayerStatus] = useState<PlayerScreenStatus>(() => ({
     isOpen: false,
     isFullscreen: false,
@@ -216,6 +246,10 @@ export function MasterDashboardPage() {
     () => (selectedCampaign ? createNoteList(selectedCampaign.notes, selectedCampaign.id) : []),
     [selectedCampaign],
   )
+  const combatParticipants = useMemo(
+    () => (selectedCampaign ? createCombatParticipantList(selectedCampaign.combatState, selectedCampaign.id) : []),
+    [selectedCampaign],
+  )
   const selectedCharacterCard = useMemo(
     () => characterCards.find((card) => card.id === selectedCharacterCardId) ?? null,
     [characterCards, selectedCharacterCardId],
@@ -223,6 +257,10 @@ export function MasterDashboardPage() {
   const selectedNote = useMemo(
     () => notes.find((note) => note.id === selectedNoteId) ?? null,
     [notes, selectedNoteId],
+  )
+  const selectedCombatParticipant = useMemo(
+    () => combatParticipants.find((participant) => participant.id === selectedCombatParticipantId) ?? null,
+    [combatParticipants, selectedCombatParticipantId],
   )
   const portraitAssets = useMemo(
     () => (selectedCampaign?.assets ?? []).filter((asset) => asset.kind === 'portrait' || asset.kind === 'token'),
@@ -257,6 +295,9 @@ export function MasterDashboardPage() {
   const selectedCampaignId = selectedCampaign?.id ?? null
   const activePlayerHandoutId = playerStatus.state.isHidden ? null : playerStatus.state.handoutPreview?.id ?? null
   const isPlayerHandoutVisible = playerStatus.state.mode === 'image' && activePlayerHandoutId !== null
+  const activeCombatParticipant = selectedCampaign?.combatState.isActive
+    ? combatParticipants[selectedCampaign.combatState.turnIndex] ?? null
+    : null
 
   useEffect(() => {
     let isMounted = true
@@ -301,6 +342,16 @@ export function MasterDashboardPage() {
   }, [hasSelectedCampaign, selectedCampaignId])
 
   useEffect(() => {
+    setSelectedCombatParticipantId(null)
+    setCombatDraft(emptyCombatParticipantDraft)
+    setCombatActionStatus(
+      !hasSelectedCampaign
+        ? 'Откройте кампанию, чтобы вести инициативу.'
+        : 'Tracker инициативы готов к ручному ведению.',
+    )
+  }, [hasSelectedCampaign, selectedCampaignId])
+
+  useEffect(() => {
     if (selectedCharacterCardId === null) {
       return
     }
@@ -321,6 +372,17 @@ export function MasterDashboardPage() {
       setNoteDraft(emptyNoteDraft)
     }
   }, [notes, selectedNoteId])
+
+  useEffect(() => {
+    if (selectedCombatParticipantId === null) {
+      return
+    }
+
+    if (!combatParticipants.some((participant) => participant.id === selectedCombatParticipantId)) {
+      setSelectedCombatParticipantId(null)
+      setCombatDraft(emptyCombatParticipantDraft)
+    }
+  }, [combatParticipants, selectedCombatParticipantId])
 
   useEffect(() => {
     const assets = selectedCampaign?.assets ?? []
@@ -781,6 +843,168 @@ export function MasterDashboardPage() {
     setNoteActionStatus('Не удалось скрыть handout у игроков.')
   }
 
+  async function handleCreateCombatParticipant(): Promise<void> {
+    const result = await createCombatParticipant(createCombatParticipantInput(combatDraft))
+
+    if (result.ok) {
+      const participant = result.participantId
+        ? result.campaign.combatState.participants.find((candidate) => candidate.id === result.participantId)
+        : null
+
+      if (result.playerStatus) {
+        setPlayerStatus(getStatusFromPlayerAction(result.playerStatus))
+      }
+
+      setSelectedCombatParticipantId(result.participantId ?? null)
+      setCombatDraft(participant ? createCombatParticipantDraft(participant) : emptyCombatParticipantDraft)
+      setCombatActionStatus(`Участник "${participant?.name ?? 'без названия'}" добавлен в инициативу.`)
+      return
+    }
+
+    setCombatActionStatus('Не удалось добавить участника инициативы.')
+  }
+
+  async function handleUpdateCombatParticipant(): Promise<void> {
+    if (selectedCombatParticipantId === null) {
+      setCombatActionStatus('Выберите участника для сохранения.')
+      return
+    }
+
+    const result = await updateCombatParticipant(
+      selectedCombatParticipantId,
+      createCombatParticipantInput(combatDraft),
+    )
+
+    if (result.ok) {
+      const participant = result.campaign.combatState.participants.find(
+        (candidate) => candidate.id === selectedCombatParticipantId,
+      )
+
+      if (result.playerStatus) {
+        setPlayerStatus(getStatusFromPlayerAction(result.playerStatus))
+      }
+
+      setCombatDraft(participant ? createCombatParticipantDraft(participant) : combatDraft)
+      setCombatActionStatus(`Участник "${participant?.name ?? 'без названия'}" сохранен.`)
+      return
+    }
+
+    setCombatActionStatus('Не удалось сохранить участника инициативы.')
+  }
+
+  async function handleDeleteCombatParticipant(): Promise<void> {
+    if (selectedCombatParticipantId === null) {
+      setCombatActionStatus('Выберите участника для удаления.')
+      return
+    }
+
+    const participantName = selectedCombatParticipant?.name ?? 'участник'
+    const result = await deleteCombatParticipant(selectedCombatParticipantId)
+
+    if (result.ok) {
+      if (result.playerStatus) {
+        setPlayerStatus(getStatusFromPlayerAction(result.playerStatus))
+      }
+
+      setSelectedCombatParticipantId(null)
+      setCombatDraft(emptyCombatParticipantDraft)
+      setCombatActionStatus(`Участник "${participantName}" удален из инициативы.`)
+      return
+    }
+
+    setCombatActionStatus('Не удалось удалить участника инициативы.')
+  }
+
+  function handleSelectCombatParticipant(participant: CombatParticipant): void {
+    setSelectedCombatParticipantId(participant.id)
+    setCombatDraft(createCombatParticipantDraft(participant))
+    setCombatActionStatus(`Участник "${participant.name}" выбран.`)
+  }
+
+  function handleNewCombatParticipantDraft(): void {
+    setSelectedCombatParticipantId(null)
+    setCombatDraft(emptyCombatParticipantDraft)
+    setCombatActionStatus('Новый участник готов к заполнению.')
+  }
+
+  async function handleStartCombat(): Promise<void> {
+    const result = await startCombat()
+
+    if (result.ok) {
+      if (result.playerStatus) {
+        setPlayerStatus(getStatusFromPlayerAction(result.playerStatus))
+      }
+
+      const activeParticipant = getActiveCombatParticipantLabel(result.campaign.combatState.participants, result.campaign.combatState.turnIndex)
+      setCombatActionStatus(`Инициатива начата. Текущий ход: ${activeParticipant}.`)
+      return
+    }
+
+    setCombatActionStatus('Не удалось начать инициативу.')
+  }
+
+  async function handleStopCombat(): Promise<void> {
+    const result = await stopCombat()
+
+    if (result.ok) {
+      if (result.playerStatus) {
+        setPlayerStatus(getStatusFromPlayerAction(result.playerStatus))
+      }
+
+      setCombatActionStatus('Инициатива остановлена.')
+      return
+    }
+
+    setCombatActionStatus('Не удалось остановить инициативу.')
+  }
+
+  async function handleAdvanceCombatTurn(): Promise<void> {
+    const result = await advanceCombatTurn()
+
+    if (result.ok) {
+      if (result.playerStatus) {
+        setPlayerStatus(getStatusFromPlayerAction(result.playerStatus))
+      }
+
+      const activeParticipant = getActiveCombatParticipantLabel(result.campaign.combatState.participants, result.campaign.combatState.turnIndex)
+      setCombatActionStatus(`Следующий ход: ${activeParticipant}. Раунд ${result.campaign.combatState.round}.`)
+      return
+    }
+
+    setCombatActionStatus('Не удалось перейти к следующему ходу.')
+  }
+
+  async function handleAdvanceCombatRound(): Promise<void> {
+    const result = await advanceCombatRound()
+
+    if (result.ok) {
+      if (result.playerStatus) {
+        setPlayerStatus(getStatusFromPlayerAction(result.playerStatus))
+      }
+
+      setCombatActionStatus(`Раунд ${result.campaign.combatState.round} начат.`)
+      return
+    }
+
+    setCombatActionStatus('Не удалось перейти к следующему раунду.')
+  }
+
+  async function handleSetPlayerInitiativeVisible(isVisible: boolean): Promise<void> {
+    const result = await setPlayerInitiativeVisible(isVisible)
+
+    if (result.ok) {
+      if (result.playerStatus) {
+        setPlayerStatus(getStatusFromPlayerAction(result.playerStatus))
+      }
+
+      setCombatActionStatus(isVisible ? 'Инициатива показана игрокам.' : 'Инициатива скрыта от игроков.')
+      setPlayerActionStatus(isVisible ? 'Инициатива показана игрокам.' : 'Инициатива скрыта от игроков.')
+      return
+    }
+
+    setCombatActionStatus('Не удалось обновить видимость инициативы.')
+  }
+
   async function runPlayerAction(label: string, action: () => Promise<PlayerActionResult>): Promise<void> {
     setPlayerActionStatus('Выполняется...')
 
@@ -799,11 +1023,11 @@ export function MasterDashboardPage() {
         <div>
           <p className="eyebrow">Master Console</p>
           <h1>Панель мастера</h1>
-          <p className="muted">Stage 12: заметки, handouts и показ материалов игрокам.</p>
+          <p className="muted">Stage 13: ручной tracker инициативы и player-safe порядок хода.</p>
         </div>
         <div className="button-row">
           {selectedCampaign ? <span className="status-badge">Открыта: {selectedCampaign.name}</span> : null}
-          <span className="status-badge">Этап 12</span>
+          <span className="status-badge">Этап 13</span>
           <button className="button button--secondary" type="button" onClick={refresh}>
             Обновить
           </button>
@@ -901,6 +1125,7 @@ export function MasterDashboardPage() {
               <div className="workspace-board__meta">
                 <span>Fog: Stage 11</span>
                 <span>Handouts: Stage 12</span>
+                <span>Initiative: Stage 13</span>
                 <span>Player mode: {playerStatus.state.mode}</span>
               </div>
             </div>
@@ -1071,6 +1296,34 @@ export function MasterDashboardPage() {
               <p className="muted">{campaignActionStatus}</p>
             </section>
 
+            <CombatTrackerPanel
+              activeParticipant={activeCombatParticipant}
+              canEditCombat={selectedCampaign !== null}
+              combatActionStatus={combatActionStatus}
+              combatDraft={combatDraft}
+              combatParticipants={combatParticipants}
+              combatState={selectedCampaign?.combatState ?? null}
+              isPlayerInitiativeVisible={selectedCampaign?.playerScreenState.initiativeVisible ?? false}
+              isStorageBusy={isStorageBusy}
+              onAdvanceRound={handleAdvanceCombatRound}
+              onAdvanceTurn={handleAdvanceCombatTurn}
+              onCombatDraftChange={(patch) =>
+                setCombatDraft((draft) => ({
+                  ...draft,
+                  ...patch,
+                }))
+              }
+              onCreateParticipant={handleCreateCombatParticipant}
+              onDeleteParticipant={handleDeleteCombatParticipant}
+              onNewParticipantDraft={handleNewCombatParticipantDraft}
+              onSelectParticipant={handleSelectCombatParticipant}
+              onSetPlayerInitiativeVisible={handleSetPlayerInitiativeVisible}
+              onStartCombat={handleStartCombat}
+              onStopCombat={handleStopCombat}
+              onUpdateParticipant={handleUpdateCombatParticipant}
+              selectedParticipantId={selectedCombatParticipantId}
+            />
+
             <PlayerScreenControls
               playerActionStatus={playerActionStatus}
               playerStatus={playerStatus}
@@ -1178,6 +1431,252 @@ interface PlayerScreenControlsProps {
   playerActionStatus: string
   playerStatus: PlayerScreenStatus
   runPlayerAction(label: string, action: () => Promise<PlayerActionResult>): Promise<void>
+}
+
+interface CombatTrackerPanelProps {
+  activeParticipant: CombatParticipant | null
+  canEditCombat: boolean
+  combatActionStatus: string
+  combatDraft: CombatParticipantDraft
+  combatParticipants: CombatParticipant[]
+  combatState: CombatState | null
+  isPlayerInitiativeVisible: boolean
+  isStorageBusy: boolean
+  selectedParticipantId: CombatParticipantId | null
+  onAdvanceRound(): Promise<void>
+  onAdvanceTurn(): Promise<void>
+  onCombatDraftChange(patch: Partial<CombatParticipantDraft>): void
+  onCreateParticipant(): Promise<void>
+  onDeleteParticipant(): Promise<void>
+  onNewParticipantDraft(): void
+  onSelectParticipant(participant: CombatParticipant): void
+  onSetPlayerInitiativeVisible(isVisible: boolean): Promise<void>
+  onStartCombat(): Promise<void>
+  onStopCombat(): Promise<void>
+  onUpdateParticipant(): Promise<void>
+}
+
+function CombatTrackerPanel({
+  activeParticipant,
+  canEditCombat,
+  combatActionStatus,
+  combatDraft,
+  combatParticipants,
+  combatState,
+  isPlayerInitiativeVisible,
+  isStorageBusy,
+  onAdvanceRound,
+  onAdvanceTurn,
+  onCombatDraftChange,
+  onCreateParticipant,
+  onDeleteParticipant,
+  onNewParticipantDraft,
+  onSelectParticipant,
+  onSetPlayerInitiativeVisible,
+  onStartCombat,
+  onStopCombat,
+  onUpdateParticipant,
+  selectedParticipantId,
+}: CombatTrackerPanelProps) {
+  const canRunCombat = canEditCombat && combatParticipants.length > 0
+  const isCombatActive = Boolean(combatState?.isActive)
+
+  return (
+    <section className="combat-tracker-panel" aria-label="Инициатива">
+      <div className="module-header">
+        <div>
+          <p className="eyebrow">Initiative</p>
+          <h2>Инициатива</h2>
+        </div>
+        <span className={isCombatActive ? 'status-badge' : 'status-badge status-badge--neutral'}>
+          {isCombatActive ? `Раунд ${combatState?.round ?? 1}` : 'ожидание'}
+        </span>
+      </div>
+
+      <dl className="status-grid status-grid--compact">
+        <div>
+          <dt>Участники</dt>
+          <dd>{combatParticipants.length}</dd>
+        </div>
+        <div>
+          <dt>Текущий ход</dt>
+          <dd>{activeParticipant?.name ?? '-'}</dd>
+        </div>
+        <div>
+          <dt>Раунд</dt>
+          <dd>{combatState?.round ?? 0}</dd>
+        </div>
+      </dl>
+
+      <form
+        className="combat-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void onCreateParticipant()
+        }}
+      >
+        <div className="combat-form__header">
+          <h3>Участник</h3>
+          <button
+            className="button button--secondary"
+            disabled={!canEditCombat || isStorageBusy}
+            onClick={onNewParticipantDraft}
+            type="button"
+          >
+            Новый
+          </button>
+        </div>
+        <div className="combat-form__fields">
+          <label>
+            <span>Имя</span>
+            <input
+              disabled={!canEditCombat || isStorageBusy}
+              onChange={(event) => onCombatDraftChange({ name: event.target.value })}
+              placeholder="Например: Леди Мира"
+              value={combatDraft.name}
+            />
+          </label>
+          <label>
+            <span>Инициатива</span>
+            <input
+              disabled={!canEditCombat || isStorageBusy}
+              onChange={(event) => onCombatDraftChange({ initiative: event.target.value })}
+              type="number"
+              value={combatDraft.initiative}
+            />
+          </label>
+        </div>
+        <div className="combat-form__toggles">
+          <label className="switch-control switch-control--wide">
+            <input
+              checked={combatDraft.isPlayerControlled}
+              disabled={!canEditCombat || isStorageBusy}
+              onChange={(event) => onCombatDraftChange({ isPlayerControlled: event.target.checked })}
+              type="checkbox"
+            />
+            <span>Игрок управляет</span>
+          </label>
+          <label className="switch-control switch-control--wide">
+            <input
+              checked={combatDraft.isDefeated}
+              disabled={!canEditCombat || isStorageBusy}
+              onChange={(event) => onCombatDraftChange({ isDefeated: event.target.checked })}
+              type="checkbox"
+            />
+            <span>Выбыл</span>
+          </label>
+        </div>
+        <div className="combat-form__actions">
+          <button className="button" disabled={!canEditCombat || isStorageBusy} type="submit">
+            Добавить
+          </button>
+          <button
+            className="button button--secondary"
+            disabled={!canEditCombat || isStorageBusy || selectedParticipantId === null}
+            onClick={() => void onUpdateParticipant()}
+            type="button"
+          >
+            Сохранить
+          </button>
+          <button
+            className="button button--danger"
+            disabled={!canEditCombat || isStorageBusy || selectedParticipantId === null}
+            onClick={() => void onDeleteParticipant()}
+            type="button"
+          >
+            Удалить
+          </button>
+        </div>
+      </form>
+
+      <div className="combat-controls">
+        <button
+          className="button"
+          disabled={!canRunCombat || isStorageBusy || isCombatActive}
+          onClick={() => void onStartCombat()}
+          type="button"
+        >
+          Начать
+        </button>
+        <button
+          className="button button--secondary"
+          disabled={!canRunCombat || isStorageBusy || !isCombatActive}
+          onClick={() => void onAdvanceTurn()}
+          type="button"
+        >
+          Следующий ход
+        </button>
+        <button
+          className="button button--secondary"
+          disabled={!canRunCombat || isStorageBusy || !isCombatActive}
+          onClick={() => void onAdvanceRound()}
+          type="button"
+        >
+          Следующий раунд
+        </button>
+        <button
+          className="button button--secondary"
+          disabled={!canRunCombat || isStorageBusy || !isCombatActive}
+          onClick={() => void onStopCombat()}
+          type="button"
+        >
+          Стоп
+        </button>
+      </div>
+
+      <label className="combat-visibility-toggle switch-control switch-control--wide">
+        <input
+          checked={isPlayerInitiativeVisible}
+          disabled={!canEditCombat || isStorageBusy}
+          onChange={(event) => void onSetPlayerInitiativeVisible(event.target.checked)}
+          type="checkbox"
+        />
+        <span>Показывать инициативу игрокам</span>
+      </label>
+
+      {combatParticipants.length === 0 ? (
+        <div className="empty-panel-state empty-panel-state--compact">
+          <h3>Участников пока нет</h3>
+          <p>Добавьте имена и значения инициативы вручную.</p>
+        </div>
+      ) : (
+        <ul className="combat-list">
+          {combatParticipants.map((participant) => {
+            const isSelected = participant.id === selectedParticipantId
+            const isActive = participant.id === activeParticipant?.id
+
+            return (
+              <li
+                className={[
+                  'combat-item',
+                  isSelected ? 'combat-item--selected' : '',
+                  isActive ? 'combat-item--active' : '',
+                  participant.isDefeated ? 'combat-item--defeated' : '',
+                ].filter(Boolean).join(' ')}
+                key={participant.id}
+              >
+                <button onClick={() => onSelectParticipant(participant)} type="button">
+                  <div className="combat-item__initiative">{participant.initiative}</div>
+                  <div className="combat-item__content">
+                    <div className="combat-item__title">
+                      <span>{participant.name}</span>
+                      {isActive ? <small>ход</small> : null}
+                    </div>
+                    <div className="combat-item__meta">
+                      <small>{participant.isPlayerControlled ? 'игрок' : 'мастер'}</small>
+                      {participant.isDefeated ? <small>выбыл</small> : null}
+                    </div>
+                  </div>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      <p className="form-status">{combatActionStatus}</p>
+    </section>
+  )
 }
 
 function PlayerScreenControls({ playerActionStatus, playerStatus, runPlayerAction }: PlayerScreenControlsProps) {
@@ -2064,6 +2563,28 @@ function createNoteDraft(note: Note): NoteDraft {
     body: note.body,
     scope: note.scope,
   }
+}
+
+function createCombatParticipantInput(draft: CombatParticipantDraft): CombatParticipantInput {
+  return {
+    name: draft.name,
+    initiative: getOptionalNumberValue(draft.initiative) ?? 0,
+    isPlayerControlled: draft.isPlayerControlled,
+    isDefeated: draft.isDefeated,
+  }
+}
+
+function createCombatParticipantDraft(participant: CombatParticipant): CombatParticipantDraft {
+  return {
+    name: participant.name,
+    initiative: participant.initiative.toString(),
+    isPlayerControlled: participant.isPlayerControlled,
+    isDefeated: participant.isDefeated,
+  }
+}
+
+function getActiveCombatParticipantLabel(participants: CombatParticipant[], turnIndex: number): string {
+  return participants[turnIndex]?.name ?? 'нет участника'
 }
 
 function getOptionalNumberValue(value: string): number | undefined {

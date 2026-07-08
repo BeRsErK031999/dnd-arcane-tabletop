@@ -1,4 +1,5 @@
 import type { AssetId } from './asset.js'
+import type { PlayerInitiativeTracker } from './combat.js'
 import type { CampaignId, IsoDateString } from './common.js'
 import type { NoteId } from './note.js'
 import type { PlayerSceneCanvasProjection } from './sceneCanvas.js'
@@ -31,6 +32,7 @@ export interface PlayerScreenState {
   sceneCanvas?: PlayerSceneCanvasProjection
   handoutPreview?: PlayerHandoutPreview
   initiativeVisible: boolean
+  initiativeTracker?: PlayerInitiativeTracker
   campaignId?: CampaignId
   activeSceneId?: SceneId
   visibleTokenIds: TokenId[]

@@ -6,6 +6,7 @@ import type {
   CampaignId,
   CampaignSummary,
   CharacterCardId,
+  CombatParticipantId,
   ImageAssetKind,
   NoteId,
   PlayerScreenCommandResult,
@@ -30,6 +31,18 @@ import {
   createCampaignWithoutCharacterCard,
   type CharacterCardInput,
 } from './characterCardFactory'
+import {
+  createCampaignWithCombatStarted,
+  createCampaignWithCombatStopped,
+  createCampaignWithHydratedCombatState,
+  createCampaignWithNewCombatParticipant,
+  createCampaignWithNextCombatRound,
+  createCampaignWithNextCombatTurn,
+  createCampaignWithPlayerInitiativeVisibility,
+  createCampaignWithUpdatedCombatParticipant,
+  createCampaignWithoutCombatParticipant,
+  type CombatParticipantInput,
+} from './combatFactory'
 import {
   createCampaignWithHiddenPlayerHandout,
   createCampaignWithHydratedNotes,
@@ -74,6 +87,14 @@ export type CharacterCardMutationResult =
   | { ok: false; reason: string }
 export type NoteMutationResult =
   | { ok: true; campaign: Campaign; noteId: NoteId }
+  | { ok: false; reason: string }
+export type CombatMutationResult =
+  | {
+      ok: true
+      campaign: Campaign
+      participantId?: CombatParticipantId
+      playerStatus?: PlayerScreenCommandResult
+    }
   | { ok: false; reason: string }
 export type PlayerScenePreviewResult =
   | { ok: true; campaign: Campaign; playerStatus: PlayerScreenCommandResult }
@@ -135,8 +156,10 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'campaign-not-found' }
       }
 
-      const hydratedCampaign = createCampaignWithHydratedNotes(
-        createCampaignWithHydratedCharacterCards(createCampaignWithHydratedScenes(campaign)),
+      const hydratedCampaign = createCampaignWithHydratedCombatState(
+        createCampaignWithHydratedNotes(
+          createCampaignWithHydratedCharacterCards(createCampaignWithHydratedScenes(campaign)),
+        ),
       )
       setSelectedCampaign(hydratedCampaign)
       setStatus('ready')
@@ -715,6 +738,234 @@ export function useCampaignsStore() {
     }
   }, [selectedCampaign])
 
+  const saveCombatCampaign = useCallback(
+    async (
+      updatedCampaign: Campaign,
+      shouldSyncPlayerScreen: boolean,
+    ): Promise<{ campaign: Campaign; playerStatus?: PlayerScreenCommandResult }> => {
+      await desktopApi.storage.saveCampaign(updatedCampaign)
+      const playerStatus = shouldSyncPlayerScreen
+        ? await desktopApi.playerScreen.updateState(updatedCampaign.playerScreenState)
+        : undefined
+
+      if (playerStatus && !playerStatus.ok) {
+        throw new Error(playerStatus.reason ?? 'player-screen-update-failed')
+      }
+
+      setSelectedCampaign(updatedCampaign)
+      setCampaigns(await desktopApi.storage.listCampaigns())
+      setStatus('ready')
+      return { campaign: updatedCampaign, playerStatus }
+    },
+    [],
+  )
+
+  const createCombatParticipant = useCallback(
+    async (input: CombatParticipantInput): Promise<CombatMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для добавления участника инициативы.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const existingIds = new Set(selectedCampaign.combatState.participants.map((participant) => participant.id))
+        const updatedCampaign = createCampaignWithNewCombatParticipant(selectedCampaign, input)
+        const participant = updatedCampaign.combatState.participants.find((candidate) => !existingIds.has(candidate.id))
+        const saved = await saveCombatCampaign(
+          updatedCampaign,
+          shouldSyncPlayerInitiative(selectedCampaign, updatedCampaign),
+        )
+
+        return { ok: true, ...saved, participantId: participant?.id }
+      } catch {
+        setLastError('Не удалось добавить участника инициативы.')
+        setStatus('error')
+        return { ok: false, reason: 'create-combat-participant-failed' }
+      }
+    },
+    [saveCombatCampaign, selectedCampaign],
+  )
+
+  const updateCombatParticipant = useCallback(
+    async (
+      participantId: CombatParticipantId,
+      input: CombatParticipantInput,
+    ): Promise<CombatMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для редактирования инициативы.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithUpdatedCombatParticipant(selectedCampaign, participantId, input)
+        const saved = await saveCombatCampaign(
+          updatedCampaign,
+          shouldSyncPlayerInitiative(selectedCampaign, updatedCampaign),
+        )
+
+        return { ok: true, ...saved, participantId }
+      } catch {
+        setLastError('Не удалось сохранить участника инициативы.')
+        setStatus('error')
+        return { ok: false, reason: 'update-combat-participant-failed' }
+      }
+    },
+    [saveCombatCampaign, selectedCampaign],
+  )
+
+  const deleteCombatParticipant = useCallback(
+    async (participantId: CombatParticipantId): Promise<CombatMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для удаления участника инициативы.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithoutCombatParticipant(selectedCampaign, participantId)
+        const saved = await saveCombatCampaign(
+          updatedCampaign,
+          shouldSyncPlayerInitiative(selectedCampaign, updatedCampaign),
+        )
+
+        return { ok: true, ...saved, participantId }
+      } catch {
+        setLastError('Не удалось удалить участника инициативы.')
+        setStatus('error')
+        return { ok: false, reason: 'delete-combat-participant-failed' }
+      }
+    },
+    [saveCombatCampaign, selectedCampaign],
+  )
+
+  const startCombat = useCallback(async (): Promise<CombatMutationResult> => {
+    if (selectedCampaign === null) {
+      setLastError('Нет открытой кампании для старта инициативы.')
+      return { ok: false, reason: 'campaign-not-selected' }
+    }
+
+    setStatus('saving')
+    setLastError(null)
+
+    try {
+      const updatedCampaign = createCampaignWithCombatStarted(selectedCampaign)
+      const saved = await saveCombatCampaign(
+        updatedCampaign,
+        shouldSyncPlayerInitiative(selectedCampaign, updatedCampaign),
+      )
+
+      return { ok: true, ...saved }
+    } catch {
+      setLastError('Не удалось начать инициативу.')
+      setStatus('error')
+      return { ok: false, reason: 'start-combat-failed' }
+    }
+  }, [saveCombatCampaign, selectedCampaign])
+
+  const stopCombat = useCallback(async (): Promise<CombatMutationResult> => {
+    if (selectedCampaign === null) {
+      setLastError('Нет открытой кампании для остановки инициативы.')
+      return { ok: false, reason: 'campaign-not-selected' }
+    }
+
+    setStatus('saving')
+    setLastError(null)
+
+    try {
+      const updatedCampaign = createCampaignWithCombatStopped(selectedCampaign)
+      const saved = await saveCombatCampaign(
+        updatedCampaign,
+        shouldSyncPlayerInitiative(selectedCampaign, updatedCampaign),
+      )
+
+      return { ok: true, ...saved }
+    } catch {
+      setLastError('Не удалось остановить инициативу.')
+      setStatus('error')
+      return { ok: false, reason: 'stop-combat-failed' }
+    }
+  }, [saveCombatCampaign, selectedCampaign])
+
+  const advanceCombatTurn = useCallback(async (): Promise<CombatMutationResult> => {
+    if (selectedCampaign === null) {
+      setLastError('Нет открытой кампании для следующего хода.')
+      return { ok: false, reason: 'campaign-not-selected' }
+    }
+
+    setStatus('saving')
+    setLastError(null)
+
+    try {
+      const updatedCampaign = createCampaignWithNextCombatTurn(selectedCampaign)
+      const saved = await saveCombatCampaign(
+        updatedCampaign,
+        shouldSyncPlayerInitiative(selectedCampaign, updatedCampaign),
+      )
+
+      return { ok: true, ...saved }
+    } catch {
+      setLastError('Не удалось перейти к следующему ходу.')
+      setStatus('error')
+      return { ok: false, reason: 'advance-combat-turn-failed' }
+    }
+  }, [saveCombatCampaign, selectedCampaign])
+
+  const advanceCombatRound = useCallback(async (): Promise<CombatMutationResult> => {
+    if (selectedCampaign === null) {
+      setLastError('Нет открытой кампании для следующего раунда.')
+      return { ok: false, reason: 'campaign-not-selected' }
+    }
+
+    setStatus('saving')
+    setLastError(null)
+
+    try {
+      const updatedCampaign = createCampaignWithNextCombatRound(selectedCampaign)
+      const saved = await saveCombatCampaign(
+        updatedCampaign,
+        shouldSyncPlayerInitiative(selectedCampaign, updatedCampaign),
+      )
+
+      return { ok: true, ...saved }
+    } catch {
+      setLastError('Не удалось перейти к следующему раунду.')
+      setStatus('error')
+      return { ok: false, reason: 'advance-combat-round-failed' }
+    }
+  }, [saveCombatCampaign, selectedCampaign])
+
+  const setPlayerInitiativeVisible = useCallback(
+    async (isVisible: boolean): Promise<CombatMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для показа инициативы.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithPlayerInitiativeVisibility(selectedCampaign, isVisible)
+        const saved = await saveCombatCampaign(updatedCampaign, true)
+
+        return { ok: true, ...saved }
+      } catch {
+        setLastError('Не удалось обновить видимость инициативы.')
+        setStatus('error')
+        return { ok: false, reason: 'set-initiative-visible-failed' }
+      }
+    },
+    [saveCombatCampaign, selectedCampaign],
+  )
+
   const moveActiveSceneObject = useCallback(
     async (
       objectId: SceneCanvasObjectId,
@@ -998,6 +1249,14 @@ export function useCampaignsStore() {
     deleteNote,
     sendNoteToPlayers,
     hidePlayerHandout,
+    createCombatParticipant,
+    updateCombatParticipant,
+    deleteCombatParticipant,
+    startCombat,
+    stopCombat,
+    advanceCombatTurn,
+    advanceCombatRound,
+    setPlayerInitiativeVisible,
     moveActiveSceneObject,
     duplicateActiveSceneObject,
     setActiveSceneObjectVisibility,
@@ -1007,4 +1266,8 @@ export function useCampaignsStore() {
     applyAssetToActiveScene,
     sendAssetToPlayers,
   }
+}
+
+function shouldSyncPlayerInitiative(previousCampaign: Campaign, updatedCampaign: Campaign): boolean {
+  return previousCampaign.playerScreenState.initiativeVisible || updatedCampaign.playerScreenState.initiativeVisible
 }

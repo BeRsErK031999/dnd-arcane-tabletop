@@ -115,6 +115,8 @@ Player window не получает raw `Scene.canvas`. Master renderer стро
 
 На этапе 12 `Note` хранится в `Campaign.notes` как JSON-сущность кампании. `scope: 'master'` остается master-only и не может быть отправлен игрокам через `createCampaignWithNoteHandout`; `scope: 'players'` превращается в display-ready `PlayerScreenState.handoutPreview` с `kind: 'handout'`. Player screen получает только публичный snapshot заголовка и текста handout, без доступа к полному массиву заметок кампании.
 
+На этапе 13 `CombatState` хранит ручной tracker инициативы в campaign JSON. Renderer управляет участниками, раундами и текущим ходом через `combatFactory`, а player screen получает только `PlayerInitiativeTracker`: имя, инициативу, флаги active/player/defeated и номер раунда. `tokenId`, `characterCardId`, HP, AC и любые master-only заметки остаются в master/campaign слое и не входят в public projection.
+
 ## IPC
 
 IPC channel names хранятся централизованно в `src/shared/constants/ipc.ts`.

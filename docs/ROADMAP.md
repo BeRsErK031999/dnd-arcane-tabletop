@@ -543,6 +543,8 @@
 
 ## Этап 13. Инициатива
 
+Статус: выполнено.
+
 Цель: добавить ручной tracker инициативы, следующий ход, следующий раунд и показ игрокам с переключателем.
 
 Входит:
@@ -550,6 +552,7 @@
 - Порядок хода.
 - Следующий ход и следующий раунд.
 - Флаг видимости инициативы игрокам.
+- Public initiative overlay на player screen.
 
 Не входит:
 - Автоматический импорт stats.
@@ -560,13 +563,23 @@
 - Tracker можно вести вручную.
 - Состояние сохраняется в кампании.
 - Игрокам показывается только разрешенная часть.
+- `tokenId`, `characterCardId`, HP/AC и master notes не попадают в player projection.
+- `npm run lint`, `npm run typecheck` и `npm run test` проходят.
+- Master/player initiative flow проверен в browser route.
 
 Затрагивается:
 - `src/shared/types/combat.ts`
+- `src/shared/types/playerScreen.ts`
+- `src/renderer/stores/combatFactory.ts`
+- `src/renderer/stores/useCampaignsStore.ts`
+- `src/renderer/pages/MasterDashboardPage.tsx`
+- `src/renderer/pages/PlayerScreenPlaceholderPage.tsx`
+- `src/renderer/app/styles.css`
 - master UI
 - player screen projection
 
 Риски:
+- Утечка master-only combat links игрокам.
 - Перегрузка tracker правилами вместо ручного инструмента мастера.
 
 ## Этап 14. Автосохранение, undo/redo, backup

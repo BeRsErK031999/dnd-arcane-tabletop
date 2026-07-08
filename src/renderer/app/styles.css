@@ -384,6 +384,7 @@ h1 {
 .master-stage,
 .context-panel,
 .campaign-summary,
+.combat-tracker-panel,
 .player-control-panel {
   background: #fff;
   border: 1px solid #ded9cf;
@@ -1064,6 +1065,7 @@ h1 {
 }
 
 .campaign-summary,
+.combat-tracker-panel,
 .player-control-panel {
   display: grid;
   gap: 12px;
@@ -1212,6 +1214,172 @@ h1 {
 
 .form-status--error {
   color: #8c322f;
+}
+
+.combat-form {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: #fbfaf7;
+  border: 1px solid #e4ded2;
+  border-radius: 6px;
+}
+
+.combat-form__header,
+.combat-form__toggles {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.combat-form__header h3 {
+  margin-bottom: 0;
+  font-size: 15px;
+}
+
+.combat-form__fields,
+.combat-form__actions,
+.combat-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.combat-form__actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.combat-form label {
+  display: grid;
+  gap: 5px;
+  color: #5f5850;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.combat-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  color: #191817;
+  background: #fff;
+  border: 1px solid #d8d3c8;
+  border-radius: 6px;
+  font: inherit;
+  text-transform: none;
+}
+
+.combat-form input:disabled {
+  color: #8c8580;
+  background: #f2eee7;
+}
+
+.combat-form__toggles {
+  justify-content: start;
+}
+
+.combat-visibility-toggle {
+  padding: 10px 12px;
+  background: #edf6f2;
+  border: 1px solid #b8dbd1;
+  border-radius: 6px;
+}
+
+.combat-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.combat-item {
+  background: #f8f6f1;
+  border: 1px solid #e2dbcf;
+  border-radius: 6px;
+}
+
+.combat-item--selected {
+  background: #edf6f2;
+  border-color: #8dc4b5;
+}
+
+.combat-item--active {
+  border-color: #2c806f;
+  box-shadow: inset 3px 0 0 #2c806f;
+}
+
+.combat-item--defeated {
+  opacity: 0.62;
+}
+
+.combat-item button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.combat-item__initiative {
+  min-height: 42px;
+  display: grid;
+  place-items: center;
+  color: #1d5f55;
+  background: #e4f1ed;
+  border: 1px solid #b8dbd1;
+  border-radius: 6px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.combat-item__content {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.combat-item__title,
+.combat-item__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.combat-item__title {
+  justify-content: space-between;
+}
+
+.combat-item__title span {
+  overflow: hidden;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combat-item__title small,
+.combat-item__meta small {
+  color: #69625b;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.combat-item--active .combat-item__title small {
+  color: #1d5f55;
+}
+
+.empty-panel-state--compact {
+  min-height: 96px;
 }
 
 .character-card-form {
@@ -2179,6 +2347,89 @@ button.asset-tag {
   border: 1px solid #2c806f;
   border-radius: 6px;
   font-weight: 700;
+}
+
+.player-screen__initiative {
+  position: fixed;
+  top: 28px;
+  right: 28px;
+  width: min(320px, calc(100vw - 56px));
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  color: #f4eee4;
+  background: rgba(24, 26, 29, 0.94);
+  border: 1px solid #394044;
+  border-radius: 6px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+}
+
+.player-screen__initiative h2 {
+  margin-bottom: 0;
+  font-size: 20px;
+}
+
+.player-screen__initiative p {
+  margin: 0;
+  color: #d8d0c3;
+}
+
+.player-screen__initiative ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.player-initiative-item {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  background: #202428;
+  border: 1px solid #30343a;
+  border-radius: 6px;
+}
+
+.player-initiative-item--active {
+  border-color: #2c806f;
+  box-shadow: inset 3px 0 0 #2c806f;
+}
+
+.player-initiative-item--defeated {
+  opacity: 0.58;
+}
+
+.player-initiative-item > span {
+  min-height: 36px;
+  display: grid;
+  place-items: center;
+  color: #dff5ef;
+  background: #16463f;
+  border: 1px solid #2c806f;
+  border-radius: 6px;
+  font-weight: 800;
+}
+
+.player-initiative-item div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.player-initiative-item strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-initiative-item small {
+  color: #d8d0c3;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .player-screen__image {

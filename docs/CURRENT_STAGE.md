@@ -2,13 +2,13 @@
 
 ## Текущий этап
 
-Этап 12. Заметки, handouts и показ артов.
+Этап 13. Combat tracker и инициатива.
 
 Статус: выполнено в этом этапе.
 
 ## Цель
 
-Дать мастеру панель заметок в кампании: приватные master-only записи, публичные handouts и быстрый показ выбранного handout на player screen.
+Дать мастеру ручной tracker инициативы: список участников, порядок хода, старт/стоп, следующий ход, следующий раунд и переключатель показа инициативы игрокам.
 
 ## Уже реализовано до начала этапа
 
@@ -23,65 +23,67 @@
 - Object movement, duplicate/hide и master-only token state.
 - Simple character cards для players/NPC/monster.
 - Manual fog of war для master/player canvas.
+- Notes panel, secret notes и публичные handouts.
 
 ## Что можно использовать
 
-- `Campaign.notes`.
-- `Note` и `NoteScope`.
-- `PlayerScreenState.handoutPreview`.
+- `Campaign.combatState`.
+- `CombatState` и `CombatParticipant`.
+- `PlayerScreenState.initiativeVisible`.
 - `desktopApi.storage.saveCampaign`.
 - `desktopApi.playerScreen.updateState`.
-- `desktopApi.playerScreen.hide`.
 - Browser fallback storage для renderer smoke checks.
 
 ## Пробелы этапа
 
-- Вкладка `Заметки` была placeholder без сохранения.
-- `Campaign.notes` не имел renderer CRUD pipeline.
-- Публичные заметки нельзя было отправить в `PlayerScreenState`.
-- Secret notes не имели явной защиты от показа игрокам.
+- `CombatState` существовал только как пустое поле кампании.
+- Master UI не позволял вести порядок инициативы.
+- `PlayerScreenState.initiativeVisible` был флагом без public tracker snapshot.
+- Player screen не показывал участникам порядок хода.
 
 ## Что реализовано
 
-- `noteFactory` добавляет гидрацию, создание, обновление, удаление и сортировку заметок.
-- Публичная заметка собирается в `PlayerScreenState` с `mode: 'image'` и `handoutPreview.kind: 'handout'`.
-- Секретная заметка остается `scope: 'master'` и не отправляется игрокам.
-- Удаление активной handout-заметки скрывает текущий player handout в campaign state.
-- `useCampaignsStore` сохраняет заметки через существующий JSON pipeline и отправляет handout на player screen.
-- Правая панель `Заметки` получила form/list/preview, secret checkbox, show/hide actions и статус текущего handout.
-- `PlayerHandoutPreview.id` теперь может ссылаться на asset или note.
-- Unit tests покрывают note CRUD, legacy hydration, public handout state и запрет отправки secret notes.
+- `combatFactory` добавляет гидрацию, нормализацию, сортировку участников по инициативе и безопасный player projection.
+- Мастер может вручную добавить, выбрать, редактировать и удалить участника инициативы.
+- Tracker поддерживает старт/стоп, следующий ход и следующий раунд.
+- Следующий ход пропускает выбывших участников, если есть доступные участники.
+- Переключатель `Показывать инициативу игрокам` сохраняет `PlayerScreenState.initiativeVisible` и синхронизирует player screen.
+- Player screen показывает public initiative overlay с именем, инициативой, активным ходом и простым статусом игрок/мастер.
+- Public projection не содержит `tokenId`, `characterCardId`, HP, AC или master notes.
+- Browser fallback clone безопасно копирует `initiativeTracker`.
+- Unit tests покрывают порядок инициативы, раунды, defeated skip, legacy hydration и player-safe projection.
 
 ## Критерии готовности
 
-- Заметки создаются, редактируются, удаляются и сохраняются в кампании.
-- Публичный handout можно показать на player screen.
-- Текущий handout можно скрыть на player screen.
-- Secret notes не отправляются игрокам.
-- Player state не содержит текст секретных заметок.
+- Tracker можно вести вручную.
+- Состояние сохраняется в кампании.
+- Можно перейти к следующему ходу.
+- Можно перейти к следующему раунду.
+- Инициативу можно показать и скрыть на player screen.
+- Игрокам показывается только разрешенная часть.
 - `npm run lint` проходит.
 - `npm run typecheck` проходит.
 - `npm run test` проходит.
 - `npm run dev:renderer` запускается.
-- Notes/handout flow проверен в browser route.
+- Master/player initiative flow проверен в browser route.
 
 ## Не входит в этап
 
-- Rich text editor как отдельный продукт.
-- Markdown renderer и WYSIWYG.
-- Онлайн-шаринг материалов.
-- Права доступа для отдельных игроков.
-- Drag-and-drop файлов в текст заметки.
+- Автоматический импорт stats.
+- Автоматические эффекты и условия.
+- Rules engine.
+- HP/AC damage automation.
+- Индивидуальная видимость инициативы для разных игроков.
 
 ## Следующий этап
 
-Этап 13. Combat tracker и инициатива.
+Этап 14. Автосохранение, undo/redo, backup.
 
 Он не начат.
 
 ## Риски и меры
 
-- Риск утечки secret notes: `createCampaignWithNoteHandout` бросает `note-is-secret` для `scope: 'master'`, а UI не дает отправить секретную заметку.
-- Риск устаревших JSON campaigns: `createCampaignWithHydratedNotes` нормализует старые заметки и привязывает их к текущей кампании.
-- Риск смешать note ids и asset ids: `PlayerHandoutPreview.id` принимает оба типа, но `revealedAssetIds` не пополняется note id.
-- Риск скрыть не только handout: Stage 12 использует общий `isHidden`, как уже работает player visibility flow.
+- Риск утечки token/card ids: player projection содержит только `PlayerInitiativeParticipant` без `tokenId` и `characterCardId`.
+- Риск превратить tracker в rules engine: Stage 13 ограничен ручным порядком хода, раундами и defeated toggle.
+- Риск устаревших JSON campaigns: отсутствующий или некорректный `combatState` гидрируется в безопасный пустой state.
+- Риск рассинхрона player screen: combat mutations пушат `PlayerScreenState`, когда инициатива видна игрокам.

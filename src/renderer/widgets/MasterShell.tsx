@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { WORKSPACE_NAVIGATION_EVENT } from '@shared/constants'
 
 interface MasterShellProps {
@@ -17,7 +17,23 @@ const navigationItems: Array<{ id: WorkspaceSection; label: string }> = [
 ]
 
 export function MasterShell({ activeScreen, children }: MasterShellProps) {
-  const [activeSection, setActiveSection] = useState<WorkspaceSection>('campaigns')
+  const [activeSection, setActiveSection] = useState<WorkspaceSection>('scenes')
+
+  useEffect(() => {
+    function handleWorkspaceNavigation(event: Event): void {
+      const section = getWorkspaceNavigationSection(event)
+
+      if (section !== null) {
+        setActiveSection(section)
+      }
+    }
+
+    window.addEventListener(WORKSPACE_NAVIGATION_EVENT, handleWorkspaceNavigation)
+
+    return () => {
+      window.removeEventListener(WORKSPACE_NAVIGATION_EVENT, handleWorkspaceNavigation)
+    }
+  }, [])
 
   function navigateToSection(section: WorkspaceSection): void {
     setActiveSection(section)
@@ -58,5 +74,25 @@ export function MasterShell({ activeScreen, children }: MasterShellProps) {
 
       <main className="workspace">{children}</main>
     </div>
+  )
+}
+
+function getWorkspaceNavigationSection(event: Event): WorkspaceSection | null {
+  if (!(event instanceof CustomEvent) || typeof event.detail !== 'object' || event.detail === null) {
+    return null
+  }
+
+  const section = (event.detail as { section?: unknown }).section
+
+  return isWorkspaceSection(section) ? section : null
+}
+
+function isWorkspaceSection(value: unknown): value is WorkspaceSection {
+  return (
+    value === 'campaigns' ||
+    value === 'scenes' ||
+    value === 'combat' ||
+    value === 'notes' ||
+    value === 'players'
   )
 }

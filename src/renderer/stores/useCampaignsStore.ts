@@ -10,6 +10,7 @@ import type {
   ImageAssetKind,
   NoteId,
   PlayerScreenCommandResult,
+  SceneCanvasFogRegionId,
   SceneCanvasFogState,
   SceneCanvasObjectId,
   SceneCanvasObjectTokenState,
@@ -70,12 +71,14 @@ import {
   createCampaignWithDuplicatedActiveSceneObject,
   createCampaignWithMovedActiveSceneObject,
   createCampaignWithPositionedActiveSceneObject,
+  createCampaignWithUpdatedActiveSceneFogRegion,
   createCampaignWithoutActiveSceneFogRegions,
   createCampaignWithoutActiveSceneMeasurements,
   createCampaignWithoutLastActiveSceneFogRegion,
   type SceneCanvasObjectPosition,
-  type SceneFogRegionTemplate,
-  type SceneMeasurementTemplate,
+  type SceneFogRegionInput,
+  type SceneFogRegionUpdate,
+  type SceneMeasurementInput,
   type SceneObjectMoveDirection,
 } from './sceneToolsFactory'
 
@@ -603,7 +606,7 @@ export function useCampaignsStore() {
   )
 
   const addActiveSceneMeasurement = useCallback(
-    async (template: SceneMeasurementTemplate): Promise<CampaignMutationResult> => {
+    async (input: SceneMeasurementInput): Promise<CampaignMutationResult> => {
       if (selectedCampaign === null) {
         setLastError('Нет открытой кампании для измерений.')
         return { ok: false, reason: 'campaign-not-selected' }
@@ -613,7 +616,7 @@ export function useCampaignsStore() {
       setLastError(null)
 
       try {
-        const updatedCampaign = createCampaignWithActiveSceneMeasurement(selectedCampaign, template)
+        const updatedCampaign = createCampaignWithActiveSceneMeasurement(selectedCampaign, input)
         await saveCampaignWithStatus(updatedCampaign)
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())
@@ -678,7 +681,7 @@ export function useCampaignsStore() {
   )
 
   const addActiveSceneFogRegion = useCallback(
-    async (shape: SceneFogRegionTemplate): Promise<CampaignMutationResult> => {
+    async (input: SceneFogRegionInput): Promise<CampaignMutationResult> => {
       if (selectedCampaign === null) {
         setLastError('Нет открытой кампании для добавления тумана войны.')
         return { ok: false, reason: 'campaign-not-selected' }
@@ -688,7 +691,7 @@ export function useCampaignsStore() {
       setLastError(null)
 
       try {
-        const updatedCampaign = createCampaignWithActiveSceneFogRegion(selectedCampaign, shape)
+        const updatedCampaign = createCampaignWithActiveSceneFogRegion(selectedCampaign, input)
         await saveCampaignWithStatus(updatedCampaign)
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())
@@ -698,6 +701,39 @@ export function useCampaignsStore() {
         setLastError('Не удалось добавить область тумана.')
         setStatus('error')
         return { ok: false, reason: 'add-fog-region-failed' }
+      }
+    },
+    [saveCampaignWithStatus, selectedCampaign],
+  )
+
+  const updateActiveSceneFogRegion = useCallback(
+    async (
+      regionId: SceneCanvasFogRegionId,
+      regionUpdate: SceneFogRegionUpdate,
+    ): Promise<CampaignMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для изменения области тумана войны.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithUpdatedActiveSceneFogRegion(
+          selectedCampaign,
+          regionId,
+          regionUpdate,
+        )
+        await saveCampaignWithStatus(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign }
+      } catch {
+        setLastError('Не удалось изменить область тумана войны.')
+        setStatus('error')
+        return { ok: false, reason: 'update-fog-region-failed' }
       }
     },
     [saveCampaignWithStatus, selectedCampaign],
@@ -1511,6 +1547,7 @@ export function useCampaignsStore() {
     clearActiveSceneMeasurements,
     updateActiveSceneFog,
     addActiveSceneFogRegion,
+    updateActiveSceneFogRegion,
     removeLastActiveSceneFogRegion,
     clearActiveSceneFogRegions,
     createCharacterCard,

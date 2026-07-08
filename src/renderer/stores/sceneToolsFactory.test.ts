@@ -17,6 +17,7 @@ import {
   createCampaignWithDuplicatedActiveSceneObject,
   createCampaignWithMovedActiveSceneObject,
   createCampaignWithPositionedActiveSceneObject,
+  createCampaignWithUpdatedActiveSceneFogRegion,
   createCampaignWithoutActiveSceneFogRegions,
   createCampaignWithoutActiveSceneMeasurements,
   createCampaignWithoutLastActiveSceneFogRegion,
@@ -48,7 +49,7 @@ describe('sceneToolsFactory', () => {
     expect(getActiveCampaignScene(updated)?.grid).toMatchObject({
       size: 180,
       distancePerCell: 1,
-      unitLabel: 'meters',
+      unitLabel: 'm',
       snapToGrid: false,
     })
   })
@@ -104,6 +105,33 @@ describe('sceneToolsFactory', () => {
     expect(getActiveCampaignScene(cleared)?.canvas.measurements).toEqual([])
   })
 
+  it('adds player-visible measurements from canvas coordinates', () => {
+    const campaign = createCampaignFixture()
+    const updated = createCampaignWithActiveSceneMeasurement(
+      campaign,
+      {
+        template: 'ruler',
+        originX: 142,
+        originY: 142,
+        targetX: 354,
+        targetY: 142,
+      },
+      '2026-07-07T06:30:00.000Z',
+    )
+    const measurement = getActiveCampaignScene(updated)?.canvas.measurements[0]
+
+    expect(updated.updatedAt).toBe('2026-07-07T06:30:00.000Z')
+    expect(measurement).toMatchObject({
+      kind: 'ruler',
+      originX: 140,
+      originY: 140,
+      targetX: 350,
+      targetY: 140,
+      label: '15 ft',
+      isPlayerVisible: true,
+    })
+  })
+
   it('manages fog regions on the active scene only', () => {
     const campaign = createCampaignFixture()
     const withSettings = createCampaignWithActiveSceneFog(
@@ -155,6 +183,51 @@ describe('sceneToolsFactory', () => {
     })
     expect(clearedCanvas.layers.find((layer) => layer.kind === 'fog')).toMatchObject({
       visibility: 'disabled',
+    })
+  })
+
+  it('adds and updates fog regions from canvas coordinates', () => {
+    const campaign = createCampaignFixture()
+    const withRegion = createCampaignWithActiveSceneFogRegion(
+      campaign,
+      {
+        shape: 'rectangle',
+        x: 142,
+        y: 214,
+        width: 286,
+        height: 144,
+      },
+      '2026-07-07T08:25:00.000Z',
+    )
+    const region = getSceneCanvasState(getActiveCampaignScene(withRegion)!).fog.regions[0]
+
+    expect(region).toMatchObject({
+      shape: 'rectangle',
+      x: 140,
+      y: 210,
+      width: 280,
+      height: 140,
+    })
+
+    const updated = createCampaignWithUpdatedActiveSceneFogRegion(
+      withRegion,
+      region.id,
+      {
+        x: 1530,
+        y: 860,
+        width: 210,
+        height: 140,
+      },
+      '2026-07-07T08:35:00.000Z',
+    )
+    const updatedRegion = getSceneCanvasState(getActiveCampaignScene(updated)!).fog.regions[0]
+
+    expect(updated.updatedAt).toBe('2026-07-07T08:35:00.000Z')
+    expect(updatedRegion).toMatchObject({
+      x: 1390,
+      y: 760,
+      width: 210,
+      height: 140,
     })
   })
 

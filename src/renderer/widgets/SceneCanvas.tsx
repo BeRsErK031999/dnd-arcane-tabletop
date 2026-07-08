@@ -4,6 +4,7 @@ import type {
   CharacterCard,
   Scene,
   SceneCanvasFogRegion,
+  SceneCanvasFogRegionId,
   SceneCanvasFogState,
   SceneCanvasLayer,
   SceneCanvasMeasurement,
@@ -15,13 +16,19 @@ import type {
 } from '@shared/types'
 import {
   createPlayerSceneCanvasProjection,
+  formatGridDistance,
   getSceneCanvasLayerSummary,
   getSceneCanvasState,
   snapCanvasValue,
 } from '@renderer/stores/sceneCanvasFactory'
 import type {
   SceneCanvasObjectPosition,
+  SceneFogRegionDraft,
+  SceneFogRegionInput,
   SceneFogRegionTemplate,
+  SceneFogRegionUpdate,
+  SceneMeasurementDraft,
+  SceneMeasurementInput,
   SceneMeasurementTemplate,
   SceneObjectMoveDirection,
 } from '@renderer/stores/sceneToolsFactory'
@@ -34,8 +41,8 @@ interface SceneCanvasProps {
   isPlayerSynced: boolean
   isStorageBusy: boolean
   selectedObjectId: SceneCanvasObjectId | null
-  onAddFogRegion(shape: SceneFogRegionTemplate): void
-  onAddMeasurement(template: SceneMeasurementTemplate): void
+  onAddFogRegion(region: SceneFogRegionInput): void
+  onAddMeasurement(measurement: SceneMeasurementInput): void
   onClearFogRegions(): void
   onClearMeasurements(): void
   onDuplicateObject(objectId: SceneCanvasObjectId): void
@@ -46,9 +53,38 @@ interface SceneCanvasProps {
   onSendToPlayers(): void
   onSetObjectVisibility(objectId: SceneCanvasObjectId, isPlayerVisible: boolean): void
   onUpdateFog(fog: Partial<Pick<SceneCanvasFogState, 'enabled' | 'opacity'>>): void
+  onUpdateFogRegion(regionId: SceneCanvasFogRegionId, regionUpdate: SceneFogRegionUpdate): void
   onUpdateObjectTokenState(objectId: SceneCanvasObjectId, tokenState: SceneCanvasObjectTokenState): void
   onUpdateGrid(grid: Partial<SceneGrid>): void
   onUpdateViewport(viewport: Partial<SceneCanvasViewport>): void
+}
+
+type SceneCanvasTool =
+  | { kind: 'select' }
+  | { kind: 'measurement'; template: SceneMeasurementTemplate }
+  | { kind: 'fog-draw'; shape: SceneFogRegionTemplate }
+  | { kind: 'fog-edit' }
+
+interface SceneCanvasPointerFrame {
+  left: number
+  top: number
+  width: number
+  height: number
+  canvasWidth: number
+  canvasHeight: number
+}
+
+interface SceneCanvasDrawState {
+  pointerId: number
+  tool: Extract<SceneCanvasTool, { kind: 'measurement' | 'fog-draw' }>
+  frame: SceneCanvasPointerFrame
+  startClientX: number
+  startClientY: number
+  originX: number
+  originY: number
+  latestX: number
+  latestY: number
+  moved: boolean
 }
 
 interface SceneObjectDragState {
@@ -62,6 +98,26 @@ interface SceneObjectDragState {
   sceneUnitsPerClientY: number
   latestX: number
   latestY: number
+  moved: boolean
+}
+
+interface SceneFogRegionDragState {
+  regionId: SceneCanvasFogRegionId
+  pointerId: number
+  mode: 'move' | 'resize'
+  shape: SceneCanvasFogRegion['shape']
+  startClientX: number
+  startClientY: number
+  originX: number
+  originY: number
+  originWidth: number
+  originHeight: number
+  sceneUnitsPerClientX: number
+  sceneUnitsPerClientY: number
+  latestX: number
+  latestY: number
+  latestWidth: number
+  latestHeight: number
   moved: boolean
 }
 
@@ -85,11 +141,16 @@ export function SceneCanvas({
   onSendToPlayers,
   onSetObjectVisibility,
   onUpdateFog,
+  onUpdateFogRegion,
   onUpdateObjectTokenState,
   onUpdateGrid,
   onUpdateViewport,
 }: SceneCanvasProps) {
+  const [activeTool, setActiveTool] = useState<SceneCanvasTool>({ kind: 'select' })
+  const [drawState, setDrawState] = useState<SceneCanvasDrawState | null>(null)
   const [dragState, setDragState] = useState<SceneObjectDragState | null>(null)
+  const [fogDragState, setFogDragState] = useState<SceneFogRegionDragState | null>(null)
+  const [selectedFogRegionId, setSelectedFogRegionId] = useState<SceneCanvasFogRegionId | null>(null)
 
   useEffect(() => {
     if (dragState === null || scene === null) {
@@ -161,6 +222,234 @@ export function SceneCanvas({
     }
   }, [dragState, onMoveObjectTo, scene])
 
+  useEffect(() => {
+    if (drawState === null || scene === null) {
+      return
+    }
+
+    function handleWindowPointerMove(event: globalThis.PointerEvent): void {
+      if (event.pointerId !== drawState?.pointerId) {
+        return
+      }
+
+      event.preventDefault()
+
+      const point = getCanvasPointFromClient(event.clientX, event.clientY, drawState.frame)
+      const deltaX = event.clientX - drawState.startClientX
+      const deltaY = event.clientY - drawState.startClientY
+
+      setDrawState({
+        ...drawState,
+        latestX: point.x,
+        latestY: point.y,
+        moved: drawState.moved || Math.hypot(deltaX, deltaY) > 6,
+      })
+    }
+
+    function handleWindowPointerEnd(event: globalThis.PointerEvent): void {
+      if (event.pointerId !== drawState?.pointerId) {
+        return
+      }
+
+      event.preventDefault()
+
+      const finalPoint = getCanvasPointFromClient(event.clientX, event.clientY, drawState.frame)
+      const finalState = {
+        ...drawState,
+        latestX: finalPoint.x,
+        latestY: finalPoint.y,
+        moved: drawState.moved || Math.hypot(event.clientX - drawState.startClientX, event.clientY - drawState.startClientY) > 6,
+      }
+
+      setDrawState(null)
+
+      if (!finalState.moved || getDrawDistance(finalState) < 12) {
+        return
+      }
+
+      if (finalState.tool.kind === 'measurement') {
+        onAddMeasurement(createMeasurementInputFromDraw(finalState))
+        return
+      }
+
+      onAddFogRegion(createFogRegionInputFromDraw(finalState))
+      setActiveTool({ kind: 'fog-edit' })
+    }
+
+    window.addEventListener('pointermove', handleWindowPointerMove)
+    window.addEventListener('pointerup', handleWindowPointerEnd)
+    window.addEventListener('pointercancel', handleWindowPointerEnd)
+
+    return () => {
+      window.removeEventListener('pointermove', handleWindowPointerMove)
+      window.removeEventListener('pointerup', handleWindowPointerEnd)
+      window.removeEventListener('pointercancel', handleWindowPointerEnd)
+    }
+  }, [drawState, onAddFogRegion, onAddMeasurement, scene])
+
+  useEffect(() => {
+    if (fogDragState === null || scene === null) {
+      return
+    }
+
+    const activeScene = scene
+    const canvas = getSceneCanvasState(activeScene)
+    const region = canvas.fog.regions.find((candidate) => candidate.id === fogDragState.regionId)
+
+    if (!region) {
+      setFogDragState(null)
+      return
+    }
+
+    function handleWindowPointerMove(event: globalThis.PointerEvent): void {
+      if (event.pointerId !== fogDragState?.pointerId) {
+        return
+      }
+
+      event.preventDefault()
+
+      const deltaX = (event.clientX - fogDragState.startClientX) * fogDragState.sceneUnitsPerClientX
+      const deltaY = (event.clientY - fogDragState.startClientY) * fogDragState.sceneUnitsPerClientY
+      const position = getDraggedFogRegionPosition(
+        fogDragState,
+        activeScene.grid,
+        canvas.width,
+        canvas.height,
+        deltaX,
+        deltaY,
+      )
+
+      setFogDragState({
+        ...fogDragState,
+        ...position,
+        moved: fogDragState.moved || Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3,
+      })
+    }
+
+    function handleWindowPointerEnd(event: globalThis.PointerEvent): void {
+      if (event.pointerId !== fogDragState?.pointerId) {
+        return
+      }
+
+      event.preventDefault()
+
+      const deltaX = (event.clientX - fogDragState.startClientX) * fogDragState.sceneUnitsPerClientX
+      const deltaY = (event.clientY - fogDragState.startClientY) * fogDragState.sceneUnitsPerClientY
+      const position = getDraggedFogRegionPosition(
+        fogDragState,
+        activeScene.grid,
+        canvas.width,
+        canvas.height,
+        deltaX,
+        deltaY,
+      )
+      const regionUpdate: SceneFogRegionUpdate = {
+        x: position.latestX,
+        y: position.latestY,
+        width: position.latestWidth,
+        height: position.latestHeight,
+      }
+      const didChangeRegion =
+        regionUpdate.x !== fogDragState.originX ||
+        regionUpdate.y !== fogDragState.originY ||
+        regionUpdate.width !== fogDragState.originWidth ||
+        regionUpdate.height !== fogDragState.originHeight
+
+      setFogDragState(null)
+
+      if ((fogDragState.moved || Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) && didChangeRegion) {
+        onUpdateFogRegion(fogDragState.regionId, regionUpdate)
+      }
+    }
+
+    window.addEventListener('pointermove', handleWindowPointerMove)
+    window.addEventListener('pointerup', handleWindowPointerEnd)
+    window.addEventListener('pointercancel', handleWindowPointerEnd)
+
+    return () => {
+      window.removeEventListener('pointermove', handleWindowPointerMove)
+      window.removeEventListener('pointerup', handleWindowPointerEnd)
+      window.removeEventListener('pointercancel', handleWindowPointerEnd)
+    }
+  }, [fogDragState, onUpdateFogRegion, scene])
+
+  useEffect(() => {
+    if (scene === null || selectedFogRegionId === null) {
+      return
+    }
+
+    const canvas = getSceneCanvasState(scene)
+
+    if (!canvas.fog.regions.some((region) => region.id === selectedFogRegionId)) {
+      setSelectedFogRegionId(null)
+    }
+  }, [scene, selectedFogRegionId])
+
+  useEffect(() => {
+    function handleEscape(event: globalThis.KeyboardEvent): void {
+      if (event.key !== 'Escape') {
+        return
+      }
+
+      setDrawState(null)
+      setFogDragState(null)
+      setActiveTool({ kind: 'select' })
+    }
+
+    window.addEventListener('keydown', handleEscape)
+
+    return () => {
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [])
+
+  useEffect(() => {
+    function handleSceneHotkey(event: globalThis.KeyboardEvent): void {
+      if (scene === null || shouldIgnoreSceneHotkey(event)) {
+        return
+      }
+
+      const key = event.key.toLowerCase()
+      const activeScene = scene
+      const canvas = getSceneCanvasState(activeScene)
+
+      switch (key) {
+        case 'v':
+          event.preventDefault()
+          setDrawState(null)
+          setFogDragState(null)
+          setActiveTool({ kind: 'select' })
+          return
+        case 'g':
+          event.preventDefault()
+          onUpdateGrid({ enabled: !activeScene.grid.enabled })
+          return
+        case 'm':
+          event.preventDefault()
+          setActiveTool({ kind: 'measurement', template: 'ruler' })
+          return
+        case 'a':
+          event.preventDefault()
+          setActiveTool({ kind: 'measurement', template: 'circle' })
+          return
+        case 'f':
+          event.preventDefault()
+          setActiveTool(canvas.fog.regions.length > 0 ? { kind: 'fog-edit' } : { kind: 'fog-draw', shape: 'rectangle' })
+          return
+        case 'z':
+          event.preventDefault()
+          onUpdateViewport({ zoom: canvas.viewport.zoom + (event.shiftKey ? -0.1 : 0.1) })
+          return
+      }
+    }
+
+    window.addEventListener('keydown', handleSceneHotkey)
+
+    return () => {
+      window.removeEventListener('keydown', handleSceneHotkey)
+    }
+  }, [onUpdateGrid, onUpdateViewport, scene])
+
   if (scene === null) {
     return (
       <div className="scene-canvas scene-canvas--empty">
@@ -221,6 +510,93 @@ export function SceneCanvas({
     setDragState(null)
   }
 
+  function handleCanvasDrawStart(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (isStorageBusy || event.button !== 0 || (activeTool.kind !== 'measurement' && activeTool.kind !== 'fog-draw')) {
+      return
+    }
+
+    const contentRect = event.currentTarget.closest('.scene-canvas__content')?.getBoundingClientRect()
+
+    if (!contentRect || contentRect.width <= 0 || contentRect.height <= 0) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+
+    const frame: SceneCanvasPointerFrame = {
+      left: contentRect.left,
+      top: contentRect.top,
+      width: contentRect.width,
+      height: contentRect.height,
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+    }
+    const point = getCanvasPointFromClient(event.clientX, event.clientY, frame)
+
+    setDrawState({
+      pointerId: event.pointerId,
+      tool: activeTool,
+      frame,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      originX: point.x,
+      originY: point.y,
+      latestX: point.x,
+      latestY: point.y,
+      moved: false,
+    })
+  }
+
+  function handleFogRegionDragStart(
+    region: SceneCanvasFogRegion,
+    mode: SceneFogRegionDragState['mode'],
+    event: ReactPointerEvent<HTMLDivElement | HTMLButtonElement>,
+  ): void {
+    if (isStorageBusy || activeTool.kind !== 'fog-edit' || event.button !== 0) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setSelectedFogRegionId(region.id)
+
+    const contentRect = event.currentTarget.closest('.scene-canvas__content')?.getBoundingClientRect()
+    const sceneUnitsPerClientX =
+      contentRect && contentRect.width > 0 ? canvas.width / contentRect.width : 1 / canvas.viewport.zoom
+    const sceneUnitsPerClientY =
+      contentRect && contentRect.height > 0 ? canvas.height / contentRect.height : 1 / canvas.viewport.zoom
+
+    setFogDragState({
+      regionId: region.id,
+      pointerId: event.pointerId,
+      mode,
+      shape: region.shape,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      originX: region.x,
+      originY: region.y,
+      originWidth: region.width,
+      originHeight: region.height,
+      sceneUnitsPerClientX,
+      sceneUnitsPerClientY,
+      latestX: region.x,
+      latestY: region.y,
+      latestWidth: region.width,
+      latestHeight: region.height,
+      moved: false,
+    })
+  }
+
+  const previewMeasurement =
+    drawState?.tool.kind === 'measurement' ? createPreviewMeasurementFromDraw(drawState, activeScene.grid) : null
+  const previewFogRegion = drawState?.tool.kind === 'fog-draw' ? createPreviewFogRegionFromDraw(drawState) : null
+  const renderedFog = createFogStateWithDraggedRegion(canvas.fog, fogDragState)
+  const isFogEditable = activeTool.kind === 'fog-edit'
+  const isCanvasDrawActive = activeTool.kind === 'measurement' || activeTool.kind === 'fog-draw'
+
   return (
     <div className="scene-canvas">
       <div className="scene-canvas__main">
@@ -277,13 +653,48 @@ export function SceneCanvas({
                   measurement={measurement}
                 />
               ))}
+              {previewMeasurement ? (
+                <CanvasMeasurement
+                  canvasHeight={canvas.height}
+                  canvasWidth={canvas.width}
+                  isPreview
+                  measurement={previewMeasurement}
+                />
+              ) : null}
             </div>
 
             <SceneCanvasFogOverlay
               canvasHeight={canvas.height}
               canvasWidth={canvas.width}
-              fog={canvas.fog}
+              draggedRegionId={fogDragState?.regionId}
+              fog={renderedFog}
+              isEditable={isFogEditable}
+              onMoveStart={(region, event) => handleFogRegionDragStart(region, 'move', event)}
+              onResizeStart={(region, event) => handleFogRegionDragStart(region, 'resize', event)}
+              selectedRegionId={selectedFogRegionId}
               variant="master"
+            />
+            {previewFogRegion ? (
+              <SceneCanvasFogOverlay
+                canvasHeight={canvas.height}
+                canvasWidth={canvas.width}
+                fog={{
+                  enabled: true,
+                  opacity: canvas.fog.opacity,
+                  regions: [previewFogRegion],
+                }}
+                isPreview
+                variant="master"
+              />
+            ) : null}
+            <div
+              aria-hidden="true"
+              className={
+                isCanvasDrawActive
+                  ? 'scene-canvas__interaction-layer scene-canvas__interaction-layer--active'
+                  : 'scene-canvas__interaction-layer'
+              }
+              onPointerDown={handleCanvasDrawStart}
             />
           </div>
         </div>
@@ -324,14 +735,14 @@ export function SceneCanvas({
 
       <aside className="scene-canvas__layers" aria-label="Слои сцены">
         <SceneCanvasControls
+          activeTool={activeTool}
           canvas={canvas}
           grid={activeScene.grid}
           isStorageBusy={isStorageBusy}
-          onAddFogRegion={onAddFogRegion}
-          onAddMeasurement={onAddMeasurement}
           onClearFogRegions={onClearFogRegions}
           onClearMeasurements={onClearMeasurements}
           onRemoveLastFogRegion={onRemoveLastFogRegion}
+          onSetTool={setActiveTool}
           onUpdateFog={onUpdateFog}
           onUpdateGrid={onUpdateGrid}
           onUpdateViewport={onUpdateViewport}
@@ -604,28 +1015,28 @@ function SceneCanvasObjectControls({
 }
 
 interface SceneCanvasControlsProps {
+  activeTool: SceneCanvasTool
   canvas: ReturnType<typeof getSceneCanvasState>
   grid: SceneGrid
   isStorageBusy: boolean
-  onAddFogRegion(shape: SceneFogRegionTemplate): void
-  onAddMeasurement(template: SceneMeasurementTemplate): void
   onClearFogRegions(): void
   onClearMeasurements(): void
   onRemoveLastFogRegion(): void
+  onSetTool(tool: SceneCanvasTool): void
   onUpdateFog(fog: Partial<Pick<SceneCanvasFogState, 'enabled' | 'opacity'>>): void
   onUpdateGrid(grid: Partial<SceneGrid>): void
   onUpdateViewport(viewport: Partial<SceneCanvasViewport>): void
 }
 
 function SceneCanvasControls({
+  activeTool,
   canvas,
   grid,
   isStorageBusy,
-  onAddFogRegion,
-  onAddMeasurement,
   onClearFogRegions,
   onClearMeasurements,
   onRemoveLastFogRegion,
+  onSetTool,
   onUpdateFog,
   onUpdateGrid,
   onUpdateViewport,
@@ -662,6 +1073,7 @@ function SceneCanvasControls({
             disabled={isStorageBusy}
             max={30}
             min={1}
+            step={0.5}
             onChange={(event) => onUpdateGrid({ distancePerCell: getNumberValue(event.target.value, grid.distancePerCell) })}
             type="number"
             value={grid.distancePerCell}
@@ -669,12 +1081,14 @@ function SceneCanvasControls({
         </label>
         <label>
           <span>Единицы</span>
-          <input
+          <select
             disabled={isStorageBusy}
-            maxLength={8}
-            onChange={(event) => onUpdateGrid({ unitLabel: event.target.value })}
-            value={grid.unitLabel}
-          />
+            onChange={(event) => onUpdateGrid(getGridUnitUpdate(event.target.value))}
+            value={getGridUnitValue(grid.unitLabel)}
+          >
+            <option value="ft">ft</option>
+            <option value="m">метры</option>
+          </select>
         </label>
         <label>
           <span>Цвет</span>
@@ -796,10 +1210,22 @@ function SceneCanvasControls({
         </div>
         <div className="scene-canvas-template-grid">
           <button
-            aria-label="Добавить линейку"
-            className="button button--secondary scene-canvas-icon-button"
+            aria-label="Выбрать объекты сцены"
+            aria-pressed={activeTool.kind === 'select'}
+            className={getToolButtonClassName(activeTool.kind === 'select')}
             disabled={isStorageBusy}
-            onClick={() => onAddMeasurement('ruler')}
+            onClick={() => onSetTool({ kind: 'select' })}
+            title="Выбор"
+            type="button"
+          >
+            ↖
+          </button>
+          <button
+            aria-label="Добавить линейку"
+            aria-pressed={isMeasurementToolActive(activeTool, 'ruler')}
+            className={getToolButtonClassName(isMeasurementToolActive(activeTool, 'ruler'))}
+            disabled={isStorageBusy}
+            onClick={() => onSetTool({ kind: 'measurement', template: 'ruler' })}
             title="Линейка"
             type="button"
           >
@@ -807,9 +1233,10 @@ function SceneCanvasControls({
           </button>
           <button
             aria-label="Добавить круг измерения"
-            className="button button--secondary scene-canvas-icon-button"
+            aria-pressed={isMeasurementToolActive(activeTool, 'circle')}
+            className={getToolButtonClassName(isMeasurementToolActive(activeTool, 'circle'))}
             disabled={isStorageBusy}
-            onClick={() => onAddMeasurement('circle')}
+            onClick={() => onSetTool({ kind: 'measurement', template: 'circle' })}
             title="Круг"
             type="button"
           >
@@ -817,9 +1244,10 @@ function SceneCanvasControls({
           </button>
           <button
             aria-label="Добавить конус измерения"
-            className="button button--secondary scene-canvas-icon-button"
+            aria-pressed={isMeasurementToolActive(activeTool, 'cone')}
+            className={getToolButtonClassName(isMeasurementToolActive(activeTool, 'cone'))}
             disabled={isStorageBusy}
-            onClick={() => onAddMeasurement('cone')}
+            onClick={() => onSetTool({ kind: 'measurement', template: 'cone' })}
             title="Конус"
             type="button"
           >
@@ -827,9 +1255,10 @@ function SceneCanvasControls({
           </button>
           <button
             aria-label="Добавить квадрат измерения"
-            className="button button--secondary scene-canvas-icon-button"
+            aria-pressed={isMeasurementToolActive(activeTool, 'square')}
+            className={getToolButtonClassName(isMeasurementToolActive(activeTool, 'square'))}
             disabled={isStorageBusy}
-            onClick={() => onAddMeasurement('square')}
+            onClick={() => onSetTool({ kind: 'measurement', template: 'square' })}
             title="Квадрат"
             type="button"
           >
@@ -876,9 +1305,10 @@ function SceneCanvasControls({
         <div className="scene-canvas-template-grid">
           <button
             aria-label="Закрыть прямоугольную область туманом"
-            className="button button--secondary scene-canvas-icon-button"
+            aria-pressed={isFogDrawToolActive(activeTool, 'rectangle')}
+            className={getToolButtonClassName(isFogDrawToolActive(activeTool, 'rectangle'))}
             disabled={isStorageBusy}
-            onClick={() => onAddFogRegion('rectangle')}
+            onClick={() => onSetTool({ kind: 'fog-draw', shape: 'rectangle' })}
             title="Закрыть прямоугольник"
             type="button"
           >
@@ -886,13 +1316,25 @@ function SceneCanvasControls({
           </button>
           <button
             aria-label="Закрыть круглую область туманом"
-            className="button button--secondary scene-canvas-icon-button"
+            aria-pressed={isFogDrawToolActive(activeTool, 'circle')}
+            className={getToolButtonClassName(isFogDrawToolActive(activeTool, 'circle'))}
             disabled={isStorageBusy}
-            onClick={() => onAddFogRegion('circle')}
+            onClick={() => onSetTool({ kind: 'fog-draw', shape: 'circle' })}
             title="Закрыть круг"
             type="button"
           >
             ●
+          </button>
+          <button
+            aria-label="Редактировать области тумана"
+            aria-pressed={activeTool.kind === 'fog-edit'}
+            className={getToolButtonClassName(activeTool.kind === 'fog-edit')}
+            disabled={isStorageBusy || canvas.fog.regions.length === 0}
+            onClick={() => onSetTool({ kind: 'fog-edit' })}
+            title="Двигать и менять размер"
+            type="button"
+          >
+            ⤢
           </button>
         </div>
         <div className="scene-canvas-fog-actions">
@@ -925,12 +1367,24 @@ function SceneCanvasControls({
 function SceneCanvasFogOverlay({
   canvasHeight,
   canvasWidth,
+  draggedRegionId,
   fog,
+  isEditable = false,
+  isPreview = false,
+  onMoveStart,
+  onResizeStart,
+  selectedRegionId,
   variant,
 }: {
   canvasHeight: number
   canvasWidth: number
+  draggedRegionId?: SceneCanvasFogRegionId
   fog: SceneCanvasFogState
+  isEditable?: boolean
+  isPreview?: boolean
+  onMoveStart?: (region: SceneCanvasFogRegion, event: ReactPointerEvent<HTMLDivElement>) => void
+  onResizeStart?: (region: SceneCanvasFogRegion, event: ReactPointerEvent<HTMLButtonElement>) => void
+  selectedRegionId?: SceneCanvasFogRegionId | null
   variant: 'master' | 'player'
 }) {
   if (!fog.enabled || fog.regions.length === 0) {
@@ -938,16 +1392,34 @@ function SceneCanvasFogOverlay({
   }
 
   return (
-    <div className={`scene-canvas-fog scene-canvas-fog--${variant}`} aria-hidden="true">
-      {fog.regions.map((region) => (
-        <div
-          className={`scene-canvas-fog-region scene-canvas-fog-region--${region.shape}`}
-          key={region.id}
-          style={getFogRegionStyle(region, canvasWidth, canvasHeight, fog.opacity)}
-        >
-          {variant === 'master' ? <span>{region.label}</span> : null}
-        </div>
-      ))}
+    <div
+      className={getFogOverlayClassName(variant, isEditable, isPreview)}
+      aria-hidden={variant === 'player' ? 'true' : undefined}
+    >
+      {fog.regions.map((region) => {
+        const isSelected = selectedRegionId === region.id
+        const isDragging = draggedRegionId === region.id
+
+        return (
+          <div
+            className={getFogRegionClassName(region, isEditable, isPreview, isSelected, isDragging)}
+            key={region.id}
+            onPointerDown={isEditable ? (event) => onMoveStart?.(region, event) : undefined}
+            style={getFogRegionStyle(region, canvasWidth, canvasHeight, fog.opacity)}
+          >
+            {variant === 'master' ? <span>{region.label}</span> : null}
+            {isEditable ? (
+              <button
+                aria-label={`Изменить размер ${region.label}`}
+                className="scene-canvas-fog-region__resize"
+                onPointerDown={(event) => onResizeStart?.(region, event)}
+                title="Изменить размер"
+                type="button"
+              />
+            ) : null}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -955,16 +1427,20 @@ function SceneCanvasFogOverlay({
 function CanvasMeasurement({
   canvasHeight,
   canvasWidth,
+  isPreview = false,
   measurement,
 }: {
   canvasHeight: number
   canvasWidth: number
+  isPreview?: boolean
   measurement: SceneCanvasMeasurement
 }) {
+  const previewClassName = isPreview ? ' scene-canvas-measurement--preview' : ''
+
   if (measurement.kind === 'ruler') {
     return (
       <div
-        className="scene-canvas-measurement scene-canvas-measurement--ruler"
+        className={`scene-canvas-measurement scene-canvas-measurement--ruler${previewClassName}`}
         style={getRulerMeasurementStyle(measurement, canvasWidth, canvasHeight)}
       >
         <span>{measurement.label}</span>
@@ -974,12 +1450,269 @@ function CanvasMeasurement({
 
   return (
     <div
-      className={`scene-canvas-measurement scene-canvas-measurement--area scene-canvas-measurement--${measurement.shape ?? 'circle'}`}
+      className={`scene-canvas-measurement scene-canvas-measurement--area scene-canvas-measurement--${measurement.shape ?? 'circle'}${previewClassName}`}
       style={getAreaMeasurementStyle(measurement, canvasWidth, canvasHeight)}
     >
       <span>{measurement.label}</span>
     </div>
   )
+}
+
+function getCanvasPointFromClient(
+  clientX: number,
+  clientY: number,
+  frame: SceneCanvasPointerFrame,
+): SceneCanvasObjectPosition {
+  return {
+    x: clampCanvasValue(((clientX - frame.left) / frame.width) * frame.canvasWidth, 0, frame.canvasWidth),
+    y: clampCanvasValue(((clientY - frame.top) / frame.height) * frame.canvasHeight, 0, frame.canvasHeight),
+  }
+}
+
+function getDrawDistance(drawState: SceneCanvasDrawState): number {
+  return Math.hypot(drawState.latestX - drawState.originX, drawState.latestY - drawState.originY)
+}
+
+function createMeasurementInputFromDraw(drawState: SceneCanvasDrawState): SceneMeasurementDraft {
+  const template = drawState.tool.kind === 'measurement' ? drawState.tool.template : 'ruler'
+
+  return {
+    template,
+    originX: drawState.originX,
+    originY: drawState.originY,
+    targetX: drawState.latestX,
+    targetY: drawState.latestY,
+  }
+}
+
+function createPreviewMeasurementFromDraw(
+  drawState: SceneCanvasDrawState,
+  grid: SceneGrid,
+): SceneCanvasMeasurement {
+  const input = createMeasurementInputFromDraw(drawState)
+  const distance = Math.max(1, Math.hypot(input.targetX - input.originX, input.targetY - input.originY))
+  const cells = distance / grid.size
+  const label = formatGridDistance(cells, grid)
+
+  if (input.template === 'ruler') {
+    return {
+      id: 'measurement-preview',
+      kind: 'ruler',
+      name: 'Линейка',
+      originX: input.originX,
+      originY: input.originY,
+      targetX: input.targetX,
+      targetY: input.targetY,
+      radius: 0,
+      color: '#2c806f',
+      label,
+      isPlayerVisible: true,
+    }
+  }
+
+  return {
+    id: 'measurement-preview',
+    kind: 'area',
+    shape: input.template,
+    name: getMeasurementTemplateName(input.template),
+    originX: input.originX,
+    originY: input.originY,
+    targetX: input.targetX,
+    targetY: input.targetY,
+    radius: distance,
+    color: getMeasurementTemplateColor(input.template),
+    label,
+    isPlayerVisible: true,
+  }
+}
+
+function createFogRegionInputFromDraw(drawState: SceneCanvasDrawState): SceneFogRegionDraft {
+  const shape = drawState.tool.kind === 'fog-draw' ? drawState.tool.shape : 'rectangle'
+
+  return {
+    shape,
+    ...getFogRegionBoundsFromDraw(drawState, shape),
+  }
+}
+
+function createPreviewFogRegionFromDraw(drawState: SceneCanvasDrawState): SceneCanvasFogRegion {
+  const input = createFogRegionInputFromDraw(drawState)
+
+  return {
+    id: 'fog-preview',
+    label: input.shape === 'circle' ? 'Круг тумана' : 'Область тумана',
+    ...input,
+  }
+}
+
+function createFogStateWithDraggedRegion(
+  fog: SceneCanvasFogState,
+  fogDragState: SceneFogRegionDragState | null,
+): SceneCanvasFogState {
+  if (fogDragState === null) {
+    return fog
+  }
+
+  return {
+    ...fog,
+    regions: fog.regions.map((region) =>
+      region.id === fogDragState.regionId
+        ? {
+            ...region,
+            x: fogDragState.latestX,
+            y: fogDragState.latestY,
+            width: fogDragState.latestWidth,
+            height: fogDragState.latestHeight,
+          }
+        : region,
+    ),
+  }
+}
+
+function getFogRegionBoundsFromDraw(
+  drawState: SceneCanvasDrawState,
+  shape: SceneFogRegionTemplate,
+): Pick<SceneCanvasFogRegion, 'x' | 'y' | 'width' | 'height'> {
+  const rawDeltaX = drawState.latestX - drawState.originX
+  const rawDeltaY = drawState.latestY - drawState.originY
+
+  if (shape === 'circle') {
+    const size = Math.max(Math.abs(rawDeltaX), Math.abs(rawDeltaY))
+
+    return {
+      x: rawDeltaX < 0 ? drawState.originX - size : drawState.originX,
+      y: rawDeltaY < 0 ? drawState.originY - size : drawState.originY,
+      width: size,
+      height: size,
+    }
+  }
+
+  return {
+    x: Math.min(drawState.originX, drawState.latestX),
+    y: Math.min(drawState.originY, drawState.latestY),
+    width: Math.abs(rawDeltaX),
+    height: Math.abs(rawDeltaY),
+  }
+}
+
+function getDraggedFogRegionPosition(
+  fogDragState: SceneFogRegionDragState,
+  grid: SceneGrid,
+  canvasWidth: number,
+  canvasHeight: number,
+  deltaX: number,
+  deltaY: number,
+): Pick<SceneFogRegionDragState, 'latestX' | 'latestY' | 'latestWidth' | 'latestHeight'> {
+  if (fogDragState.mode === 'move') {
+    const width = fogDragState.originWidth
+    const height = fogDragState.originHeight
+    const x = getSnappedCanvasValue(fogDragState.originX + deltaX, grid)
+    const y = getSnappedCanvasValue(fogDragState.originY + deltaY, grid)
+
+    return {
+      latestX: clampCanvasValue(x, 0, canvasWidth - width),
+      latestY: clampCanvasValue(y, 0, canvasHeight - height),
+      latestWidth: width,
+      latestHeight: height,
+    }
+  }
+
+  if (fogDragState.shape === 'circle') {
+    const maxSize = Math.max(40, Math.min(canvasWidth - fogDragState.originX, canvasHeight - fogDragState.originY))
+    const size = clampCanvasValue(
+      getSnappedCanvasDimension(Math.max(fogDragState.originWidth + deltaX, fogDragState.originHeight + deltaY), grid),
+      40,
+      maxSize,
+    )
+
+    return {
+      latestX: fogDragState.originX,
+      latestY: fogDragState.originY,
+      latestWidth: size,
+      latestHeight: size,
+    }
+  }
+
+  return {
+    latestX: fogDragState.originX,
+    latestY: fogDragState.originY,
+    latestWidth: clampCanvasValue(
+      getSnappedCanvasDimension(fogDragState.originWidth + deltaX, grid),
+      40,
+      canvasWidth - fogDragState.originX,
+    ),
+    latestHeight: clampCanvasValue(
+      getSnappedCanvasDimension(fogDragState.originHeight + deltaY, grid),
+      40,
+      canvasHeight - fogDragState.originY,
+    ),
+  }
+}
+
+function getSnappedCanvasValue(value: number, grid: SceneGrid): number {
+  return grid.enabled && grid.snapToGrid ? snapCanvasValue(value, grid) : value
+}
+
+function getSnappedCanvasDimension(value: number, grid: SceneGrid): number {
+  const positiveValue = Math.max(40, value)
+
+  return grid.enabled && grid.snapToGrid ? Math.max(grid.size, snapCanvasValue(positiveValue, grid)) : positiveValue
+}
+
+function getMeasurementTemplateName(template: SceneMeasurementTemplate): string {
+  switch (template) {
+    case 'ruler':
+      return 'Линейка'
+    case 'circle':
+      return 'Круг'
+    case 'cone':
+      return 'Конус'
+    case 'square':
+      return 'Квадрат'
+  }
+}
+
+function getMeasurementTemplateColor(template: SceneMeasurementTemplate): string {
+  switch (template) {
+    case 'ruler':
+      return '#2c806f'
+    case 'circle':
+      return '#9f2d3c'
+    case 'cone':
+      return '#d8a86a'
+    case 'square':
+      return '#49625f'
+  }
+}
+
+function getFogOverlayClassName(variant: 'master' | 'player', isEditable: boolean, isPreview: boolean): string {
+  return [
+    'scene-canvas-fog',
+    `scene-canvas-fog--${variant}`,
+    isEditable ? 'scene-canvas-fog--editable' : '',
+    isPreview ? 'scene-canvas-fog--preview' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+function getFogRegionClassName(
+  region: SceneCanvasFogRegion,
+  isEditable: boolean,
+  isPreview: boolean,
+  isSelected: boolean,
+  isDragging: boolean,
+): string {
+  return [
+    'scene-canvas-fog-region',
+    `scene-canvas-fog-region--${region.shape}`,
+    isEditable ? 'scene-canvas-fog-region--editable' : '',
+    isPreview ? 'scene-canvas-fog-region--preview' : '',
+    isSelected ? 'scene-canvas-fog-region--selected' : '',
+    isDragging ? 'scene-canvas-fog-region--dragging' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
 }
 
 function getFogRegionStyle(
@@ -1196,6 +1929,57 @@ function getObjectKindLabel(kind: SceneCanvasObject['kind']): string {
 
 function getObjectVisibilityLabel(object: SceneCanvasObject): string {
   return object.isPlayerVisible ? 'виден игрокам' : 'скрыт'
+}
+
+function isMeasurementToolActive(activeTool: SceneCanvasTool, template: SceneMeasurementTemplate): boolean {
+  return activeTool.kind === 'measurement' && activeTool.template === template
+}
+
+function isFogDrawToolActive(activeTool: SceneCanvasTool, shape: SceneFogRegionTemplate): boolean {
+  return activeTool.kind === 'fog-draw' && activeTool.shape === shape
+}
+
+function getToolButtonClassName(isActive: boolean): string {
+  return isActive
+    ? 'button button--secondary scene-canvas-icon-button scene-canvas-icon-button--active'
+    : 'button button--secondary scene-canvas-icon-button'
+}
+
+function getGridUnitValue(unitLabel: string): 'ft' | 'm' {
+  return unitLabel === 'm' ? 'm' : 'ft'
+}
+
+function getGridUnitUpdate(unitValue: string): Partial<SceneGrid> {
+  if (unitValue === 'm') {
+    return {
+      unitLabel: 'm',
+      distancePerCell: 1.5,
+    }
+  }
+
+  return {
+    unitLabel: 'ft',
+    distancePerCell: 5,
+  }
+}
+
+function shouldIgnoreSceneHotkey(event: globalThis.KeyboardEvent): boolean {
+  if (event.altKey || event.ctrlKey || event.metaKey) {
+    return true
+  }
+
+  const target = event.target
+
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return (
+    target.isContentEditable ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLSelectElement ||
+    target instanceof HTMLTextAreaElement
+  )
 }
 
 function getOptionalNumberValue(value: string): number | undefined {

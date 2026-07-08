@@ -37,6 +37,9 @@ const defaultSceneGrid: SceneGrid = {
   snapToGrid: true,
 }
 
+const metricGridUnitAliases = new Set(['m', 'meter', 'meters', 'metre', 'metres', 'м', 'метр', 'метры'])
+const imperialGridUnitAliases = new Set(['ft', 'feet', 'foot', 'фут', 'футы'])
+
 export function createEmptyScene(options: CreateEmptySceneOptions): Scene {
   const description = options.description?.trim()
 
@@ -199,9 +202,27 @@ export function createHydratedSceneGrid(grid?: Partial<SceneGrid>): SceneGrid {
     color: grid?.color ?? defaultSceneGrid.color,
     opacity: clampNumber(grid?.opacity, 0.08, 0.9, defaultSceneGrid.opacity),
     distancePerCell: clampNumber(grid?.distancePerCell, 1, 30, defaultSceneGrid.distancePerCell),
-    unitLabel: grid?.unitLabel?.trim() || defaultSceneGrid.unitLabel,
+    unitLabel: normalizeGridUnitLabel(grid?.unitLabel),
     snapToGrid: grid?.snapToGrid ?? defaultSceneGrid.snapToGrid,
   }
+}
+
+function normalizeGridUnitLabel(unitLabel: string | undefined): string {
+  const normalizedUnit = unitLabel?.trim().toLowerCase()
+
+  if (!normalizedUnit) {
+    return defaultSceneGrid.unitLabel
+  }
+
+  if (metricGridUnitAliases.has(normalizedUnit)) {
+    return 'm'
+  }
+
+  if (imperialGridUnitAliases.has(normalizedUnit)) {
+    return 'ft'
+  }
+
+  return defaultSceneGrid.unitLabel
 }
 
 function clampNumber(value: number | undefined, min: number, max: number, fallback: number): number {

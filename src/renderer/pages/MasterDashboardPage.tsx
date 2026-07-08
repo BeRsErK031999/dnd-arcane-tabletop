@@ -13,8 +13,9 @@ import { getSceneCanvasState } from '@renderer/stores/sceneCanvasFactory'
 import { useCampaignsStore } from '@renderer/stores/useCampaignsStore'
 import type {
   SceneCanvasObjectPosition,
-  SceneFogRegionTemplate,
-  SceneMeasurementTemplate,
+  SceneFogRegionInput,
+  SceneFogRegionUpdate,
+  SceneMeasurementInput,
   SceneObjectMoveDirection,
 } from '@renderer/stores/sceneToolsFactory'
 import { SceneCanvas } from '@renderer/widgets/SceneCanvas'
@@ -38,6 +39,7 @@ import {
   type PlayerScreenOpenResult,
   type PlayerScreenState,
   type PlayerScreenStatus,
+  type SceneCanvasFogRegionId,
   type SceneCanvasFogState,
   type SceneCanvasObjectId,
   type SceneCanvasObjectTokenState,
@@ -160,6 +162,7 @@ export function MasterDashboardPage() {
     clearActiveSceneMeasurements,
     updateActiveSceneFog,
     addActiveSceneFogRegion,
+    updateActiveSceneFogRegion,
     removeLastActiveSceneFogRegion,
     clearActiveSceneFogRegions,
     createCharacterCard,
@@ -455,6 +458,58 @@ export function MasterDashboardPage() {
   ])
 
   useEffect(() => {
+    function handleAppHotkey(event: KeyboardEvent): void {
+      if (event.altKey || event.ctrlKey || event.metaKey || isEditableShortcutTarget(event.target)) {
+        return
+      }
+
+      const key = event.key.toLowerCase()
+
+      if (key === 'i') {
+        event.preventDefault()
+        setActiveWorkspaceSection('combat')
+        scrollWorkspaceSection('combat')
+        return
+      }
+
+      if (key === 'h') {
+        event.preventDefault()
+        setActiveWorkspaceSection('notes')
+        setActiveRightPanel('notes')
+        scrollWorkspaceSection('notes')
+        return
+      }
+
+      if (key === 'p') {
+        event.preventDefault()
+
+        if (!hasSelectedCampaign || activeScene === null || isStorageBusy) {
+          return
+        }
+
+        void sendActiveSceneToPlayers().then((result) => {
+          if (result.ok) {
+            const sceneName = result.campaign.playerScreenState.scenePreview?.name ?? 'активная сцена'
+
+            setPlayerStatus(getStatusFromPlayerAction(result.playerStatus))
+            setSceneActionStatus(`Сцена "${sceneName}" отправлена игрокам.`)
+            setPlayerActionStatus(`Сцена "${sceneName}" отправлена игрокам.`)
+            return
+          }
+
+          setSceneActionStatus('Не удалось отправить активную сцену игрокам.')
+        })
+      }
+    }
+
+    window.addEventListener('keydown', handleAppHotkey)
+
+    return () => {
+      window.removeEventListener('keydown', handleAppHotkey)
+    }
+  }, [activeScene, hasSelectedCampaign, isStorageBusy, sendActiveSceneToPlayers])
+
+  useEffect(() => {
     setSelectedCharacterCardId(null)
     setCharacterDraft(emptyCharacterCardDraft)
     setCharacterActionStatus(
@@ -659,8 +714,8 @@ export function MasterDashboardPage() {
     setSceneActionStatus(result.ok ? 'Положение canvas сохранено.' : 'Не удалось сохранить положение canvas.')
   }
 
-  async function handleAddActiveSceneMeasurement(template: SceneMeasurementTemplate): Promise<void> {
-    const result = await addActiveSceneMeasurement(template)
+  async function handleAddActiveSceneMeasurement(input: SceneMeasurementInput): Promise<void> {
+    const result = await addActiveSceneMeasurement(input)
 
     setSceneActionStatus(result.ok ? 'Измерение добавлено.' : 'Не удалось добавить измерение.')
   }
@@ -679,10 +734,19 @@ export function MasterDashboardPage() {
     setSceneActionStatus(result.ok ? 'Туман войны сохранен.' : 'Не удалось сохранить туман войны.')
   }
 
-  async function handleAddActiveSceneFogRegion(shape: SceneFogRegionTemplate): Promise<void> {
-    const result = await addActiveSceneFogRegion(shape)
+  async function handleAddActiveSceneFogRegion(input: SceneFogRegionInput): Promise<void> {
+    const result = await addActiveSceneFogRegion(input)
 
     setSceneActionStatus(result.ok ? 'Область тумана закрыта.' : 'Не удалось добавить область тумана.')
+  }
+
+  async function handleUpdateActiveSceneFogRegion(
+    regionId: SceneCanvasFogRegionId,
+    regionUpdate: SceneFogRegionUpdate,
+  ): Promise<void> {
+    const result = await updateActiveSceneFogRegion(regionId, regionUpdate)
+
+    setSceneActionStatus(result.ok ? 'Область тумана изменена.' : 'Не удалось изменить область тумана.')
   }
 
   async function handleRemoveLastActiveSceneFogRegion(): Promise<void> {
@@ -1601,6 +1665,9 @@ export function MasterDashboardPage() {
                     void handleUpdateActiveSceneObjectTokenState(objectId, tokenState)
                   }
                   onUpdateFog={(fog) => void handleUpdateActiveSceneFog(fog)}
+                  onUpdateFogRegion={(regionId, regionUpdate) =>
+                    void handleUpdateActiveSceneFogRegion(regionId, regionUpdate)
+                  }
                   onUpdateGrid={(grid) => void handleUpdateActiveSceneGrid(grid)}
                   onUpdateViewport={(viewport) => void handleUpdateActiveSceneViewport(viewport)}
                   scene={activeScene}
@@ -2814,6 +2881,14 @@ function getWorkspaceNavigationSection(event: Event): WorkspaceSection | null {
 
   const section = event.detail.section
   return isWorkspaceSection(section) ? section : null
+}
+
+function scrollWorkspaceSection(section: WorkspaceSection): void {
+  window.requestAnimationFrame(() => {
+    const activeContent = document.querySelector(`[data-workspace-section-content="${section}"]`)
+
+    activeContent?.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
+  })
 }
 
 function isWorkspaceSection(value: unknown): value is WorkspaceSection {

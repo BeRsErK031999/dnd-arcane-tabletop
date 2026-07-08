@@ -17,6 +17,26 @@ import type {
   SceneCanvasViewport,
 } from '@shared/types'
 
+export type SceneCanvasMeasurementTemplate = 'ruler' | 'circle' | 'cone' | 'square'
+
+export interface SceneCanvasMeasurementDraft {
+  template: SceneCanvasMeasurementTemplate
+  originX: number
+  originY: number
+  targetX: number
+  targetY: number
+}
+
+export interface SceneCanvasFogRegionDraft {
+  shape: SceneCanvasFogRegionShape
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export type SceneCanvasFogRegionUpdate = Partial<Pick<SceneCanvasFogRegion, 'x' | 'y' | 'width' | 'height'>>
+
 const defaultCanvasWidth = 1600
 const defaultCanvasHeight = 900
 const defaultCanvasViewport: SceneCanvasViewport = {
@@ -209,12 +229,12 @@ export function createSceneCanvasWithViewport(
 export function createSceneCanvasWithMeasurement(
   canvas: SceneCanvasState,
   grid: SceneGrid,
-  template: 'ruler' | 'circle' | 'cone' | 'square',
+  input: SceneCanvasMeasurementTemplate | SceneCanvasMeasurementDraft,
   updatedAt: IsoDateString = new Date().toISOString(),
 ): SceneCanvasState {
   return {
     ...canvas,
-    measurements: [...canvas.measurements, createMeasurementTemplate(canvas, grid, template)],
+    measurements: [...canvas.measurements, createMeasurementFromInput(canvas, grid, input)],
     updatedAt,
   }
 }
@@ -255,15 +275,58 @@ export function createSceneCanvasWithFogSettings(
 export function createSceneCanvasWithFogRegion(
   canvas: SceneCanvasState,
   grid: SceneGrid,
-  shape: SceneCanvasFogRegionShape,
+  input: SceneCanvasFogRegionShape | SceneCanvasFogRegionDraft,
   updatedAt: IsoDateString = new Date().toISOString(),
 ): SceneCanvasState {
-  const region = createFogRegionTemplate(canvas, grid, shape, canvas.fog.regions.length + 1)
+  const region = createFogRegionFromInput(canvas, grid, input, canvas.fog.regions.length + 1)
   const fog = normalizeCanvasFog(
     {
       ...canvas.fog,
       enabled: true,
       regions: [...canvas.fog.regions, region],
+    },
+    canvas.width,
+    canvas.height,
+  )
+
+  return {
+    ...canvas,
+    layers: mergeCanvasLayers(canvas.layers, true),
+    fog,
+    updatedAt,
+  }
+}
+
+export function createSceneCanvasWithUpdatedFogRegion(
+  canvas: SceneCanvasState,
+  grid: SceneGrid,
+  regionId: SceneCanvasFogRegion['id'],
+  regionUpdate: SceneCanvasFogRegionUpdate,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): SceneCanvasState {
+  const currentRegion = canvas.fog.regions.find((region) => region.id === regionId)
+
+  if (!currentRegion) {
+    throw new Error('fog-region-not-found')
+  }
+
+  const updatedRegion = normalizeCanvasFogRegion(
+    snapFogRegionToGrid(
+      {
+        ...currentRegion,
+        ...regionUpdate,
+      },
+      grid,
+    ),
+    canvas.width,
+    canvas.height,
+    canvas.fog.regions.findIndex((region) => region.id === regionId),
+  )
+  const fog = normalizeCanvasFog(
+    {
+      ...canvas.fog,
+      enabled: true,
+      regions: canvas.fog.regions.map((region) => (region.id === regionId ? updatedRegion : region)),
     },
     canvas.width,
     canvas.height,
@@ -331,7 +394,7 @@ export function snapCanvasValue(value: number, grid: SceneGrid): number {
 }
 
 export function formatGridDistance(cells: number, grid: SceneGrid): string {
-  return `${Math.round(cells * grid.distancePerCell)} ${grid.unitLabel}`
+  return `${formatDistanceValue(cells * grid.distancePerCell)} ${grid.unitLabel}`
 }
 
 function createCanvasLayer(
@@ -501,10 +564,53 @@ function createFogRegionTemplate(
   )
 }
 
+function createFogRegionFromInput(
+  canvas: SceneCanvasState,
+  grid: SceneGrid,
+  input: SceneCanvasFogRegionShape | SceneCanvasFogRegionDraft,
+  number: number,
+): SceneCanvasFogRegion {
+  if (typeof input === 'string') {
+    return createFogRegionTemplate(canvas, grid, input, number)
+  }
+
+  return normalizeCanvasFogRegion(
+    {
+      ...snapFogRegionToGrid(input, grid),
+      id: createFogRegionId(),
+      label: input.shape === 'circle' ? `Круг тумана ${number}` : `Область тумана ${number}`,
+    },
+    canvas.width,
+    canvas.height,
+    number - 1,
+  )
+}
+
+function snapFogRegionToGrid<T extends Pick<SceneCanvasFogRegion, 'x' | 'y' | 'width' | 'height'>>(
+  region: T,
+  grid: SceneGrid,
+): T {
+  if (!grid.enabled || !grid.snapToGrid) {
+    return region
+  }
+
+  return {
+    ...region,
+    x: snapCanvasValue(region.x, grid),
+    y: snapCanvasValue(region.y, grid),
+    width: snapCanvasDimension(region.width, grid),
+    height: snapCanvasDimension(region.height, grid),
+  }
+}
+
+function snapCanvasDimension(value: number, grid: SceneGrid): number {
+  return Math.max(grid.size, snapCanvasValue(value, grid))
+}
+
 function createMeasurementTemplate(
   canvas: SceneCanvasState,
   grid: SceneGrid,
-  template: 'ruler' | 'circle' | 'cone' | 'square',
+  template: SceneCanvasMeasurementTemplate,
 ): SceneCanvasMeasurement {
   const centerX = snapCanvasValue(canvas.width / 2, grid)
   const centerY = snapCanvasValue(canvas.height / 2, grid)
@@ -566,6 +672,77 @@ function createMeasurementTemplate(
   }
 }
 
+function createMeasurementFromInput(
+  canvas: SceneCanvasState,
+  grid: SceneGrid,
+  input: SceneCanvasMeasurementTemplate | SceneCanvasMeasurementDraft,
+): SceneCanvasMeasurement {
+  if (typeof input === 'string') {
+    return createMeasurementTemplate(canvas, grid, input)
+  }
+
+  const originX = getSnappedCanvasCoordinate(input.originX, grid, canvas.width)
+  const originY = getSnappedCanvasCoordinate(input.originY, grid, canvas.height)
+  const targetX = getSnappedCanvasCoordinate(input.targetX, grid, canvas.width)
+  const targetY = getSnappedCanvasCoordinate(input.targetY, grid, canvas.height)
+  const radius = Math.max(grid.size / 2, Math.hypot(targetX - originX, targetY - originY))
+  const cells = input.template === 'ruler' ? Math.hypot(targetX - originX, targetY - originY) / grid.size : radius / grid.size
+
+  switch (input.template) {
+    case 'ruler':
+      return createMeasurement({
+        kind: 'ruler',
+        name: 'Линейка',
+        originX,
+        originY,
+        targetX,
+        targetY,
+        radius: 0,
+        color: '#2c806f',
+        label: formatGridDistance(cells, grid),
+      })
+    case 'circle':
+      return createMeasurement({
+        kind: 'area',
+        shape: 'circle',
+        name: 'Круг',
+        originX,
+        originY,
+        targetX,
+        targetY,
+        radius,
+        color: '#9f2d3c',
+        label: formatGridDistance(cells, grid),
+      })
+    case 'cone':
+      return createMeasurement({
+        kind: 'area',
+        shape: 'cone',
+        name: 'Конус',
+        originX,
+        originY,
+        targetX,
+        targetY,
+        radius,
+        color: '#d8a86a',
+        label: formatGridDistance(cells, grid),
+      })
+    case 'square':
+      return createMeasurement({
+        kind: 'area',
+        shape: 'square',
+        name: 'Квадрат',
+        originX,
+        originY,
+        targetX,
+        targetY,
+        radius,
+        color: '#49625f',
+        label: formatGridDistance(cells, grid),
+      })
+  }
+}
+
 function createMeasurement(
   measurement: Omit<SceneCanvasMeasurement, 'id' | 'isPlayerVisible'>,
 ): SceneCanvasMeasurement {
@@ -594,6 +771,23 @@ function createFogRegionId(): string {
   }
 
   return `fog-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function getSnappedCanvasCoordinate(value: number, grid: SceneGrid, max: number): number {
+  const finiteValue = getFiniteNumber(value, 0)
+  const snappedValue = grid.enabled && grid.snapToGrid ? snapCanvasValue(finiteValue, grid) : finiteValue
+
+  return clampNumber(snappedValue, 0, max, 0)
+}
+
+function formatDistanceValue(value: number): string {
+  const roundedValue = Math.round(value * 10) / 10
+
+  if (Number.isInteger(roundedValue)) {
+    return String(roundedValue)
+  }
+
+  return roundedValue.toFixed(1)
 }
 
 function getFiniteNumber(value: number | undefined, fallback: number): number {

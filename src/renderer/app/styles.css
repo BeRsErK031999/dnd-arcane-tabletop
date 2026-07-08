@@ -958,7 +958,8 @@ h1 {
 .scene-canvas__grid,
 .scene-canvas__objects,
 .scene-canvas__measurements,
-.scene-canvas-fog {
+.scene-canvas-fog,
+.scene-canvas__interaction-layer {
   position: absolute;
   inset: 0;
 }
@@ -1001,6 +1002,14 @@ h1 {
   pointer-events: none;
 }
 
+.scene-canvas-fog--editable {
+  pointer-events: auto;
+}
+
+.scene-canvas-fog--preview {
+  pointer-events: none;
+}
+
 .scene-canvas-fog-region {
   position: absolute;
   display: grid;
@@ -1009,6 +1018,38 @@ h1 {
   background: #090b0d;
   border: 2px dashed #d8a86a;
   box-shadow: inset 0 0 18px rgba(9, 11, 13, 0.62);
+}
+
+.scene-canvas-fog-region--editable {
+  cursor: move;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.scene-canvas-fog-region--preview {
+  border-style: solid;
+  background: color-mix(in srgb, #090b0d 72%, transparent);
+}
+
+.scene-canvas-fog-region--selected,
+.scene-canvas-fog-region--dragging {
+  outline: 3px solid #f1c15d;
+  outline-offset: 3px;
+}
+
+.scene-canvas-fog-region__resize {
+  position: absolute;
+  right: -7px;
+  bottom: -7px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  appearance: none;
+  background: #f1c15d;
+  border: 2px solid #151719;
+  border-radius: 50%;
+  cursor: nwse-resize;
+  touch-action: none;
 }
 
 .scene-canvas-fog-region--circle {
@@ -1134,6 +1175,10 @@ h1 {
   border: 2px solid currentColor;
 }
 
+.scene-canvas-measurement--preview {
+  opacity: 0.72;
+}
+
 .scene-canvas-measurement--circle {
   border-radius: 50%;
 }
@@ -1185,6 +1230,16 @@ h1 {
   background: #fbfaf7;
   border: 1px solid #ddd6ca;
   border-radius: 6px;
+}
+
+.scene-canvas__interaction-layer {
+  z-index: 20;
+  pointer-events: none;
+}
+
+.scene-canvas__interaction-layer--active {
+  cursor: crosshair;
+  pointer-events: auto;
 }
 
 .scene-canvas-controls {
@@ -1282,6 +1337,12 @@ h1 {
   font-size: 15px;
   line-height: 1;
   white-space: nowrap;
+}
+
+.scene-canvas-icon-button--active {
+  color: #f8f6f1;
+  background: #1f6f63;
+  border-color: #1f6f63;
 }
 
 .scene-canvas-icon-button--wide {
@@ -3042,11 +3103,31 @@ button.asset-tag {
 
   .master-workbench,
   .scene-workbench {
-    grid-template-columns: 52px minmax(0, 1fr) 250px;
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .master-workbench {
+    grid-template-rows: auto minmax(360px, auto) minmax(260px, auto);
+  }
+
+  .scene-workbench {
+    grid-template-rows: auto minmax(720px, auto) minmax(260px, auto);
+  }
+
+  .scenes-panel {
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-right: 4px;
   }
 
   .context-panel {
-    grid-column: auto;
+    grid-column: 1;
+  }
+
+  .tool-rail {
+    min-height: 42px;
+    justify-content: flex-start;
   }
 
   .campaign-manager__grid,
@@ -3056,9 +3137,22 @@ button.asset-tag {
     grid-template-columns: 1fr;
   }
 
+  .scene-canvas {
+    min-height: 720px;
+    height: auto;
+  }
+
+  .scene-canvas__main {
+    min-height: 430px;
+    grid-template-rows: minmax(320px, 1fr) auto;
+  }
+
+  .scene-canvas__viewport {
+    min-height: 320px;
+  }
+
   .scene-strip__items,
-  .scene-detail-grid,
-  .scene-canvas__metrics {
+  .scene-detail-grid {
     grid-template-columns: 1fr;
   }
 
@@ -3193,7 +3287,11 @@ button.asset-tag {
 
   .master-workbench,
   .scene-workbench {
-    grid-template-rows: auto minmax(0, 1fr) minmax(220px, 0.7fr);
+    grid-template-rows: auto minmax(360px, auto) minmax(220px, auto);
+  }
+
+  .scene-workbench {
+    grid-template-rows: auto minmax(720px, auto) minmax(220px, auto);
   }
 
   .scenes-panel {

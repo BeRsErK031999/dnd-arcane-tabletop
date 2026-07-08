@@ -3,6 +3,7 @@ import type {
   IsoDateString,
   Scene,
   SceneCanvasFogRegionShape,
+  SceneCanvasFogRegionId,
   SceneCanvasFogState,
   SceneCanvasObject,
   SceneCanvasObjectId,
@@ -14,12 +15,17 @@ import {
   createSceneCanvasWithFogRegion,
   createSceneCanvasWithFogSettings,
   createSceneCanvasWithMeasurement,
+  createSceneCanvasWithUpdatedFogRegion,
   createSceneCanvasWithoutMeasurements,
   createSceneCanvasWithoutFogRegions,
   createSceneCanvasWithoutLastFogRegion,
   createSceneCanvasWithViewport,
   getSceneCanvasState,
   snapCanvasValue,
+  type SceneCanvasFogRegionDraft,
+  type SceneCanvasFogRegionUpdate,
+  type SceneCanvasMeasurementDraft,
+  type SceneCanvasMeasurementTemplate,
 } from './sceneCanvasFactory'
 import {
   createCampaignWithHydratedScenes,
@@ -27,9 +33,14 @@ import {
   getActiveCampaignScene,
 } from './sceneFactory'
 
-export type SceneMeasurementTemplate = 'ruler' | 'circle' | 'cone' | 'square'
+export type SceneMeasurementTemplate = SceneCanvasMeasurementTemplate
+export type SceneMeasurementDraft = SceneCanvasMeasurementDraft
+export type SceneMeasurementInput = SceneMeasurementTemplate | SceneMeasurementDraft
 export type SceneObjectMoveDirection = 'up' | 'down' | 'left' | 'right'
 export type SceneFogRegionTemplate = SceneCanvasFogRegionShape
+export type SceneFogRegionDraft = SceneCanvasFogRegionDraft
+export type SceneFogRegionInput = SceneFogRegionTemplate | SceneFogRegionDraft
+export type SceneFogRegionUpdate = SceneCanvasFogRegionUpdate
 export interface SceneCanvasObjectPosition {
   x: number
   y: number
@@ -62,12 +73,12 @@ export function createCampaignWithActiveSceneViewport(
 
 export function createCampaignWithActiveSceneMeasurement(
   campaign: Campaign,
-  template: SceneMeasurementTemplate,
+  input: SceneMeasurementInput,
   updatedAt: IsoDateString = new Date().toISOString(),
 ): Campaign {
   return updateActiveScene(campaign, updatedAt, (scene) => ({
     ...scene,
-    canvas: createSceneCanvasWithMeasurement(getSceneCanvasState(scene), scene.grid, template, updatedAt),
+    canvas: createSceneCanvasWithMeasurement(getSceneCanvasState(scene), scene.grid, input, updatedAt),
   }))
 }
 
@@ -94,12 +105,30 @@ export function createCampaignWithActiveSceneFog(
 
 export function createCampaignWithActiveSceneFogRegion(
   campaign: Campaign,
-  shape: SceneFogRegionTemplate,
+  input: SceneFogRegionInput,
   updatedAt: IsoDateString = new Date().toISOString(),
 ): Campaign {
   return updateActiveScene(campaign, updatedAt, (scene) => ({
     ...scene,
-    canvas: createSceneCanvasWithFogRegion(getSceneCanvasState(scene), scene.grid, shape, updatedAt),
+    canvas: createSceneCanvasWithFogRegion(getSceneCanvasState(scene), scene.grid, input, updatedAt),
+  }))
+}
+
+export function createCampaignWithUpdatedActiveSceneFogRegion(
+  campaign: Campaign,
+  regionId: SceneCanvasFogRegionId,
+  regionUpdate: SceneFogRegionUpdate,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): Campaign {
+  return updateActiveScene(campaign, updatedAt, (scene) => ({
+    ...scene,
+    canvas: createSceneCanvasWithUpdatedFogRegion(
+      getSceneCanvasState(scene),
+      scene.grid,
+      regionId,
+      regionUpdate,
+      updatedAt,
+    ),
   }))
 }
 

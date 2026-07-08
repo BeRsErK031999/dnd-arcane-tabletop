@@ -1078,6 +1078,64 @@ h1 {
   gap: 12px;
 }
 
+.save-control-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  background: #fbfaf7;
+  border: 1px solid #e4ded2;
+  border-radius: 6px;
+}
+
+.save-control-strip strong,
+.save-control-strip small {
+  display: block;
+}
+
+.save-control-strip strong {
+  font-size: 15px;
+}
+
+.save-control-strip small {
+  color: #69625b;
+  font-size: 12px;
+}
+
+.save-control-strip__error {
+  color: #8c322f;
+}
+
+.save-control-strip__actions,
+.save-control-strip__history {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.save-control-strip__actions .button {
+  min-width: 76px;
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.save-control-strip__history {
+  grid-column: 1 / -1;
+  justify-content: flex-start;
+}
+
+.save-control-strip__history span {
+  padding: 4px 8px;
+  color: #5f5850;
+  background: #fff;
+  border: 1px solid #ded7ca;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .campaign-form {
   display: grid;
   gap: 10px;
@@ -2063,6 +2121,18 @@ button.asset-tag {
   border-color: #ded7ca;
 }
 
+.status-badge--warning {
+  color: #684700;
+  background: #fff4d7;
+  border-color: #e4c36f;
+}
+
+.status-badge--danger {
+  color: #8c322f;
+  background: #f9e1df;
+  border-color: #d8aaa5;
+}
+
 .control-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2485,6 +2555,7 @@ button.asset-tag {
 
   .scene-strip__actions,
   .campaign-manager__grid,
+  .save-control-strip,
   .workspace-lower-grid,
   .scene-canvas {
     grid-template-columns: 1fr;

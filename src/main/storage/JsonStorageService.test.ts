@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -41,6 +41,32 @@ describe('JsonStorageService', () => {
     await storage.initialize()
 
     await expect(storage.loadCampaign('../outside')).rejects.toThrow('Invalid campaign id')
+  })
+
+  it('keeps two rotated backup copies outside the campaign list', async () => {
+    const directory = await createTempDirectory()
+    const storage = new JsonStorageService(directory)
+    const campaign = createCampaignFixture()
+
+    await storage.initialize()
+    await storage.saveCampaign(campaign)
+    await storage.saveCampaign({ ...campaign, name: 'Lost Mine v2', updatedAt: '2026-07-07T00:01:00.000Z' })
+    await storage.saveCampaign({ ...campaign, name: 'Lost Mine v3', updatedAt: '2026-07-07T00:02:00.000Z' })
+    await storage.saveCampaign({ ...campaign, name: 'Lost Mine v4', updatedAt: '2026-07-07T00:03:00.000Z' })
+
+    const backupDirectory = path.join(directory, '.backups')
+    expect((await readdir(backupDirectory)).sort()).toEqual(['campaign-1.backup-1.json', 'campaign-1.backup-2.json'])
+
+    const firstBackup = JSON.parse(
+      await readFile(path.join(backupDirectory, 'campaign-1.backup-1.json'), 'utf8'),
+    ) as Campaign
+    const secondBackup = JSON.parse(
+      await readFile(path.join(backupDirectory, 'campaign-1.backup-2.json'), 'utf8'),
+    ) as Campaign
+
+    expect(firstBackup.name).toBe('Lost Mine v3')
+    expect(secondBackup.name).toBe('Lost Mine v2')
+    await expect(storage.listCampaigns()).resolves.toHaveLength(1)
   })
 })
 

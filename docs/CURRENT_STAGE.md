@@ -2,13 +2,13 @@
 
 ## Текущий этап
 
-Этап 13. Combat tracker и инициатива.
+Этап 14. Автосохранение, undo/redo, backup.
 
 Статус: выполнено в этом этапе.
 
 ## Цель
 
-Дать мастеру ручной tracker инициативы: список участников, порядок хода, старт/стоп, следующий ход, следующий раунд и переключатель показа инициативы игрокам.
+Добавить локальный контур сохранности кампаний: debounced autosave раз в несколько секунд после изменений, видимый статус сохранения для мастера, простую историю undo/redo и ротацию 1-2 backup-копий JSON-файла.
 
 ## Уже реализовано до начала этапа
 
@@ -24,66 +24,66 @@
 - Simple character cards для players/NPC/monster.
 - Manual fog of war для master/player canvas.
 - Notes panel, secret notes и публичные handouts.
+- Manual combat tracker и public initiative overlay.
 
 ## Что можно использовать
 
-- `Campaign.combatState`.
-- `CombatState` и `CombatParticipant`.
-- `PlayerScreenState.initiativeVisible`.
+- `JsonStorageService.saveCampaign`.
+- `useCampaignsStore` как единый слой campaign mutations.
 - `desktopApi.storage.saveCampaign`.
 - `desktopApi.playerScreen.updateState`.
 - Browser fallback storage для renderer smoke checks.
 
 ## Пробелы этапа
 
-- `CombatState` существовал только как пустое поле кампании.
-- Master UI не позволял вести порядок инициативы.
-- `PlayerScreenState.initiativeVisible` был флагом без public tracker snapshot.
-- Player screen не показывал участникам порядок хода.
+- JSON-файл кампании перезаписывался без backup-копии.
+- Мастер видел только общий storage status, но не видел dirty/autosave/error состояние.
+- Campaign mutations не имели общей истории undo/redo.
+- При серии быстрых изменений не было отдельного debounced autosave-индикатора.
 
 ## Что реализовано
 
-- `combatFactory` добавляет гидрацию, нормализацию, сортировку участников по инициативе и безопасный player projection.
-- Мастер может вручную добавить, выбрать, редактировать и удалить участника инициативы.
-- Tracker поддерживает старт/стоп, следующий ход и следующий раунд.
-- Следующий ход пропускает выбывших участников, если есть доступные участники.
-- Переключатель `Показывать инициативу игрокам` сохраняет `PlayerScreenState.initiativeVisible` и синхронизирует player screen.
-- Player screen показывает public initiative overlay с именем, инициативой, активным ходом и простым статусом игрок/мастер.
-- Public projection не содержит `tokenId`, `characterCardId`, HP, AC или master notes.
-- Browser fallback clone безопасно копирует `initiativeTracker`.
-- Unit tests покрывают порядок инициативы, раунды, defeated skip, legacy hydration и player-safe projection.
+- `JsonStorageService` перед перезаписью кампании вращает две backup-копии в `data/campaigns/.backups`.
+- Backup-файлы не попадают в `listCampaigns`, потому что лежат вне верхнего уровня campaign JSON.
+- `useCampaignsStore` добавляет `CampaignSaveState`: `idle`, `dirty`, `saving`, `saved`, `error`, время последнего сохранения и текст ошибки.
+- После изменений выбранной кампании store ставит dirty state и запускает autosave timer на 3.5 секунды.
+- На закрытие renderer выполняется финальный flush текущего campaign snapshot.
+- Store ведет ограниченную историю snapshots и экспортирует `undoSelectedCampaign` / `redoSelectedCampaign`.
+- Undo/redo восстанавливают campaign snapshot, сохраняют JSON и синхронизируют `playerScreenState`.
+- Master UI показывает Stage 14 save badge, autosave status, время последнего сохранения, счетчики Undo/Redo и кнопки управления историей.
+- Unit test проверяет ротацию двух backup-копий и отсутствие backup-файлов в списке кампаний.
 
 ## Критерии готовности
 
-- Tracker можно вести вручную.
-- Состояние сохраняется в кампании.
-- Можно перейти к следующему ходу.
-- Можно перейти к следующему раунду.
-- Инициативу можно показать и скрыть на player screen.
-- Игрокам показывается только разрешенная часть.
+- Изменения кампании сохраняются через общий status-aware save pipeline.
+- Autosave status виден мастеру.
+- Ошибка сохранения становится видимой в master UI.
+- Undo/redo доступны для основных campaign mutations.
+- Backup rotation хранит только две последние копии.
+- Backup не засоряет список кампаний.
 - `npm run lint` проходит.
 - `npm run typecheck` проходит.
 - `npm run test` проходит.
 - `npm run dev:renderer` запускается.
-- Master/player initiative flow проверен в browser route.
+- Master autosave/undo UI проверен в browser route.
 
 ## Не входит в этап
 
-- Автоматический импорт stats.
-- Автоматические эффекты и условия.
-- Rules engine.
-- HP/AC damage automation.
-- Индивидуальная видимость инициативы для разных игроков.
+- Cloud version history.
+- Collaborative history.
+- Полноценный diff viewer между версиями.
+- Recovery UI для ручного выбора backup-файла.
+- Смена JSON storage на SQLite или другую базу.
 
 ## Следующий этап
 
-Этап 14. Автосохранение, undo/redo, backup.
+Этап 15. Полировка и exe-сборка.
 
 Он не начат.
 
 ## Риски и меры
 
-- Риск утечки token/card ids: player projection содержит только `PlayerInitiativeParticipant` без `tokenId` и `characterCardId`.
-- Риск превратить tracker в rules engine: Stage 13 ограничен ручным порядком хода, раундами и defeated toggle.
-- Риск устаревших JSON campaigns: отсутствующий или некорректный `combatState` гидрируется в безопасный пустой state.
-- Риск рассинхрона player screen: combat mutations пушат `PlayerScreenState`, когда инициатива видна игрокам.
+- Риск повреждения JSON при аварийном завершении: перед перезаписью хранится до двух предыдущих копий файла.
+- Риск слишком частых записей: UI autosave использует debounce 3.5 секунды, а текущие прямые сохранения сохранены как страховка от потери данных.
+- Риск роста истории в памяти: undo history ограничена последними 30 snapshots.
+- Риск рассинхронизации player screen при undo/redo: восстановленный snapshot синхронизирует `playerScreenState` через существующий typed player API.

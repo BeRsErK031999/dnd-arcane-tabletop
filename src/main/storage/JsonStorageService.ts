@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Campaign, CampaignId, CampaignSummary } from '../../shared/types/index.js'
 import type { StorageService } from './StorageService.js'
@@ -42,12 +42,15 @@ export class JsonStorageService implements StorageService {
   async saveCampaign(campaign: Campaign): Promise<void> {
     await this.initialize()
 
+    const campaignFilePath = this.getCampaignFilePath(campaign.id)
     const payload = `${JSON.stringify(campaign, null, 2)}\n`
-    await writeFile(this.getCampaignFilePath(campaign.id), payload, 'utf8')
+    await this.rotateBackups(campaign.id, campaignFilePath)
+    await writeFile(campaignFilePath, payload, 'utf8')
   }
 
   async deleteCampaign(campaignId: CampaignId): Promise<void> {
     await rm(this.getCampaignFilePath(campaignId), { force: true })
+    await Promise.all(([1, 2] as const).map((slot) => rm(this.getBackupFilePath(campaignId, slot), { force: true })))
   }
 
   private async readCampaignFile(filePath: string): Promise<Campaign | null> {
@@ -83,6 +86,39 @@ export class JsonStorageService implements StorageService {
     return path.join(this.campaignsDirectory, fileName)
   }
 
+  private async rotateBackups(campaignId: CampaignId, campaignFilePath: string): Promise<void> {
+    if (!(await fileExists(campaignFilePath))) {
+      return
+    }
+
+    await mkdir(this.getBackupsDirectory(), { recursive: true })
+
+    const firstBackup = this.getBackupFilePath(campaignId, 1)
+    const secondBackup = this.getBackupFilePath(campaignId, 2)
+
+    await rm(secondBackup, { force: true })
+    await rename(firstBackup, secondBackup).catch((error: unknown) => {
+      if (!isNodeError(error) || error.code !== 'ENOENT') {
+        throw error
+      }
+    })
+    await copyFile(campaignFilePath, firstBackup)
+  }
+
+  private getBackupsDirectory(): string {
+    return path.join(this.campaignsDirectory, '.backups')
+  }
+
+  private getBackupFilePath(campaignId: CampaignId, slot: 1 | 2): string {
+    const fileName = `${campaignId}.backup-${slot}.json`
+
+    if (path.basename(fileName) !== fileName || fileName.includes('/') || fileName.includes('\\')) {
+      throw new Error(`Invalid campaign id: ${campaignId}`)
+    }
+
+    return path.join(this.getBackupsDirectory(), fileName)
+  }
+
   private isCampaign(value: unknown): value is Campaign {
     if (!isRecord(value)) {
       return false
@@ -103,6 +139,19 @@ export class JsonStorageService implements StorageService {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath)
+    return true
+  } catch (error) {
+    if (isNodeError(error) && error.code === 'ENOENT') {
+      return false
+    }
+
+    throw error
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

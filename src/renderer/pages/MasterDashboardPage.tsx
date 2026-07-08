@@ -140,6 +140,8 @@ export function MasterDashboardPage() {
     selectedCampaign,
     status,
     lastError,
+    saveState,
+    historyState,
     refresh,
     createCampaign,
     openCampaign,
@@ -180,6 +182,8 @@ export function MasterDashboardPage() {
     updateAssetTags,
     applyAssetToActiveScene,
     sendAssetToPlayers,
+    undoSelectedCampaign,
+    redoSelectedCampaign,
   } = useCampaignsStore()
   const [activeRightPanel, setActiveRightPanel] = useState<RightPanelTab>('assets')
   const [newCampaignName, setNewCampaignName] = useState('')
@@ -298,6 +302,11 @@ export function MasterDashboardPage() {
   const activeCombatParticipant = selectedCampaign?.combatState.isActive
     ? combatParticipants[selectedCampaign.combatState.turnIndex] ?? null
     : null
+  const saveStatusLabel = getCampaignSaveStatusLabel(saveState.status)
+  const saveStatusDetail =
+    saveState.lastSavedAt === null
+      ? `Автосохранение через ${(saveState.autosaveDelayMs / 1000).toFixed(1)} с`
+      : `Последнее сохранение: ${formatTimestamp(saveState.lastSavedAt)}`
 
   useEffect(() => {
     let isMounted = true
@@ -438,6 +447,28 @@ export function MasterDashboardPage() {
     }
 
     setCampaignActionStatus('Не удалось сохранить кампанию.')
+  }
+
+  async function handleUndoCampaign(): Promise<void> {
+    const result = await undoSelectedCampaign()
+
+    if (result.ok) {
+      setCampaignActionStatus('Последнее действие отменено.')
+      return
+    }
+
+    setCampaignActionStatus('Нет действия для отмены.')
+  }
+
+  async function handleRedoCampaign(): Promise<void> {
+    const result = await redoSelectedCampaign()
+
+    if (result.ok) {
+      setCampaignActionStatus('Действие повторено.')
+      return
+    }
+
+    setCampaignActionStatus('Нет действия для повтора.')
   }
 
   async function handleDeleteCampaign(): Promise<void> {
@@ -1023,11 +1054,12 @@ export function MasterDashboardPage() {
         <div>
           <p className="eyebrow">Master Console</p>
           <h1>Панель мастера</h1>
-          <p className="muted">Stage 13: ручной tracker инициативы и player-safe порядок хода.</p>
+          <p className="muted">Stage 14: autosave, undo/redo и две backup-копии JSON.</p>
         </div>
         <div className="button-row">
           {selectedCampaign ? <span className="status-badge">Открыта: {selectedCampaign.name}</span> : null}
-          <span className="status-badge">Этап 13</span>
+          <span className="status-badge">Этап 14</span>
+          <span className={getCampaignSaveBadgeClassName(saveState.status)}>{saveStatusLabel}</span>
           <button className="button button--secondary" type="button" onClick={refresh}>
             Обновить
           </button>
@@ -1126,6 +1158,7 @@ export function MasterDashboardPage() {
                 <span>Fog: Stage 11</span>
                 <span>Handouts: Stage 12</span>
                 <span>Initiative: Stage 13</span>
+                <span>Autosave: Stage 14</span>
                 <span>Player mode: {playerStatus.state.mode}</span>
               </div>
             </div>
@@ -1180,6 +1213,38 @@ export function MasterDashboardPage() {
                 <div className="metric">
                   <span className="metric__value">{totals.characters}</span>
                   <span className="metric__label">персонажей</span>
+                </div>
+              </div>
+
+              <div className="save-control-strip" aria-label="Статус сохранения кампании">
+                <div>
+                  <p className="eyebrow">Autosave</p>
+                  <strong>{saveStatusLabel}</strong>
+                  <small>{saveStatusDetail}</small>
+                  {saveState.lastError ? <small className="save-control-strip__error">{saveState.lastError}</small> : null}
+                </div>
+                <div className="save-control-strip__actions">
+                  <button
+                    className="button button--secondary"
+                    disabled={selectedCampaign === null || isStorageBusy || historyState.undoCount === 0}
+                    onClick={() => void handleUndoCampaign()}
+                    type="button"
+                  >
+                    Undo
+                  </button>
+                  <button
+                    className="button button--secondary"
+                    disabled={selectedCampaign === null || isStorageBusy || historyState.redoCount === 0}
+                    onClick={() => void handleRedoCampaign()}
+                    type="button"
+                  >
+                    Redo
+                  </button>
+                </div>
+                <div className="save-control-strip__history">
+                  <span>Undo: {historyState.undoCount}</span>
+                  <span>Redo: {historyState.redoCount}</span>
+                  <span>{saveState.isDirty ? 'Есть несохраненный снимок' : 'Снимок сохранен'}</span>
                 </div>
               </div>
 
@@ -2658,6 +2723,34 @@ function getPlayerActionLabel(label: string, result: PlayerActionResult): string
   }
 
   return label
+}
+
+function getCampaignSaveStatusLabel(status: string): string {
+  switch (status) {
+    case 'dirty':
+      return 'Есть изменения'
+    case 'saving':
+      return 'Сохраняется'
+    case 'saved':
+      return 'Сохранено'
+    case 'error':
+      return 'Ошибка сохранения'
+    case 'idle':
+    default:
+      return 'Ожидание'
+  }
+}
+
+function getCampaignSaveBadgeClassName(status: string): string {
+  if (status === 'error') {
+    return 'status-badge status-badge--danger'
+  }
+
+  if (status === 'dirty' || status === 'saving') {
+    return 'status-badge status-badge--warning'
+  }
+
+  return 'status-badge'
 }
 
 function getAssetKindLabel(kind: AssetKind): string {

@@ -178,6 +178,8 @@ Storage layer находится в `src/main/storage`.
 
 На будущих этапах campaign persistence сможет хранить `playerScreenState`, активные сцены, ассеты, заметки и combat state. Управление player window при этом останется desktop-обязанностью main process.
 
+На этапе 14 контур сохранности разделен между renderer и main process. `useCampaignsStore` остается точкой входа для campaign mutations, ведет `CampaignSaveState`, ставит dirty state, запускает debounced autosave через 3.5 секунды после изменения selected campaign и держит ограниченную undo/redo историю в памяти renderer. `JsonStorageService` перед каждой перезаписью campaign JSON переносит предыдущие версии в `data/campaigns/.backups` и хранит только `backup-1` / `backup-2`, поэтому backup-файлы не попадают в `listCampaigns`. Это не меняет `StorageService`: backup rotation является деталью JSON-реализации.
+
 ## Почему нельзя размазывать управление player window
 
 Если open/close/fullscreen/state будут жить в разных React-компонентах и строковых IPC-вызовах, появятся риски:

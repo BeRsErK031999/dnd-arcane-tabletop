@@ -12,6 +12,7 @@ import { desktopApi } from '@renderer/services/desktopApi'
 import { getSceneCanvasState } from '@renderer/stores/sceneCanvasFactory'
 import { useCampaignsStore } from '@renderer/stores/useCampaignsStore'
 import type {
+  SceneCanvasObjectPosition,
   SceneFogRegionTemplate,
   SceneMeasurementTemplate,
   SceneObjectMoveDirection,
@@ -178,6 +179,7 @@ export function MasterDashboardPage() {
     advanceCombatRound,
     setPlayerInitiativeVisible,
     moveActiveSceneObject,
+    positionActiveSceneObject,
     duplicateActiveSceneObject,
     setActiveSceneObjectVisibility,
     updateActiveSceneObjectTokenState,
@@ -190,7 +192,7 @@ export function MasterDashboardPage() {
   } = useCampaignsStore()
   const [activeWorkspaceSection, setActiveWorkspaceSection] = useState<WorkspaceSection>('scenes')
   const [activeRightPanel, setActiveRightPanel] = useState<RightPanelTab>('assets')
-  const [visibleToolTooltip, setVisibleToolTooltip] = useState<string | null>(null)
+  const [isToolRailOpen, setIsToolRailOpen] = useState(false)
   const [newCampaignName, setNewCampaignName] = useState('')
   const [newCampaignDescription, setNewCampaignDescription] = useState('')
   const [editorName, setEditorName] = useState('')
@@ -700,6 +702,19 @@ export function MasterDashboardPage() {
     direction: SceneObjectMoveDirection,
   ): Promise<void> {
     const result = await moveActiveSceneObject(objectId, direction)
+
+    if (result.ok) {
+      setSelectedSceneObjectId(objectId)
+    }
+
+    setSceneActionStatus(result.ok ? 'Объект сцены перемещен.' : 'Не удалось переместить объект сцены.')
+  }
+
+  async function handlePositionActiveSceneObject(
+    objectId: SceneCanvasObjectId,
+    position: SceneCanvasObjectPosition,
+  ): Promise<void> {
+    const result = await positionActiveSceneObject(objectId, position)
 
     if (result.ok) {
       setSelectedSceneObjectId(objectId)
@@ -1492,6 +1507,7 @@ export function MasterDashboardPage() {
                     disabled={isStorageBusy}
                     key={scene.id}
                     onClick={() => void handleActivateScene(scene.id)}
+                    title={scene.description ?? 'Без описания'}
                     type="button"
                   >
                     <span>{scene.name}</span>
@@ -1505,54 +1521,46 @@ export function MasterDashboardPage() {
           </section>
 
           <div className="scene-workbench">
-            <aside className="tool-rail" aria-label="Инструменты мастера">
-              <div className="tool-rail__header">
-                <h2>Инструменты</h2>
-              </div>
-              {toolGroups.map((group) => (
-                <section className="tool-group" key={group.title}>
-                  <h3>{group.title}</h3>
-                  <div className="tool-list">
-                    {group.items.map((tool) => {
-                      const tooltipText = `${tool.label}: ${tool.description}. Горячая клавиша ${tool.shortcut}`
-
-                      return (
-                        <button
-                          aria-label={tooltipText}
-                          className="tool-button tool-button--active"
-                          data-tooltip={tooltipText}
-                          key={tool.label}
-                          onBlur={() => setVisibleToolTooltip((current) => (current === tooltipText ? null : current))}
-                          onClick={() => setVisibleToolTooltip(tooltipText)}
-                          onFocus={() => setVisibleToolTooltip(tooltipText)}
-                          onMouseEnter={() => setVisibleToolTooltip(tooltipText)}
-                          onMouseLeave={() => setVisibleToolTooltip((current) => (current === tooltipText ? null : current))}
-                          onPointerEnter={() => setVisibleToolTooltip(tooltipText)}
-                          onPointerLeave={() => setVisibleToolTooltip((current) => (current === tooltipText ? null : current))}
-                          title={tooltipText}
-                          type="button"
-                        >
-                          <span className="tool-button__icon" aria-hidden="true">
-                            {tool.icon}
-                          </span>
-                          <kbd>{tool.shortcut}</kbd>
-                          <span className="sr-only">{tool.description}</span>
-                          <span
-                            className={
-                              visibleToolTooltip === tooltipText
-                                ? 'tool-button__tooltip tool-button__tooltip--visible'
-                                : 'tool-button__tooltip'
-                            }
-                            role="tooltip"
-                          >
-                            {tooltipText}
-                          </span>
-                        </button>
-                      )
-                    })}
+            <aside className="tool-rail" aria-label="Горячие клавиши">
+              <button
+                aria-controls="tool-rail-popover"
+                aria-expanded={isToolRailOpen}
+                aria-label="Показать горячие клавиши"
+                className="button button--secondary icon-button tool-rail__trigger"
+                onClick={() => setIsToolRailOpen((isOpen) => !isOpen)}
+                title="Горячие клавиши"
+                type="button"
+              >
+                ?
+              </button>
+              {isToolRailOpen ? (
+                <div className="tool-rail__popover" id="tool-rail-popover">
+                  <div className="tool-rail__header">
+                    <h2>Хоткеи</h2>
                   </div>
-                </section>
-              ))}
+                  <div className="tool-shortcuts">
+                    {toolGroups.map((group) => (
+                      <section className="tool-shortcut-group" key={group.title}>
+                        <h3>{group.title}</h3>
+                        <ul>
+                          {group.items.map((tool) => (
+                            <li key={tool.label} title={`${tool.label}: ${tool.description}`}>
+                              <span className="tool-shortcut__icon" aria-hidden="true">
+                                {tool.icon}
+                              </span>
+                              <span className="tool-shortcut__copy">
+                                <strong>{tool.label}</strong>
+                                <small>{tool.description}</small>
+                              </span>
+                              <kbd>{tool.shortcut}</kbd>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </aside>
 
             <main className="master-workspace-panel" aria-label="Рабочая область сцены">
@@ -1582,6 +1590,7 @@ export function MasterDashboardPage() {
                   onClearFogRegions={() => void handleClearActiveSceneFogRegions()}
                   onDuplicateObject={(objectId) => void handleDuplicateActiveSceneObject(objectId)}
                   onMoveObject={(objectId, direction) => void handleMoveActiveSceneObject(objectId, direction)}
+                  onMoveObjectTo={(objectId, position) => void handlePositionActiveSceneObject(objectId, position)}
                   onRemoveLastFogRegion={() => void handleRemoveLastActiveSceneFogRegion()}
                   onSelectObject={setSelectedSceneObjectId}
                   onSendToPlayers={() => void handleSendActiveSceneToPlayers()}

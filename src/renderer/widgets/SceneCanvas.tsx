@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import type {
   Asset,
   CharacterCard,
@@ -17,8 +17,10 @@ import {
   createPlayerSceneCanvasProjection,
   getSceneCanvasLayerSummary,
   getSceneCanvasState,
+  snapCanvasValue,
 } from '@renderer/stores/sceneCanvasFactory'
 import type {
+  SceneCanvasObjectPosition,
   SceneFogRegionTemplate,
   SceneMeasurementTemplate,
   SceneObjectMoveDirection,
@@ -38,6 +40,7 @@ interface SceneCanvasProps {
   onClearMeasurements(): void
   onDuplicateObject(objectId: SceneCanvasObjectId): void
   onMoveObject(objectId: SceneCanvasObjectId, direction: SceneObjectMoveDirection): void
+  onMoveObjectTo(objectId: SceneCanvasObjectId, position: SceneCanvasObjectPosition): void
   onRemoveLastFogRegion(): void
   onSelectObject(objectId: SceneCanvasObjectId): void
   onSendToPlayers(): void
@@ -46,6 +49,20 @@ interface SceneCanvasProps {
   onUpdateObjectTokenState(objectId: SceneCanvasObjectId, tokenState: SceneCanvasObjectTokenState): void
   onUpdateGrid(grid: Partial<SceneGrid>): void
   onUpdateViewport(viewport: Partial<SceneCanvasViewport>): void
+}
+
+interface SceneObjectDragState {
+  objectId: SceneCanvasObjectId
+  pointerId: number
+  startClientX: number
+  startClientY: number
+  originX: number
+  originY: number
+  sceneUnitsPerClientX: number
+  sceneUnitsPerClientY: number
+  latestX: number
+  latestY: number
+  moved: boolean
 }
 
 export function SceneCanvas({
@@ -62,6 +79,7 @@ export function SceneCanvas({
   onClearMeasurements,
   onDuplicateObject,
   onMoveObject,
+  onMoveObjectTo,
   onRemoveLastFogRegion,
   onSelectObject,
   onSendToPlayers,
@@ -71,6 +89,78 @@ export function SceneCanvas({
   onUpdateGrid,
   onUpdateViewport,
 }: SceneCanvasProps) {
+  const [dragState, setDragState] = useState<SceneObjectDragState | null>(null)
+
+  useEffect(() => {
+    if (dragState === null || scene === null) {
+      return
+    }
+
+    const activeScene = scene
+    const canvas = getSceneCanvasState(activeScene)
+    const object = canvas.objects.find((candidate) => candidate.id === dragState.objectId)
+
+    if (!object) {
+      setDragState(null)
+      return
+    }
+
+    const activeObject = object
+
+    function handleWindowPointerMove(event: globalThis.PointerEvent): void {
+      if (event.pointerId !== dragState?.pointerId) {
+        return
+      }
+
+      event.preventDefault()
+
+      const deltaX = (event.clientX - dragState.startClientX) * dragState.sceneUnitsPerClientX
+      const deltaY = (event.clientY - dragState.startClientY) * dragState.sceneUnitsPerClientY
+      const position = getDraggedCanvasObjectPosition(
+        activeObject,
+        activeScene.grid,
+        canvas.width,
+        canvas.height,
+        dragState.originX + deltaX,
+        dragState.originY + deltaY,
+      )
+
+      setDragState({
+        ...dragState,
+        latestX: position.x,
+        latestY: position.y,
+        moved: dragState.moved || Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3,
+      })
+    }
+
+    function handleWindowPointerEnd(event: globalThis.PointerEvent): void {
+      if (event.pointerId !== dragState?.pointerId) {
+        return
+      }
+
+      event.preventDefault()
+
+      const finalPosition = { x: dragState.latestX, y: dragState.latestY }
+      const didChangePosition = finalPosition.x !== dragState.originX || finalPosition.y !== dragState.originY
+
+      setDragState(null)
+
+      if (dragState.moved && didChangePosition) {
+        onMoveObjectTo(dragState.objectId, finalPosition)
+      }
+    }
+
+    window.addEventListener('pointermove', handleWindowPointerMove)
+    window.addEventListener('pointerup', handleWindowPointerEnd)
+    window.addEventListener('pointercancel', handleWindowPointerEnd)
+
+    return () => {
+      window.removeEventListener('pointermove', handleWindowPointerMove)
+      window.removeEventListener('pointerup', handleWindowPointerEnd)
+      window.removeEventListener('pointercancel', handleWindowPointerEnd)
+    }
+  }, [dragState, onMoveObjectTo, scene])
+
   if (scene === null) {
     return (
       <div className="scene-canvas scene-canvas--empty">
@@ -83,12 +173,52 @@ export function SceneCanvas({
     )
   }
 
-  const canvas = getSceneCanvasState(scene)
-  const layerSummary = getSceneCanvasLayerSummary(scene)
+  const activeScene = scene
+  const canvas = getSceneCanvasState(activeScene)
+  const layerSummary = getSceneCanvasLayerSummary(activeScene)
   const assetsById = new Map(assets.map((asset) => [asset.id, asset]))
-  const playerProjection = createPlayerSceneCanvasProjection(scene, assets)
+  const playerProjection = createPlayerSceneCanvasProjection(activeScene, assets)
   const viewportTransform: CSSProperties = {
     transform: `translate(${canvas.viewport.panX}px, ${canvas.viewport.panY}px) scale(${canvas.viewport.zoom})`,
+  }
+
+  function handleObjectDragStart(object: SceneCanvasObject, event: ReactPointerEvent<HTMLButtonElement>): void {
+    if (isStorageBusy || event.button !== 0) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    onSelectObject(object.id)
+
+    const contentRect = event.currentTarget.closest('.scene-canvas__content')?.getBoundingClientRect()
+    const sceneUnitsPerClientX =
+      contentRect && contentRect.width > 0 ? canvas.width / contentRect.width : 1 / canvas.viewport.zoom
+    const sceneUnitsPerClientY =
+      contentRect && contentRect.height > 0 ? canvas.height / contentRect.height : 1 / canvas.viewport.zoom
+
+    setDragState({
+      objectId: object.id,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      originX: object.x,
+      originY: object.y,
+      sceneUnitsPerClientX,
+      sceneUnitsPerClientY,
+      latestX: object.x,
+      latestY: object.y,
+      moved: false,
+    })
+  }
+
+  function handleObjectDragCancel(object: SceneCanvasObject, event: ReactPointerEvent<HTMLButtonElement>): void {
+    if (dragState === null || dragState.objectId !== object.id || dragState.pointerId !== event.pointerId) {
+      return
+    }
+
+    setDragState(null)
   }
 
   return (
@@ -104,13 +234,13 @@ export function SceneCanvas({
               </div>
             )}
 
-            {scene.grid.enabled ? (
+            {activeScene.grid.enabled ? (
               <div
                 className="scene-canvas__grid"
                 style={{
-                  backgroundSize: `${scene.grid.size}px ${scene.grid.size}px`,
-                  color: scene.grid.color,
-                  opacity: scene.grid.opacity,
+                  backgroundSize: `${activeScene.grid.size}px ${activeScene.grid.size}px`,
+                  color: activeScene.grid.color,
+                  opacity: activeScene.grid.opacity,
                 }}
               />
             ) : null}
@@ -124,7 +254,16 @@ export function SceneCanvas({
                   key={object.id}
                   object={object}
                   isSelected={object.id === selectedObjectId}
+                  isDragDisabled={isStorageBusy}
+                  isDragging={dragState?.objectId === object.id}
                   onSelectObject={onSelectObject}
+                  onDragCancel={handleObjectDragCancel}
+                  onDragStart={handleObjectDragStart}
+                  previewPosition={
+                    dragState?.objectId === object.id
+                      ? { x: dragState.latestX, y: dragState.latestY }
+                      : undefined
+                  }
                 />
               ))}
             </div>
@@ -158,7 +297,11 @@ export function SceneCanvas({
           </div>
           <div>
             <dt>Сетка</dt>
-            <dd>{scene.grid.enabled ? `${scene.grid.size}px / ${scene.grid.distancePerCell} ${scene.grid.unitLabel}` : 'выключена'}</dd>
+            <dd>
+              {activeScene.grid.enabled
+                ? `${activeScene.grid.size}px / ${activeScene.grid.distancePerCell} ${activeScene.grid.unitLabel}`
+                : 'выключена'}
+            </dd>
           </div>
           <div>
             <dt>Zoom</dt>
@@ -182,7 +325,7 @@ export function SceneCanvas({
       <aside className="scene-canvas__layers" aria-label="Слои сцены">
         <SceneCanvasControls
           canvas={canvas}
-          grid={scene.grid}
+          grid={activeScene.grid}
           isStorageBusy={isStorageBusy}
           onAddFogRegion={onAddFogRegion}
           onAddMeasurement={onAddMeasurement}
@@ -231,7 +374,7 @@ export function SceneCanvas({
           </strong>
         </div>
         <button className="button" disabled={isStorageBusy} onClick={onSendToPlayers} type="button">
-          Показать активную сцену игрокам
+          Показать игрокам
         </button>
       </aside>
     </div>
@@ -321,36 +464,40 @@ function SceneCanvasObjectControls({
           <div className="scene-canvas-object-tools__moves" aria-label="Перемещение объекта">
             <button
               aria-label={`Переместить ${selectedObject.name} вверх`}
-              className="button button--secondary"
+              className="button button--secondary scene-canvas-icon-button"
               disabled={isStorageBusy}
               onClick={() => onMoveObject(selectedObject.id, 'up')}
+              title="Вверх"
               type="button"
             >
               ↑
             </button>
             <button
               aria-label={`Переместить ${selectedObject.name} влево`}
-              className="button button--secondary"
+              className="button button--secondary scene-canvas-icon-button"
               disabled={isStorageBusy}
               onClick={() => onMoveObject(selectedObject.id, 'left')}
+              title="Влево"
               type="button"
             >
               ←
             </button>
             <button
               aria-label={`Переместить ${selectedObject.name} вправо`}
-              className="button button--secondary"
+              className="button button--secondary scene-canvas-icon-button"
               disabled={isStorageBusy}
               onClick={() => onMoveObject(selectedObject.id, 'right')}
+              title="Вправо"
               type="button"
             >
               →
             </button>
             <button
               aria-label={`Переместить ${selectedObject.name} вниз`}
-              className="button button--secondary"
+              className="button button--secondary scene-canvas-icon-button"
               disabled={isStorageBusy}
               onClick={() => onMoveObject(selectedObject.id, 'down')}
+              title="Вниз"
               type="button"
             >
               ↓
@@ -359,20 +506,24 @@ function SceneCanvasObjectControls({
 
           <div className="scene-canvas-object-tools__actions">
             <button
-              className="button button--secondary"
+              aria-label={`Дублировать ${selectedObject.name}`}
+              className="button button--secondary scene-canvas-icon-button"
               disabled={isStorageBusy}
               onClick={() => onDuplicateObject(selectedObject.id)}
+              title="Дублировать"
               type="button"
             >
-              Дублировать
+              ⧉
             </button>
             <button
-              className="button button--secondary"
+              aria-label={selectedObject.isPlayerVisible ? `Скрыть ${selectedObject.name}` : `Показать ${selectedObject.name}`}
+              className="button button--secondary scene-canvas-icon-button"
               disabled={isStorageBusy}
               onClick={() => onSetObjectVisibility(selectedObject.id, !selectedObject.isPlayerVisible)}
+              title={selectedObject.isPlayerVisible ? 'Скрыть от игроков' : 'Показать игрокам'}
               type="button"
             >
-              {selectedObject.isPlayerVisible ? 'Скрыть' : 'Показать'}
+              {selectedObject.isPlayerVisible ? '◉' : '○'}
             </button>
           </div>
 
@@ -564,25 +715,31 @@ function SceneCanvasControls({
         </div>
         <div className="scene-canvas-button-grid">
           <button
-            className="button button--secondary"
+            aria-label="Уменьшить масштаб"
+            className="button button--secondary scene-canvas-icon-button"
             disabled={isStorageBusy}
             onClick={() => onUpdateViewport({ zoom: canvas.viewport.zoom - 0.1 })}
+            title="Уменьшить масштаб"
             type="button"
           >
-            -
+            −
           </button>
           <button
-            className="button button--secondary"
+            aria-label="Сбросить вид"
+            className="button button--secondary scene-canvas-icon-button scene-canvas-icon-button--wide"
             disabled={isStorageBusy}
             onClick={() => onUpdateViewport({ zoom: 1, panX: 0, panY: 0 })}
+            title="Сбросить вид"
             type="button"
           >
             100%
           </button>
           <button
-            className="button button--secondary"
+            aria-label="Увеличить масштаб"
+            className="button button--secondary scene-canvas-icon-button"
             disabled={isStorageBusy}
             onClick={() => onUpdateViewport({ zoom: canvas.viewport.zoom + 0.1 })}
+            title="Увеличить масштаб"
             type="button"
           >
             +
@@ -591,36 +748,40 @@ function SceneCanvasControls({
         <div className="scene-canvas-pan-grid" aria-label="Панорама canvas">
           <button
             aria-label="Сдвинуть вверх"
-            className="button button--secondary"
+            className="button button--secondary scene-canvas-icon-button"
             disabled={isStorageBusy}
             onClick={() => onUpdateViewport({ panY: canvas.viewport.panY - 40 })}
+            title="Сдвинуть вверх"
             type="button"
           >
             ↑
           </button>
           <button
             aria-label="Сдвинуть влево"
-            className="button button--secondary"
+            className="button button--secondary scene-canvas-icon-button"
             disabled={isStorageBusy}
             onClick={() => onUpdateViewport({ panX: canvas.viewport.panX - 40 })}
+            title="Сдвинуть влево"
             type="button"
           >
             ←
           </button>
           <button
             aria-label="Сдвинуть вправо"
-            className="button button--secondary"
+            className="button button--secondary scene-canvas-icon-button"
             disabled={isStorageBusy}
             onClick={() => onUpdateViewport({ panX: canvas.viewport.panX + 40 })}
+            title="Сдвинуть вправо"
             type="button"
           >
             →
           </button>
           <button
             aria-label="Сдвинуть вниз"
-            className="button button--secondary"
+            className="button button--secondary scene-canvas-icon-button"
             disabled={isStorageBusy}
             onClick={() => onUpdateViewport({ panY: canvas.viewport.panY + 40 })}
+            title="Сдвинуть вниз"
             type="button"
           >
             ↓
@@ -634,21 +795,56 @@ function SceneCanvasControls({
           <span>{canvas.measurements.length}</span>
         </div>
         <div className="scene-canvas-template-grid">
-          <button className="button button--secondary" disabled={isStorageBusy} onClick={() => onAddMeasurement('ruler')} type="button">
-            Линейка
+          <button
+            aria-label="Добавить линейку"
+            className="button button--secondary scene-canvas-icon-button"
+            disabled={isStorageBusy}
+            onClick={() => onAddMeasurement('ruler')}
+            title="Линейка"
+            type="button"
+          >
+            ↔
           </button>
-          <button className="button button--secondary" disabled={isStorageBusy} onClick={() => onAddMeasurement('circle')} type="button">
-            Круг
+          <button
+            aria-label="Добавить круг измерения"
+            className="button button--secondary scene-canvas-icon-button"
+            disabled={isStorageBusy}
+            onClick={() => onAddMeasurement('circle')}
+            title="Круг"
+            type="button"
+          >
+            ○
           </button>
-          <button className="button button--secondary" disabled={isStorageBusy} onClick={() => onAddMeasurement('cone')} type="button">
-            Конус
+          <button
+            aria-label="Добавить конус измерения"
+            className="button button--secondary scene-canvas-icon-button"
+            disabled={isStorageBusy}
+            onClick={() => onAddMeasurement('cone')}
+            title="Конус"
+            type="button"
+          >
+            ◢
           </button>
-          <button className="button button--secondary" disabled={isStorageBusy} onClick={() => onAddMeasurement('square')} type="button">
-            Квадрат
+          <button
+            aria-label="Добавить квадрат измерения"
+            className="button button--secondary scene-canvas-icon-button"
+            disabled={isStorageBusy}
+            onClick={() => onAddMeasurement('square')}
+            title="Квадрат"
+            type="button"
+          >
+            □
           </button>
         </div>
-        <button className="button button--secondary" disabled={isStorageBusy || canvas.measurements.length === 0} onClick={onClearMeasurements} type="button">
-          Очистить измерения
+        <button
+          aria-label="Очистить измерения"
+          className="button button--secondary scene-canvas-compact-action"
+          disabled={isStorageBusy || canvas.measurements.length === 0}
+          onClick={onClearMeasurements}
+          title="Очистить измерения"
+          type="button"
+        >
+          Очистить
         </button>
       </section>
 
@@ -678,29 +874,47 @@ function SceneCanvasControls({
           />
         </label>
         <div className="scene-canvas-template-grid">
-          <button className="button button--secondary" disabled={isStorageBusy} onClick={() => onAddFogRegion('rectangle')} type="button">
-            Закрыть
+          <button
+            aria-label="Закрыть прямоугольную область туманом"
+            className="button button--secondary scene-canvas-icon-button"
+            disabled={isStorageBusy}
+            onClick={() => onAddFogRegion('rectangle')}
+            title="Закрыть прямоугольник"
+            type="button"
+          >
+            ▣
           </button>
-          <button className="button button--secondary" disabled={isStorageBusy} onClick={() => onAddFogRegion('circle')} type="button">
-            Круг
+          <button
+            aria-label="Закрыть круглую область туманом"
+            className="button button--secondary scene-canvas-icon-button"
+            disabled={isStorageBusy}
+            onClick={() => onAddFogRegion('circle')}
+            title="Закрыть круг"
+            type="button"
+          >
+            ●
           </button>
         </div>
         <div className="scene-canvas-fog-actions">
           <button
-            className="button button--secondary"
+            aria-label="Открыть последнюю область тумана"
+            className="button button--secondary scene-canvas-icon-button"
             disabled={isStorageBusy || canvas.fog.regions.length === 0}
             onClick={onRemoveLastFogRegion}
+            title="Открыть последнюю"
             type="button"
           >
-            Открыть
+            ◌
           </button>
           <button
-            className="button button--secondary"
+            aria-label="Очистить весь туман"
+            className="button button--secondary scene-canvas-icon-button"
             disabled={isStorageBusy || canvas.fog.regions.length === 0}
             onClick={onClearFogRegions}
+            title="Очистить туман"
             type="button"
           >
-            Очистить
+            ×
           </button>
         </div>
       </section>
@@ -787,15 +1001,25 @@ function CanvasObject({
   asset,
   canvasHeight,
   canvasWidth,
+  isDragDisabled,
+  isDragging,
   isSelected,
   object,
+  previewPosition,
+  onDragCancel,
+  onDragStart,
   onSelectObject,
 }: {
   asset: Asset | undefined
   canvasHeight: number
   canvasWidth: number
+  isDragDisabled: boolean
+  isDragging: boolean
   isSelected: boolean
   object: SceneCanvasObject
+  previewPosition: SceneCanvasObjectPosition | undefined
+  onDragCancel(object: SceneCanvasObject, event: ReactPointerEvent<HTMLButtonElement>): void
+  onDragStart(object: SceneCanvasObject, event: ReactPointerEvent<HTMLButtonElement>): void
   onSelectObject(objectId: SceneCanvasObjectId): void
 }) {
   const classNames = ['scene-canvas-object']
@@ -812,30 +1036,67 @@ function CanvasObject({
     classNames.push('scene-canvas-object--selected')
   }
 
+  if (isDragging) {
+    classNames.push('scene-canvas-object--dragging')
+  }
+
   return (
     <button
       aria-label={`Выбрать объект ${object.name}`}
       aria-pressed={isSelected}
       className={classNames.join(' ')}
+      disabled={isDragDisabled}
       onClick={() => onSelectObject(object.id)}
-      style={getCanvasObjectStyle(object, canvasWidth, canvasHeight)}
+      onPointerCancel={(event) => onDragCancel(object, event)}
+      onPointerDown={(event) => onDragStart(object, event)}
+      style={getCanvasObjectStyle(object, canvasWidth, canvasHeight, previewPosition)}
+      title="Перетащите мышью, чтобы переместить объект"
       type="button"
     >
-      {asset ? <img alt="" src={asset.filePath} /> : null}
+      {asset ? <img alt="" draggable={false} src={asset.filePath} /> : null}
       <span>{object.text ?? object.name}</span>
     </button>
   )
 }
 
-function getCanvasObjectStyle(object: SceneCanvasObject, canvasWidth: number, canvasHeight: number): CSSProperties {
+function getCanvasObjectStyle(
+  object: SceneCanvasObject,
+  canvasWidth: number,
+  canvasHeight: number,
+  previewPosition?: SceneCanvasObjectPosition,
+): CSSProperties {
+  const x = previewPosition?.x ?? object.x
+  const y = previewPosition?.y ?? object.y
+
   return {
-    left: `${(object.x / canvasWidth) * 100}%`,
-    top: `${(object.y / canvasHeight) * 100}%`,
+    left: `${(x / canvasWidth) * 100}%`,
+    top: `${(y / canvasHeight) * 100}%`,
     width: `${(object.width / canvasWidth) * 100}%`,
     height: `${(object.height / canvasHeight) * 100}%`,
     color: object.color,
     transform: `rotate(${object.rotation}deg)`,
   }
+}
+
+function getDraggedCanvasObjectPosition(
+  object: SceneCanvasObject,
+  grid: SceneGrid,
+  canvasWidth: number,
+  canvasHeight: number,
+  rawX: number,
+  rawY: number,
+): SceneCanvasObjectPosition {
+  const x = grid.enabled && grid.snapToGrid ? snapCanvasValue(rawX, grid) : rawX
+  const y = grid.enabled && grid.snapToGrid ? snapCanvasValue(rawY, grid) : rawY
+
+  return {
+    x: clampCanvasValue(x, 0, canvasWidth - object.width),
+    y: clampCanvasValue(y, 0, canvasHeight - object.height),
+  }
+}
+
+function clampCanvasValue(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max))
 }
 
 function getRulerMeasurementStyle(

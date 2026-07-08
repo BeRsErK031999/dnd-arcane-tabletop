@@ -30,6 +30,10 @@ import {
 export type SceneMeasurementTemplate = 'ruler' | 'circle' | 'cone' | 'square'
 export type SceneObjectMoveDirection = 'up' | 'down' | 'left' | 'right'
 export type SceneFogRegionTemplate = SceneCanvasFogRegionShape
+export interface SceneCanvasObjectPosition {
+  x: number
+  y: number
+}
 
 export function createCampaignWithActiveSceneGrid(
   campaign: Campaign,
@@ -133,6 +137,20 @@ export function createCampaignWithMovedActiveSceneObject(
   }))
 }
 
+export function createCampaignWithPositionedActiveSceneObject(
+  campaign: Campaign,
+  objectId: SceneCanvasObjectId,
+  position: SceneCanvasObjectPosition,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): Campaign {
+  return updateActiveScene(campaign, updatedAt, (scene) => ({
+    ...scene,
+    canvas: createCanvasWithUpdatedObject(scene, objectId, updatedAt, (object, canvas) =>
+      positionCanvasObject(object, scene.grid, canvas.width, canvas.height, position),
+    ),
+  }))
+}
+
 export function createCampaignWithDuplicatedActiveSceneObject(
   campaign: Campaign,
   objectId: SceneCanvasObjectId,
@@ -229,8 +247,19 @@ function moveCanvasObject(
   const delta = deltaByDirection[direction]
   const rawX = object.x + delta.x
   const rawY = object.y + delta.y
-  const nextX = grid.enabled && grid.snapToGrid ? snapCanvasValue(rawX, grid) : rawX
-  const nextY = grid.enabled && grid.snapToGrid ? snapCanvasValue(rawY, grid) : rawY
+
+  return positionCanvasObject(object, grid, canvasWidth, canvasHeight, { x: rawX, y: rawY })
+}
+
+function positionCanvasObject(
+  object: SceneCanvasObject,
+  grid: SceneGrid,
+  canvasWidth: number,
+  canvasHeight: number,
+  position: SceneCanvasObjectPosition,
+): SceneCanvasObject {
+  const nextX = grid.enabled && grid.snapToGrid ? snapCanvasValue(position.x, grid) : position.x
+  const nextY = grid.enabled && grid.snapToGrid ? snapCanvasValue(position.y, grid) : position.y
 
   return {
     ...object,

@@ -69,9 +69,11 @@ import {
   createCampaignWithActiveSceneViewport,
   createCampaignWithDuplicatedActiveSceneObject,
   createCampaignWithMovedActiveSceneObject,
+  createCampaignWithPositionedActiveSceneObject,
   createCampaignWithoutActiveSceneFogRegions,
   createCampaignWithoutActiveSceneMeasurements,
   createCampaignWithoutLastActiveSceneFogRegion,
+  type SceneCanvasObjectPosition,
   type SceneFogRegionTemplate,
   type SceneMeasurementTemplate,
   type SceneObjectMoveDirection,
@@ -1234,6 +1236,35 @@ export function useCampaignsStore() {
     [saveCampaignWithStatus, selectedCampaign],
   )
 
+  const positionActiveSceneObject = useCallback(
+    async (
+      objectId: SceneCanvasObjectId,
+      position: SceneCanvasObjectPosition,
+    ): Promise<CampaignMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для перемещения объекта сцены.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithPositionedActiveSceneObject(selectedCampaign, objectId, position)
+        await saveCampaignWithStatus(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign }
+      } catch {
+        setLastError('Не удалось переместить объект сцены.')
+        setStatus('error')
+        return { ok: false, reason: 'position-scene-object-failed' }
+      }
+    },
+    [saveCampaignWithStatus, selectedCampaign],
+  )
+
   const duplicateActiveSceneObject = useCallback(
     async (objectId: SceneCanvasObjectId): Promise<CampaignMutationResult> => {
       if (selectedCampaign === null) {
@@ -1499,6 +1530,7 @@ export function useCampaignsStore() {
     advanceCombatRound,
     setPlayerInitiativeVisible,
     moveActiveSceneObject,
+    positionActiveSceneObject,
     duplicateActiveSceneObject,
     setActiveSceneObjectVisibility,
     updateActiveSceneObjectTokenState,

@@ -16,6 +16,7 @@ import {
   createCampaignWithActiveSceneViewport,
   createCampaignWithDuplicatedActiveSceneObject,
   createCampaignWithMovedActiveSceneObject,
+  createCampaignWithPositionedActiveSceneObject,
   createCampaignWithoutActiveSceneFogRegions,
   createCampaignWithoutActiveSceneMeasurements,
   createCampaignWithoutLastActiveSceneFogRegion,
@@ -174,6 +175,26 @@ describe('sceneToolsFactory', () => {
     expect(object).toMatchObject({
       x: 210,
       y: 140,
+    })
+  })
+
+  it('positions active scene objects from pointer coordinates with safe bounds', () => {
+    const campaign = createCampaignWithTokenObjectFixture()
+
+    const updated = createCampaignWithPositionedActiveSceneObject(
+      campaign,
+      'object-token',
+      { x: 176, y: 822 },
+      '2026-07-07T09:30:00.000Z',
+    )
+    const object = getSceneCanvasState(getActiveCampaignScene(updated)!).objects.find(
+      (candidate) => candidate.id === 'object-token',
+    )
+
+    expect(updated.updatedAt).toBe('2026-07-07T09:30:00.000Z')
+    expect(object).toMatchObject({
+      x: 210,
+      y: 830,
     })
   })
 

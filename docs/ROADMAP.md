@@ -502,6 +502,8 @@
 
 ## Этап 12. Заметки, handouts и показ артов
 
+Статус: выполнено.
+
 Цель: добавить заметки мастера, секретные заметки и показ письма, арта или изображения игрокам.
 
 Входит:
@@ -518,14 +520,25 @@
 - Заметки сохраняются в кампании.
 - Handout можно показать и скрыть на player screen.
 - Secret notes не отправляются игрокам.
+- Player state не содержит текст secret notes.
+- `npm run lint`, `npm run typecheck` и `npm run test` проходят.
+- Notes/handout flow проверен в browser route.
 
 Затрагивается:
 - `src/shared/types/note.ts`
+- `src/shared/types/playerScreen.ts`
+- `src/renderer/stores/noteFactory.ts`
+- `src/renderer/stores/useCampaignsStore.ts`
+- `src/renderer/pages/MasterDashboardPage.tsx`
+- `src/renderer/app/styles.css`
 - renderer panels
 - player screen state
 - storage layer
 
 Риски:
+- Утечка secret notes игрокам через handout state.
+- Смешение asset handouts и note handouts.
+- Непредсказуемое поведение старых JSON campaigns без нормализованных notes.
 - Смешивание публичных и приватных заметок.
 
 ## Этап 13. Инициатива

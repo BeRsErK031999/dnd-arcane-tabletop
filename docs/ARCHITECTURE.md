@@ -113,6 +113,8 @@ Player window не получает raw `Scene.canvas`. Master renderer стро
 
 На этапе 11 fog of war хранится внутри `SceneCanvasState.fog`, а не в отдельном runtime-only состоянии. Fog содержит включение, плотность и простые rectangle/circle regions, которые renderer сохраняет через `sceneToolsFactory` и `useCampaignsStore`. Master canvas рисует эти regions полупрозрачно, а player screen получает только `PlayerSceneCanvasProjection.fog` с display-ready координатами без мастерских labels и рисует их черным overlay. Stage 11 не добавляет dynamic lighting, line of sight или автоматическое зрение токенов.
 
+На этапе 12 `Note` хранится в `Campaign.notes` как JSON-сущность кампании. `scope: 'master'` остается master-only и не может быть отправлен игрокам через `createCampaignWithNoteHandout`; `scope: 'players'` превращается в display-ready `PlayerScreenState.handoutPreview` с `kind: 'handout'`. Player screen получает только публичный snapshot заголовка и текста handout, без доступа к полному массиву заметок кампании.
+
 ## IPC
 
 IPC channel names хранятся централизованно в `src/shared/constants/ipc.ts`.

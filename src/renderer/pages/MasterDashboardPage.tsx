@@ -5,6 +5,7 @@ import {
   type AssetLibraryKindFilter,
 } from '@renderer/stores/assetFactory'
 import { createCharacterCardList, type CharacterCardInput } from '@renderer/stores/characterCardFactory'
+import { createNoteList, type NoteInput } from '@renderer/stores/noteFactory'
 import { desktopApi } from '@renderer/services/desktopApi'
 import { getSceneCanvasState } from '@renderer/stores/sceneCanvasFactory'
 import { useCampaignsStore } from '@renderer/stores/useCampaignsStore'
@@ -24,6 +25,9 @@ import {
   type CharacterCardId,
   type CharacterCardKind,
   type ImageAssetKind,
+  type Note,
+  type NoteId,
+  type NoteScope,
   type PlayerScreenCommandResult,
   type PlayerScreenOpenResult,
   type PlayerScreenState,
@@ -66,6 +70,18 @@ const emptyCharacterCardDraft: CharacterCardDraft = {
   notes: '',
 }
 
+interface NoteDraft {
+  title: string
+  body: string
+  scope: NoteScope
+}
+
+const emptyNoteDraft: NoteDraft = {
+  title: '',
+  body: '',
+  scope: 'master',
+}
+
 interface ToolItem {
   label: string
   shortcut: string
@@ -94,7 +110,7 @@ const toolGroups: Array<{ title: string; items: ToolItem[] }> = [
     title: 'Показ игрокам',
     items: [
       { label: 'Scene preview', shortcut: 'P', status: 'stage 1' },
-      { label: 'Handout preview', shortcut: 'H', status: 'stage 1' },
+      { label: 'Handout preview', shortcut: 'H', status: 'active' },
     ],
   },
 ]
@@ -124,6 +140,11 @@ export function MasterDashboardPage() {
     createCharacterCard,
     updateCharacterCard,
     deleteCharacterCard,
+    createNote,
+    updateNote,
+    deleteNote,
+    sendNoteToPlayers,
+    hidePlayerHandout,
     moveActiveSceneObject,
     duplicateActiveSceneObject,
     setActiveSceneObjectVisibility,
@@ -154,6 +175,9 @@ export function MasterDashboardPage() {
   const [selectedCharacterCardId, setSelectedCharacterCardId] = useState<CharacterCardId | null>(null)
   const [characterDraft, setCharacterDraft] = useState<CharacterCardDraft>(emptyCharacterCardDraft)
   const [characterActionStatus, setCharacterActionStatus] = useState('Откройте кампанию, чтобы создавать карточки.')
+  const [selectedNoteId, setSelectedNoteId] = useState<NoteId | null>(null)
+  const [noteDraft, setNoteDraft] = useState<NoteDraft>(emptyNoteDraft)
+  const [noteActionStatus, setNoteActionStatus] = useState('Откройте кампанию, чтобы вести заметки.')
   const [playerStatus, setPlayerStatus] = useState<PlayerScreenStatus>(() => ({
     isOpen: false,
     isFullscreen: false,
@@ -188,9 +212,17 @@ export function MasterDashboardPage() {
         : [],
     [selectedCampaign],
   )
+  const notes = useMemo(
+    () => (selectedCampaign ? createNoteList(selectedCampaign.notes, selectedCampaign.id) : []),
+    [selectedCampaign],
+  )
   const selectedCharacterCard = useMemo(
     () => characterCards.find((card) => card.id === selectedCharacterCardId) ?? null,
     [characterCards, selectedCharacterCardId],
+  )
+  const selectedNote = useMemo(
+    () => notes.find((note) => note.id === selectedNoteId) ?? null,
+    [notes, selectedNoteId],
   )
   const portraitAssets = useMemo(
     () => (selectedCampaign?.assets ?? []).filter((asset) => asset.kind === 'portrait' || asset.kind === 'token'),
@@ -223,6 +255,8 @@ export function MasterDashboardPage() {
   const isStorageBusy = status === 'loading' || status === 'saving' || status === 'deleting'
   const hasSelectedCampaign = selectedCampaign !== null
   const selectedCampaignId = selectedCampaign?.id ?? null
+  const activePlayerHandoutId = playerStatus.state.isHidden ? null : playerStatus.state.handoutPreview?.id ?? null
+  const isPlayerHandoutVisible = playerStatus.state.mode === 'image' && activePlayerHandoutId !== null
 
   useEffect(() => {
     let isMounted = true
@@ -259,6 +293,14 @@ export function MasterDashboardPage() {
   }, [hasSelectedCampaign, selectedCampaignId])
 
   useEffect(() => {
+    setSelectedNoteId(null)
+    setNoteDraft(emptyNoteDraft)
+    setNoteActionStatus(
+      !hasSelectedCampaign ? 'Откройте кампанию, чтобы вести заметки.' : 'Заметки кампании готовы к редактированию.',
+    )
+  }, [hasSelectedCampaign, selectedCampaignId])
+
+  useEffect(() => {
     if (selectedCharacterCardId === null) {
       return
     }
@@ -268,6 +310,17 @@ export function MasterDashboardPage() {
       setCharacterDraft(emptyCharacterCardDraft)
     }
   }, [characterCards, selectedCharacterCardId])
+
+  useEffect(() => {
+    if (selectedNoteId === null) {
+      return
+    }
+
+    if (!notes.some((note) => note.id === selectedNoteId)) {
+      setSelectedNoteId(null)
+      setNoteDraft(emptyNoteDraft)
+    }
+  }, [notes, selectedNoteId])
 
   useEffect(() => {
     const assets = selectedCampaign?.assets ?? []
@@ -625,6 +678,109 @@ export function MasterDashboardPage() {
     setCharacterActionStatus('Новая карточка готова к заполнению.')
   }
 
+  async function handleCreateNote(): Promise<void> {
+    const result = await createNote(createNoteInput(noteDraft))
+
+    if (result.ok) {
+      const createdNote = result.campaign.notes.find((note) => note.id === result.noteId)
+      setSelectedNoteId(result.noteId)
+      setNoteDraft(createdNote ? createNoteDraft(createdNote) : emptyNoteDraft)
+      setNoteActionStatus(`Заметка "${createdNote?.title ?? 'без названия'}" создана.`)
+      setActiveRightPanel('notes')
+      return
+    }
+
+    setNoteActionStatus('Не удалось создать заметку.')
+  }
+
+  async function handleUpdateNote(): Promise<void> {
+    if (selectedNoteId === null) {
+      setNoteActionStatus('Выберите заметку для сохранения.')
+      return
+    }
+
+    const result = await updateNote(selectedNoteId, createNoteInput(noteDraft))
+
+    if (result.ok) {
+      const updatedNote = result.campaign.notes.find((note) => note.id === selectedNoteId)
+      setNoteDraft(updatedNote ? createNoteDraft(updatedNote) : noteDraft)
+      setNoteActionStatus(`Заметка "${updatedNote?.title ?? 'без названия'}" сохранена.`)
+      return
+    }
+
+    setNoteActionStatus('Не удалось сохранить заметку.')
+  }
+
+  async function handleDeleteNote(): Promise<void> {
+    if (selectedNoteId === null) {
+      setNoteActionStatus('Выберите заметку для удаления.')
+      return
+    }
+
+    const noteTitle = selectedNote?.title ?? 'заметка'
+    const result = await deleteNote(selectedNoteId)
+
+    if (result.ok) {
+      setSelectedNoteId(null)
+      setNoteDraft(emptyNoteDraft)
+      setNoteActionStatus(`Заметка "${noteTitle}" удалена.`)
+      return
+    }
+
+    setNoteActionStatus('Не удалось удалить заметку.')
+  }
+
+  function handleSelectNote(note: Note): void {
+    setSelectedNoteId(note.id)
+    setNoteDraft(createNoteDraft(note))
+    setNoteActionStatus(`Заметка "${note.title}" выбрана.`)
+  }
+
+  function handleNewNoteDraft(): void {
+    setSelectedNoteId(null)
+    setNoteDraft(emptyNoteDraft)
+    setNoteActionStatus('Новая заметка готова к заполнению.')
+  }
+
+  async function handleSendNoteToPlayers(noteId: NoteId): Promise<void> {
+    const note = notes.find((candidate) => candidate.id === noteId)
+
+    if (!note) {
+      setNoteActionStatus('Заметка не найдена.')
+      return
+    }
+
+    if (note.scope === 'master') {
+      setNoteActionStatus('Секретная заметка не отправляется игрокам.')
+      return
+    }
+
+    const result = await sendNoteToPlayers(noteId)
+
+    if (result.ok) {
+      const handoutName = result.campaign.playerScreenState.handoutPreview?.name ?? note.title
+      setPlayerStatus(getStatusFromPlayerAction(result.playerStatus))
+      setNoteActionStatus(`Handout "${handoutName}" показан игрокам.`)
+      setPlayerActionStatus(`Handout "${handoutName}" показан игрокам.`)
+      return
+    }
+
+    setNoteActionStatus('Не удалось показать handout игрокам.')
+  }
+
+  async function handleHidePlayerHandout(): Promise<void> {
+    const result = await hidePlayerHandout()
+
+    if (result.ok) {
+      setPlayerStatus(getStatusFromPlayerAction(result.playerStatus))
+      setNoteActionStatus('Handout скрыт у игроков.')
+      setPlayerActionStatus('Handout скрыт у игроков.')
+      return
+    }
+
+    setNoteActionStatus('Не удалось скрыть handout у игроков.')
+  }
+
   async function runPlayerAction(label: string, action: () => Promise<PlayerActionResult>): Promise<void> {
     setPlayerActionStatus('Выполняется...')
 
@@ -643,11 +799,11 @@ export function MasterDashboardPage() {
         <div>
           <p className="eyebrow">Master Console</p>
           <h1>Панель мастера</h1>
-          <p className="muted">Stage 11: ручной туман войны для master/player canvas.</p>
+          <p className="muted">Stage 12: заметки, handouts и показ материалов игрокам.</p>
         </div>
         <div className="button-row">
           {selectedCampaign ? <span className="status-badge">Открыта: {selectedCampaign.name}</span> : null}
-          <span className="status-badge">Этап 11</span>
+          <span className="status-badge">Этап 12</span>
           <button className="button button--secondary" type="button" onClick={refresh}>
             Обновить
           </button>
@@ -744,6 +900,7 @@ export function MasterDashboardPage() {
               </div>
               <div className="workspace-board__meta">
                 <span>Fog: Stage 11</span>
+                <span>Handouts: Stage 12</span>
                 <span>Player mode: {playerStatus.state.mode}</span>
               </div>
             </div>
@@ -928,7 +1085,7 @@ export function MasterDashboardPage() {
               <p className="eyebrow">Library</p>
               <h2>Материалы</h2>
             </div>
-            <span className="status-badge status-badge--neutral">Stage 10</span>
+            <span className="status-badge status-badge--neutral">Stage 12</span>
           </div>
           <div className="tab-list" role="tablist" aria-label="Материалы мастера">
             {rightPanelTabs.map((tab) => (
@@ -957,12 +1114,18 @@ export function MasterDashboardPage() {
             assetTagDrafts,
             assets: selectedCampaign?.assets ?? [],
             canEditCharacters: selectedCampaign !== null,
+            canEditNotes: selectedCampaign !== null,
             canImportAssets: selectedCampaign !== null,
             canUseAssetsInScene: selectedCampaign !== null && activeScene !== null,
             characterActionStatus,
             characterCards,
             characterDraft,
+            activePlayerHandoutId,
             isStorageBusy,
+            isPlayerHandoutVisible,
+            noteActionStatus,
+            noteDraft,
+            notes,
             onAssetImportTagsChange: setAssetImportTags,
             onAssetKindChange: setAssetKind,
             onAssetKindFilterChange: setAssetKindFilter,
@@ -988,8 +1151,21 @@ export function MasterDashboardPage() {
             onNewCharacterCardDraft: handleNewCharacterCardDraft,
             onSelectCharacterCard: handleSelectCharacterCard,
             onUpdateCharacterCard: handleUpdateCharacterCard,
+            onCreateNote: handleCreateNote,
+            onDeleteNote: handleDeleteNote,
+            onHidePlayerHandout: handleHidePlayerHandout,
+            onNewNoteDraft: handleNewNoteDraft,
+            onNoteDraftChange: (patch) =>
+              setNoteDraft((draft) => ({
+                ...draft,
+                ...patch,
+              })),
+            onSelectNote: handleSelectNote,
+            onSendNoteToPlayers: handleSendNoteToPlayers,
+            onUpdateNote: handleUpdateNote,
             portraitAssets,
             selectedCharacterCardId,
+            selectedNoteId,
             totals,
           })}
         </aside>
@@ -1142,12 +1318,18 @@ interface RightPanelContentProps {
   assetTagDrafts: Record<AssetId, string>
   assets: Asset[]
   canEditCharacters: boolean
+  canEditNotes: boolean
   canImportAssets: boolean
   canUseAssetsInScene: boolean
   characterActionStatus: string
   characterCards: CharacterCard[]
   characterDraft: CharacterCardDraft
+  activePlayerHandoutId: string | null
   isStorageBusy: boolean
+  isPlayerHandoutVisible: boolean
+  noteActionStatus: string
+  noteDraft: NoteDraft
+  notes: Note[]
   onAssetImportTagsChange(tags: string): void
   onAssetKindChange(kind: ImageAssetKind): void
   onAssetKindFilterChange(kind: AssetLibraryKindFilter): void
@@ -1165,8 +1347,17 @@ interface RightPanelContentProps {
   onNewCharacterCardDraft(): void
   onSelectCharacterCard(card: CharacterCard): void
   onUpdateCharacterCard(): Promise<void>
+  onCreateNote(): Promise<void>
+  onDeleteNote(): Promise<void>
+  onHidePlayerHandout(): Promise<void>
+  onNewNoteDraft(): void
+  onNoteDraftChange(patch: Partial<NoteDraft>): void
+  onSelectNote(note: Note): void
+  onSendNoteToPlayers(noteId: NoteId): Promise<void>
+  onUpdateNote(): Promise<void>
   portraitAssets: Asset[]
   selectedCharacterCardId: CharacterCardId | null
+  selectedNoteId: NoteId | null
   totals: { assets: number; characters: number }
 }
 
@@ -1179,26 +1370,166 @@ function renderRightPanelContent(props: RightPanelContentProps) {
     return <CharacterPanel {...props} />
   }
 
+  return <NotePanel {...props} />
+}
+
+function NotePanel({
+  activePlayerHandoutId,
+  canEditNotes,
+  isPlayerHandoutVisible,
+  isStorageBusy,
+  noteActionStatus,
+  noteDraft,
+  notes,
+  onCreateNote,
+  onDeleteNote,
+  onHidePlayerHandout,
+  onNewNoteDraft,
+  onNoteDraftChange,
+  onSelectNote,
+  onSendNoteToPlayers,
+  onUpdateNote,
+  selectedNoteId,
+}: RightPanelContentProps) {
+  const selectedNote = notes.find((note) => note.id === selectedNoteId) ?? null
+  const canSendSelectedNote = selectedNote !== null && selectedNote.scope === 'players'
+
   return (
     <section className="context-panel__body" role="tabpanel">
-      <div className="empty-panel-state">
-        <h3>Заметки мастера</h3>
-        <p>Место под приватные заметки, handouts и показ артов. Реальное хранение будет позже.</p>
-      </div>
-      <ul className="compact-list">
-        <li>
-          <span>Секретные заметки</span>
-          <small>Stage 12</small>
-        </li>
-        <li>
-          <span>Письма игрокам</span>
-          <small>Stage 12</small>
-        </li>
-        <li>
-          <span>Быстрый показ</span>
-          <small>Stage 1</small>
-        </li>
-      </ul>
+      <form
+        className="note-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void onCreateNote()
+        }}
+      >
+        <div className="note-form__header">
+          <h3>Заметка</h3>
+          <button
+            className="button button--secondary"
+            disabled={!canEditNotes || isStorageBusy}
+            onClick={onNewNoteDraft}
+            type="button"
+          >
+            Новая
+          </button>
+        </div>
+        <label>
+          <span>Название</span>
+          <input
+            disabled={!canEditNotes || isStorageBusy}
+            onChange={(event) => onNoteDraftChange({ title: event.target.value })}
+            placeholder="Письмо из башни"
+            value={noteDraft.title}
+          />
+        </label>
+        <label>
+          <span>Текст</span>
+          <textarea
+            disabled={!canEditNotes || isStorageBusy}
+            onChange={(event) => onNoteDraftChange({ body: event.target.value })}
+            placeholder="Текст заметки или handout"
+            rows={5}
+            value={noteDraft.body}
+          />
+        </label>
+        <label className="note-scope-toggle">
+          <input
+            checked={noteDraft.scope === 'master'}
+            disabled={!canEditNotes || isStorageBusy}
+            onChange={(event) => onNoteDraftChange({ scope: event.target.checked ? 'master' : 'players' })}
+            type="checkbox"
+          />
+          <span>Секретная заметка мастера</span>
+        </label>
+
+        <div className="note-form__actions">
+          <button className="button" disabled={!canEditNotes || isStorageBusy} type="submit">
+            Создать
+          </button>
+          <button
+            className="button button--secondary"
+            disabled={!canEditNotes || isStorageBusy || selectedNoteId === null}
+            onClick={() => void onUpdateNote()}
+            type="button"
+          >
+            Сохранить
+          </button>
+          <button
+            className="button button--danger"
+            disabled={!canEditNotes || isStorageBusy || selectedNoteId === null}
+            onClick={() => void onDeleteNote()}
+            type="button"
+          >
+            Удалить
+          </button>
+        </div>
+        <div className="note-player-actions">
+          <button
+            className="button"
+            disabled={!canEditNotes || isStorageBusy || !canSendSelectedNote}
+            onClick={() => selectedNoteId && void onSendNoteToPlayers(selectedNoteId)}
+            type="button"
+          >
+            Показать игрокам
+          </button>
+          <button
+            className="button button--secondary"
+            disabled={!canEditNotes || isStorageBusy || !isPlayerHandoutVisible}
+            onClick={() => void onHidePlayerHandout()}
+            type="button"
+          >
+            Скрыть у игроков
+          </button>
+        </div>
+      </form>
+
+      {notes.length === 0 ? (
+        <div className="empty-panel-state">
+          <h3>Заметок пока нет</h3>
+          <p>Новая запись сохранится внутри открытой кампании.</p>
+        </div>
+      ) : (
+        <ul className="note-list">
+          {notes.map((note) => {
+            const isActive = note.id === selectedNoteId
+            const isVisibleHandout = note.id === activePlayerHandoutId
+
+            return (
+              <li className={isActive ? 'note-item note-item--active' : 'note-item'} key={note.id}>
+                <button onClick={() => onSelectNote(note)} type="button">
+                  <div className="note-item__header">
+                    <span>{note.title}</span>
+                    <small className={note.scope === 'players' ? 'asset-tag' : 'asset-tag asset-tag--muted'}>
+                      {getNoteScopeLabel(note.scope)}
+                    </small>
+                  </div>
+                  <p>{note.body === '' ? 'Без текста' : note.body}</p>
+                  <div className="note-item__meta">
+                    <small>{formatTimestamp(note.updatedAt)}</small>
+                    {isVisibleHandout ? <small>на экране</small> : null}
+                  </div>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      {selectedNote ? (
+        <div className="note-preview">
+          <div>
+            <p className="eyebrow">Preview</p>
+            <h3>{selectedNote.title}</h3>
+            <span className={selectedNote.scope === 'players' ? 'asset-tag' : 'asset-tag asset-tag--muted'}>
+              {getNoteScopeLabel(selectedNote.scope)}
+            </span>
+          </div>
+          <p>{selectedNote.body === '' ? 'Пустая заметка.' : selectedNote.body}</p>
+        </div>
+      ) : null}
+
+      <p className="form-status">{noteActionStatus}</p>
     </section>
   )
 }
@@ -1719,6 +2050,22 @@ function createCharacterCardDraft(card: CharacterCard): CharacterCardDraft {
   }
 }
 
+function createNoteInput(draft: NoteDraft): NoteInput {
+  return {
+    title: draft.title,
+    body: draft.body,
+    scope: draft.scope,
+  }
+}
+
+function createNoteDraft(note: Note): NoteDraft {
+  return {
+    title: note.title,
+    body: note.body,
+    scope: note.scope,
+  }
+}
+
 function getOptionalNumberValue(value: string): number | undefined {
   if (value.trim() === '') {
     return undefined
@@ -1737,6 +2084,10 @@ function getCharacterKindLabel(kind: CharacterCardKind): string {
     case 'monster':
       return 'Монстр'
   }
+}
+
+function getNoteScopeLabel(scope: NoteScope): string {
+  return scope === 'players' ? 'игрокам' : 'мастер'
 }
 
 function formatCharacterHitPoints(card: CharacterCard): string {

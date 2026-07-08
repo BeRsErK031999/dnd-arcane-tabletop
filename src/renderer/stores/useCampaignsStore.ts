@@ -7,6 +7,7 @@ import type {
   CampaignSummary,
   CharacterCardId,
   ImageAssetKind,
+  NoteId,
   PlayerScreenCommandResult,
   SceneCanvasFogState,
   SceneCanvasObjectId,
@@ -29,6 +30,15 @@ import {
   createCampaignWithoutCharacterCard,
   type CharacterCardInput,
 } from './characterCardFactory'
+import {
+  createCampaignWithHiddenPlayerHandout,
+  createCampaignWithHydratedNotes,
+  createCampaignWithNewNote,
+  createCampaignWithNoteHandout,
+  createCampaignWithUpdatedNote,
+  createCampaignWithoutNote,
+  type NoteInput,
+} from './noteFactory'
 import {
   createCampaignWithActiveScene,
   createCampaignWithHydratedScenes,
@@ -62,7 +72,13 @@ export type AssetMutationResult =
 export type CharacterCardMutationResult =
   | { ok: true; campaign: Campaign; characterCardId: CharacterCardId }
   | { ok: false; reason: string }
+export type NoteMutationResult =
+  | { ok: true; campaign: Campaign; noteId: NoteId }
+  | { ok: false; reason: string }
 export type PlayerScenePreviewResult =
+  | { ok: true; campaign: Campaign; playerStatus: PlayerScreenCommandResult }
+  | { ok: false; reason: string }
+export type PlayerHandoutPreviewResult =
   | { ok: true; campaign: Campaign; playerStatus: PlayerScreenCommandResult }
   | { ok: false; reason: string }
 
@@ -119,7 +135,9 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'campaign-not-found' }
       }
 
-      const hydratedCampaign = createCampaignWithHydratedCharacterCards(createCampaignWithHydratedScenes(campaign))
+      const hydratedCampaign = createCampaignWithHydratedNotes(
+        createCampaignWithHydratedCharacterCards(createCampaignWithHydratedScenes(campaign)),
+      )
       setSelectedCampaign(hydratedCampaign)
       setStatus('ready')
       return { ok: true, campaign: hydratedCampaign }
@@ -550,6 +568,153 @@ export function useCampaignsStore() {
     [selectedCampaign],
   )
 
+  const createNote = useCallback(
+    async (input: NoteInput): Promise<NoteMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для создания заметки.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithNewNote(selectedCampaign, input)
+        const note = updatedCampaign.notes[0]
+
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign, noteId: note.id }
+      } catch {
+        setLastError('Не удалось создать заметку.')
+        setStatus('error')
+        return { ok: false, reason: 'create-note-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const updateNote = useCallback(
+    async (noteId: NoteId, input: NoteInput): Promise<NoteMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для редактирования заметки.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithUpdatedNote(selectedCampaign, noteId, input)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign, noteId }
+      } catch {
+        setLastError('Не удалось сохранить заметку.')
+        setStatus('error')
+        return { ok: false, reason: 'update-note-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const deleteNote = useCallback(
+    async (noteId: NoteId): Promise<NoteMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для удаления заметки.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithoutNote(selectedCampaign, noteId)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign, noteId }
+      } catch {
+        setLastError('Не удалось удалить заметку.')
+        setStatus('error')
+        return { ok: false, reason: 'delete-note-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const sendNoteToPlayers = useCallback(
+    async (noteId: NoteId): Promise<PlayerHandoutPreviewResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для показа заметки.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithNoteHandout(selectedCampaign, noteId)
+        await desktopApi.storage.saveCampaign(updatedCampaign)
+        const playerStatus = await desktopApi.playerScreen.updateState(updatedCampaign.playerScreenState)
+
+        if (!playerStatus.ok) {
+          setLastError('Не удалось отправить handout игрокам.')
+          setStatus('error')
+          return { ok: false, reason: playerStatus.reason ?? 'player-screen-update-failed' }
+        }
+
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign, playerStatus }
+      } catch (error) {
+        setLastError(error instanceof Error && error.message === 'note-is-secret'
+          ? 'Секретная заметка не отправляется игрокам.'
+          : 'Не удалось отправить handout игрокам.')
+        setStatus('error')
+        return { ok: false, reason: error instanceof Error ? error.message : 'send-note-failed' }
+      }
+    },
+    [selectedCampaign],
+  )
+
+  const hidePlayerHandout = useCallback(async (): Promise<PlayerHandoutPreviewResult> => {
+    if (selectedCampaign === null) {
+      setLastError('Нет открытой кампании для скрытия handout.')
+      return { ok: false, reason: 'campaign-not-selected' }
+    }
+
+    setStatus('saving')
+    setLastError(null)
+
+    try {
+      const updatedCampaign = createCampaignWithHiddenPlayerHandout(selectedCampaign)
+      await desktopApi.storage.saveCampaign(updatedCampaign)
+      const playerStatus = await desktopApi.playerScreen.updateState(updatedCampaign.playerScreenState)
+
+      if (!playerStatus.ok) {
+        setLastError('Не удалось скрыть handout на экране игроков.')
+        setStatus('error')
+        return { ok: false, reason: playerStatus.reason ?? 'player-screen-update-failed' }
+      }
+
+      setSelectedCampaign(updatedCampaign)
+      setCampaigns(await desktopApi.storage.listCampaigns())
+      setStatus('ready')
+      return { ok: true, campaign: updatedCampaign, playerStatus }
+    } catch {
+      setLastError('Не удалось скрыть handout на экране игроков.')
+      setStatus('error')
+      return { ok: false, reason: 'hide-handout-failed' }
+    }
+  }, [selectedCampaign])
+
   const moveActiveSceneObject = useCallback(
     async (
       objectId: SceneCanvasObjectId,
@@ -828,6 +993,11 @@ export function useCampaignsStore() {
     createCharacterCard,
     updateCharacterCard,
     deleteCharacterCard,
+    createNote,
+    updateNote,
+    deleteNote,
+    sendNoteToPlayers,
+    hidePlayerHandout,
     moveActiveSceneObject,
     duplicateActiveSceneObject,
     setActiveSceneObjectVisibility,

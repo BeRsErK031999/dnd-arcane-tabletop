@@ -2,13 +2,13 @@
 
 ## Текущий этап
 
-Этап 11. Туман войны.
+Этап 12. Заметки, handouts и показ артов.
 
 Статус: выполнено в этом этапе.
 
 ## Цель
 
-Дать мастеру ручной fog layer для активной сцены: включение тумана, настройку плотности, закрытие прямоугольных и круглых областей, открытие последней области и очистку тумана с player projection, где скрытые области закрыты черным слоем.
+Дать мастеру панель заметок в кампании: приватные master-only записи, публичные handouts и быстрый показ выбранного handout на player screen.
 
 ## Уже реализовано до начала этапа
 
@@ -18,78 +18,70 @@
 - JSON campaign storage.
 - Campaign CRUD.
 - Scene creation, active scene switching и scene preview для player screen.
-- Local image asset import and map binding.
-- Stage 6 canvas state, layer stack and player-visible canvas projection.
-- Stage 7 grid settings, viewport, measurements and player projection.
-- Stage 8 asset library, tags, search, asset preview and asset-backed canvas objects.
-- Stage 9 object selection, movement, duplicate/hide and master-only token state.
-- Stage 10 simple character cards, NPC/monster kinds and token links.
+- Local image asset import, tags, search и asset preview.
+- Canvas state, layers, grid, viewport, measurements и player projection.
+- Object movement, duplicate/hide и master-only token state.
+- Simple character cards для players/NPC/monster.
+- Manual fog of war для master/player canvas.
 
 ## Что можно использовать
 
-- `Campaign.characterCards`.
-- `CharacterCard`.
-- `Scene.canvas.objects`.
-- `SceneCanvasObject.assetId`.
-- `SceneCanvasObject.isPlayerVisible`.
-- `SceneCanvasObject.tokenState`.
-- `SceneCanvasState.fog`.
-- `PlayerSceneCanvasProjection.fog`.
-- `SceneGrid.snapToGrid`.
-- `createPlayerSceneCanvasProjection`.
+- `Campaign.notes`.
+- `Note` и `NoteScope`.
+- `PlayerScreenState.handoutPreview`.
 - `desktopApi.storage.saveCampaign`.
 - `desktopApi.playerScreen.updateState`.
+- `desktopApi.playerScreen.hide`.
+- Browser fallback storage для renderer smoke checks.
 
 ## Пробелы этапа
 
-- Слой `fog` существовал в canvas layer stack, но был отключенной заглушкой без состояния.
-- Мастер не мог закрывать или открывать области карты вручную.
-- Player screen получал карту, объекты и измерения без черного fog overlay.
-- Старые JSON campaigns не имели поля `canvas.fog`, которое нужно безопасно гидрировать.
+- Вкладка `Заметки` была placeholder без сохранения.
+- `Campaign.notes` не имел renderer CRUD pipeline.
+- Публичные заметки нельзя было отправить в `PlayerScreenState`.
+- Secret notes не имели явной защиты от показа игрокам.
 
 ## Что реализовано
 
-- `SceneCanvasState` получил `fog` с `enabled`, `opacity` и списком скрытых областей.
-- `sceneCanvasFactory` гидрирует legacy scenes, нормализует fog regions и синхронизирует видимость слоя `fog`.
-- `sceneToolsFactory` добавляет операции включения/плотности тумана, закрытия rectangle/circle, открытия последней области и очистки тумана.
-- `useCampaignsStore` сохраняет fog operations через существующий JSON storage pipeline.
-- `SceneCanvas` показывает мастерский полупрозрачный fog overlay и отдельный блок управления туманом.
-- `PlayerScreenPlaceholderPage` рисует player fog projection черными областями поверх карты, объектов и измерений.
-- `PlayerSceneCanvasProjection.fog` содержит только display-ready regions без мастерских labels.
-- Unit tests покрывают fog hydration, projection, active-scene mutations и очистку fog layer.
+- `noteFactory` добавляет гидрацию, создание, обновление, удаление и сортировку заметок.
+- Публичная заметка собирается в `PlayerScreenState` с `mode: 'image'` и `handoutPreview.kind: 'handout'`.
+- Секретная заметка остается `scope: 'master'` и не отправляется игрокам.
+- Удаление активной handout-заметки скрывает текущий player handout в campaign state.
+- `useCampaignsStore` сохраняет заметки через существующий JSON pipeline и отправляет handout на player screen.
+- Правая панель `Заметки` получила form/list/preview, secret checkbox, show/hide actions и статус текущего handout.
+- `PlayerHandoutPreview.id` теперь может ссылаться на asset или note.
+- Unit tests покрывают note CRUD, legacy hydration, public handout state и запрет отправки secret notes.
 
 ## Критерии готовности
 
-- Мастер может включить и выключить туман войны.
-- Мастер может настроить плотность тумана.
-- Мастер может закрыть прямоугольную или круглую область.
-- Мастер может открыть последнюю область или очистить весь туман.
-- Fog state сохраняется в scene canvas JSON.
-- Player screen получает черные fog regions без мастерских labels.
+- Заметки создаются, редактируются, удаляются и сохраняются в кампании.
+- Публичный handout можно показать на player screen.
+- Текущий handout можно скрыть на player screen.
+- Secret notes не отправляются игрокам.
+- Player state не содержит текст секретных заметок.
 - `npm run lint` проходит.
 - `npm run typecheck` проходит.
 - `npm run test` проходит.
-- `npm run dev` запускается.
-- Master/player fog flow проверен в browser route.
+- `npm run dev:renderer` запускается.
+- Notes/handout flow проверен в browser route.
 
 ## Не входит в этап
 
-- Dynamic lighting.
-- Автоматическое зрение токенов.
-- Line of sight.
-- Полигональные маски и freehand drawing.
-- Drag-and-drop редактирование границ fog regions.
-- Индивидуальная видимость тумана для разных игроков.
+- Rich text editor как отдельный продукт.
+- Markdown renderer и WYSIWYG.
+- Онлайн-шаринг материалов.
+- Права доступа для отдельных игроков.
+- Drag-and-drop файлов в текст заметки.
 
 ## Следующий этап
 
-Этап 12. Заметки, handouts и показ артов.
+Этап 13. Combat tracker и инициатива.
 
 Он не начат.
 
 ## Риски и меры
 
-- Риск утечки скрытых областей игрокам: player projection получает только координаты черных fog regions без мастерских labels.
-- Риск сломать старые JSON campaigns: отсутствующий `canvas.fog` гидрируется в disabled state с пустым списком regions.
-- Риск дорогого рендера больших масок: Stage 11 ограничен простыми absolutely positioned regions без сложного mask engine.
-- Риск слишком рано перейти к dynamic lighting: Stage 11 не добавляет LOS, vision radius и автоматические источники света.
+- Риск утечки secret notes: `createCampaignWithNoteHandout` бросает `note-is-secret` для `scope: 'master'`, а UI не дает отправить секретную заметку.
+- Риск устаревших JSON campaigns: `createCampaignWithHydratedNotes` нормализует старые заметки и привязывает их к текущей кампании.
+- Риск смешать note ids и asset ids: `PlayerHandoutPreview.id` принимает оба типа, но `revealedAssetIds` не пополняется note id.
+- Риск скрыть не только handout: Stage 12 использует общий `isHidden`, как уже работает player visibility flow.

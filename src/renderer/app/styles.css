@@ -13,7 +13,7 @@
 }
 
 body {
-  min-width: 960px;
+  min-width: 0;
   min-height: 100vh;
   margin: 0;
   background: #f7f7f4;
@@ -430,9 +430,14 @@ h1 {
 .context-panel__header,
 .workspace-board__toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.workspace-board__toolbar > div:first-child {
+  min-width: min(220px, 100%);
 }
 
 .tool-rail h2,
@@ -1328,12 +1333,16 @@ h1 {
 .combat-form__actions,
 .combat-controls {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 10px;
 }
 
 .combat-form__actions {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+}
+
+.combat-controls {
+  grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
 }
 
 .combat-form label {
@@ -1997,21 +2006,24 @@ button.asset-tag {
 
 .tab-list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(94px, 1fr));
   gap: 6px;
 }
 
 .tab-button {
+  min-width: 0;
   min-height: 48px;
   display: grid;
   gap: 2px;
   place-items: center;
   padding: 7px;
+  overflow: hidden;
   color: #5f5850;
   background: #f8f6f1;
   border: 1px solid #e2dbcf;
   border-radius: 6px;
   cursor: pointer;
+  text-align: center;
 }
 
 .tab-button--active {
@@ -2021,9 +2033,14 @@ button.asset-tag {
 }
 
 .tab-button small {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   color: inherit;
   font-size: 11px;
   font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .context-panel__body {
@@ -2133,14 +2150,18 @@ button.asset-tag {
 }
 
 .status-badge {
-  flex: 0 0 auto;
+  max-width: 100%;
+  flex: 0 1 auto;
   padding: 4px 9px;
+  overflow: hidden;
   color: #1d5f55;
   background: #e4f1ed;
   border: 1px solid #b8dbd1;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-badge--neutral {
@@ -2573,6 +2594,19 @@ button.asset-tag {
 }
 
 @media (max-width: 1180px) {
+  .page-header {
+    flex-direction: column;
+  }
+
+  .page-header .button-row {
+    width: 100%;
+  }
+
+  .page-header .status-badge {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
   .master-workbench {
     grid-template-columns: 150px minmax(0, 1fr);
   }
@@ -2601,5 +2635,168 @@ button.asset-tag {
 
   .asset-item .button {
     grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 840px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    gap: 16px;
+    padding: 16px;
+    border-right: 0;
+    border-bottom: 1px solid #2f2b28;
+  }
+
+  .brand {
+    grid-template-columns: 42px minmax(0, 1fr);
+    align-items: center;
+    column-gap: 10px;
+  }
+
+  .brand__meta {
+    grid-column: 2;
+  }
+
+  .nav-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nav-item {
+    min-width: 0;
+    min-height: 36px;
+    padding: 7px 9px;
+    font-size: 14px;
+  }
+
+  .nav-item span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar-footer {
+    display: none;
+  }
+
+  .workspace {
+    padding: 14px;
+  }
+
+  .page-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .page-header .button-row,
+  .page-header .button-row .button {
+    width: 100%;
+  }
+
+  h1 {
+    font-size: 26px;
+  }
+
+  .button {
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .scene-strip__header,
+  .workspace-board__toolbar,
+  .module-header,
+  .context-panel__header,
+  .tool-rail__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .scene-strip__actions .button {
+    width: 100%;
+  }
+
+  .master-workbench,
+  .metric-grid,
+  .status-grid,
+  .control-grid,
+  .character-card-form__numbers,
+  .character-card-form__actions,
+  .note-form__actions,
+  .note-player-actions,
+  .asset-item__actions,
+  .scene-canvas-object-tools__actions,
+  .scene-canvas-button-grid,
+  .scene-canvas-template-grid,
+  .scene-canvas-fog-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-board__meta {
+    justify-content: flex-start;
+  }
+
+  .workspace-board__surface,
+  .scene-canvas__viewport,
+  .scene-canvas--empty {
+    min-height: 300px;
+  }
+
+  .scene-canvas--empty,
+  .workspace-board__surface,
+  .empty-state {
+    padding: 16px;
+  }
+
+  .scene-canvas__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .scene-canvas-pan-grid,
+  .scene-canvas-object-tools__moves {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .asset-item {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+
+  .tab-list {
+    grid-template-columns: repeat(auto-fit, minmax(94px, 1fr));
+  }
+
+  .player-screen {
+    padding: 18px;
+  }
+
+  .player-screen__scene,
+  .player-screen__split {
+    grid-template-columns: 1fr;
+  }
+
+  .player-screen__center,
+  .player-screen__content-panel,
+  .player-screen__image,
+  .player-screen__image-frame,
+  .player-screen__split-pane {
+    min-height: 0;
+    padding: 20px;
+  }
+
+  .player-scene-canvas,
+  .player-screen__map-preview {
+    min-height: 320px;
+  }
+
+  .player-screen__title {
+    font-size: 28px;
+  }
+
+  .player-screen__initiative {
+    top: 12px;
+    right: 12px;
+    width: min(320px, calc(100vw - 24px));
   }
 }

@@ -2,6 +2,8 @@ import type {
   Campaign,
   CampaignId,
   CampaignSummary,
+  CampaignsDirectoryInfo,
+  CampaignsDirectorySelectionResult,
   ImportImageAssetRequest,
   ImportImageAssetResult,
   PlayerScreenCommandResult,
@@ -14,6 +16,9 @@ export type DesktopEventUnsubscribe = () => void
 
 export interface DesktopApi {
   storage: {
+    getCampaignsDirectory(): Promise<CampaignsDirectoryInfo>
+    selectCampaignsDirectory(): Promise<CampaignsDirectorySelectionResult>
+    saveCampaignToDirectory(campaign: Campaign): Promise<CampaignsDirectorySelectionResult>
     listCampaigns(): Promise<CampaignSummary[]>
     loadCampaign(campaignId: CampaignId): Promise<Campaign | null>
     saveCampaign(campaign: Campaign): Promise<void>

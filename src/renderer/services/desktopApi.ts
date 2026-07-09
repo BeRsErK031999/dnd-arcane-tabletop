@@ -5,6 +5,8 @@ import {
   type Campaign,
   type CampaignId,
   type CampaignSummary,
+  type CampaignsDirectoryInfo,
+  type CampaignsDirectorySelectionResult,
   type ImportImageAssetRequest,
   type PlayerScreenCommandResult,
   type PlayerScreenState,
@@ -13,6 +15,9 @@ import {
 
 const browserFallbackReason = 'desktop-api-unavailable'
 const browserFallbackStateStorageKey = 'arcane-tabletop:player-screen-state'
+const browserFallbackDirectory: CampaignsDirectoryInfo = {
+  path: 'Browser fallback storage',
+}
 let browserFallbackState = readStoredBrowserFallbackState() ?? createDefaultPlayerScreenState()
 const browserFallbackCampaigns = new Map<CampaignId, Campaign>()
 let browserFallbackAssetCounter = 0
@@ -34,10 +39,10 @@ function createBrowserFallbackResult(ok = false, reason: string | undefined = br
 
 const browserFallbackApi: DesktopApi = {
   storage: {
-    listCampaigns: async () =>
-      Array.from(browserFallbackCampaigns.values())
-        .map(createCampaignSummary)
-        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    getCampaignsDirectory: async () => browserFallbackDirectory,
+    selectCampaignsDirectory: async () => createBrowserFallbackDirectoryResult(true),
+    saveCampaignToDirectory: async () => createBrowserFallbackDirectoryResult(true),
+    listCampaigns: async () => listBrowserFallbackCampaigns(),
     loadCampaign: async (campaignId: CampaignId) => browserFallbackCampaigns.get(campaignId) ?? null,
     saveCampaign: async (campaign: Campaign) => {
       browserFallbackCampaigns.set(campaign.id, campaign)
@@ -104,6 +109,20 @@ const browserFallbackApi: DesktopApi = {
       }
     },
   },
+}
+
+function createBrowserFallbackDirectoryResult(canceled: boolean): CampaignsDirectorySelectionResult {
+  return {
+    canceled,
+    directory: browserFallbackDirectory,
+    campaigns: listBrowserFallbackCampaigns(),
+  }
+}
+
+function listBrowserFallbackCampaigns(): CampaignSummary[] {
+  return Array.from(browserFallbackCampaigns.values())
+    .map(createCampaignSummary)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
 }
 
 export const desktopApi = window.arcaneTabletop ?? browserFallbackApi

@@ -58,13 +58,13 @@ docs/
 
 The app uses a `StorageService` interface. The first implementation is `JsonStorageService`, which reads and writes campaign JSON files. This keeps persistence replaceable later without rewriting renderer features or IPC contracts.
 
-In development campaign files are stored in:
+By default, development campaign files are stored in:
 
 ```text
 data/campaigns
 ```
 
-In a packaged build the storage directory is resolved from Electron `userData`.
+In a packaged build the storage directory is resolved from Electron `userData`. The master UI can switch the active project folder or save the currently opened campaign into a selected local folder; backups are stored in `.backups` inside that active folder.
 
 ## User Guide
 

@@ -1638,6 +1638,48 @@ h1 {
   font-weight: 700;
 }
 
+.project-directory-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  background: #edf6f2;
+  border: 1px solid #c5ded6;
+  border-radius: 6px;
+}
+
+.project-directory-strip strong,
+.project-directory-strip small {
+  display: block;
+}
+
+.project-directory-strip strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #163d37;
+  font-family:
+    "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+}
+
+.project-directory-strip small {
+  color: #4f625c;
+  font-size: 12px;
+}
+
+.project-directory-strip__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.project-directory-strip__actions .button {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
 .campaign-form {
   display: grid;
   gap: 10px;
@@ -3131,6 +3173,7 @@ button.asset-tag {
   }
 
   .campaign-manager__grid,
+  .project-directory-strip,
   .save-control-strip,
   .workspace-lower-grid,
   .scene-canvas {

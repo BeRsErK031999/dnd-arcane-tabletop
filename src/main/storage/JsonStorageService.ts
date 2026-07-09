@@ -4,10 +4,24 @@ import type { Campaign, CampaignId, CampaignSummary } from '../../shared/types/i
 import type { StorageService } from './StorageService.js'
 
 export class JsonStorageService implements StorageService {
-  constructor(private readonly campaignsDirectory: string) {}
+  private campaignsDirectory: string
+
+  constructor(campaignsDirectory: string) {
+    this.campaignsDirectory = path.resolve(campaignsDirectory)
+  }
 
   async initialize(): Promise<void> {
     await mkdir(this.campaignsDirectory, { recursive: true })
+  }
+
+  getCampaignsDirectory(): string {
+    return this.campaignsDirectory
+  }
+
+  async setCampaignsDirectory(campaignsDirectory: string): Promise<void> {
+    const resolvedDirectory = path.resolve(campaignsDirectory)
+    await mkdir(resolvedDirectory, { recursive: true })
+    this.campaignsDirectory = resolvedDirectory
   }
 
   async listCampaigns(): Promise<CampaignSummary[]> {

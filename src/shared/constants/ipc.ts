@@ -1,5 +1,8 @@
 export const IPC_CHANNELS = {
   storage: {
+    getCampaignsDirectory: 'storage:getCampaignsDirectory',
+    selectCampaignsDirectory: 'storage:selectCampaignsDirectory',
+    saveCampaignToDirectory: 'storage:saveCampaignToDirectory',
     listCampaigns: 'storage:listCampaigns',
     loadCampaign: 'storage:loadCampaign',
     saveCampaign: 'storage:saveCampaign',

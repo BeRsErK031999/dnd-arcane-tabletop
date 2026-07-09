@@ -43,6 +43,35 @@ describe('JsonStorageService', () => {
     await expect(storage.loadCampaign('../outside')).rejects.toThrow('Invalid campaign id')
   })
 
+  it('switches the campaign directory for subsequent reads and writes', async () => {
+    const firstDirectory = await createTempDirectory()
+    const secondDirectory = await createTempDirectory()
+    const storage = new JsonStorageService(firstDirectory)
+    const campaign = createCampaignFixture()
+
+    await storage.saveCampaign(campaign)
+    await storage.setCampaignsDirectory(secondDirectory)
+
+    expect(storage.getCampaignsDirectory()).toBe(path.resolve(secondDirectory))
+    await expect(storage.listCampaigns()).resolves.toEqual([])
+
+    await storage.saveCampaign({ ...campaign, id: 'campaign-2', name: 'Second campaign' })
+    await expect(storage.listCampaigns()).resolves.toEqual([
+      expect.objectContaining({
+        id: 'campaign-2',
+        name: 'Second campaign',
+      }),
+    ])
+
+    await storage.setCampaignsDirectory(firstDirectory)
+    await expect(storage.listCampaigns()).resolves.toEqual([
+      expect.objectContaining({
+        id: campaign.id,
+        name: campaign.name,
+      }),
+    ])
+  })
+
   it('keeps two rotated backup copies outside the campaign list', async () => {
     const directory = await createTempDirectory()
     const storage = new JsonStorageService(directory)

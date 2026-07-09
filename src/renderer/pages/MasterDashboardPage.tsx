@@ -143,15 +143,18 @@ const toolGroups: Array<{ title: string; items: ToolItem[] }> = [
 export function MasterDashboardPage() {
   const {
     campaigns,
+    campaignsDirectory,
     selectedCampaign,
     status,
     lastError,
     saveState,
     historyState,
     refresh,
+    selectCampaignsDirectory,
     createCampaign,
     openCampaign,
     saveSelectedCampaign,
+    saveSelectedCampaignToDirectory,
     deleteSelectedCampaign,
     createScene,
     activateScene,
@@ -578,6 +581,39 @@ export function MasterDashboardPage() {
       return tags.filter((tag) => availableTags.has(tag))
     })
   }, [selectedCampaign?.assets])
+
+  async function handleSelectCampaignsDirectory(): Promise<void> {
+    const result = await selectCampaignsDirectory()
+
+    if (!result.ok) {
+      setCampaignActionStatus('Не удалось открыть папку проекта.')
+      return
+    }
+
+    if (result.canceled) {
+      setCampaignActionStatus('Выбор папки проекта отменен.')
+      return
+    }
+
+    setCampaignActionStatus(`Открыта папка проекта: ${result.directory.path}`)
+    setSceneActionStatus('Выберите кампанию из открытой папки или создайте новую.')
+    setAssetActionStatus('Откройте кампанию из выбранной папки, чтобы импортировать изображения.')
+  }
+
+  async function handleSaveCampaignToDirectory(): Promise<void> {
+    const result = await saveSelectedCampaignToDirectory(editorName, editorDescription)
+
+    if (result.ok) {
+      setCampaignActionStatus(`Кампания "${result.campaign.name}" сохранена в папку: ${result.directory.path}`)
+      return
+    }
+
+    setCampaignActionStatus(
+      result.reason === 'directory-selection-canceled'
+        ? 'Выбор папки для сохранения отменен.'
+        : 'Не удалось сохранить кампанию в выбранную папку.',
+    )
+  }
 
   async function handleCreateCampaign(): Promise<void> {
     const result = await createCampaign(newCampaignName, newCampaignDescription)
@@ -1402,6 +1438,32 @@ export function MasterDashboardPage() {
                 <span>Undo: {historyState.undoCount}</span>
                 <span>Redo: {historyState.redoCount}</span>
                 <span>{saveState.isDirty ? 'Есть несохраненный снимок' : 'Снимок сохранен'}</span>
+              </div>
+            </div>
+
+            <div className="project-directory-strip" aria-label="Папка проекта">
+              <div>
+                <p className="eyebrow">Папка проекта</p>
+                <strong>{campaignsDirectory?.path ?? 'Папка не выбрана'}</strong>
+                <small>Новые кампании, JSON-файлы и импортированные ассеты сохраняются здесь.</small>
+              </div>
+              <div className="project-directory-strip__actions">
+                <button
+                  className="button button--secondary"
+                  disabled={isStorageBusy}
+                  onClick={() => void handleSelectCampaignsDirectory()}
+                  type="button"
+                >
+                  Открыть папку...
+                </button>
+                <button
+                  className="button"
+                  disabled={selectedCampaign === null || isStorageBusy}
+                  onClick={() => void handleSaveCampaignToDirectory()}
+                  type="button"
+                >
+                  Сохранить в папку...
+                </button>
               </div>
             </div>
 

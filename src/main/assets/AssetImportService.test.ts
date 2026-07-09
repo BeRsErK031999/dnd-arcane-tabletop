@@ -65,6 +65,32 @@ describe('AssetImportService', () => {
       }),
     ).resolves.toEqual({ ok: false, reason: 'unsupported-file' })
   })
+
+  it('uses the latest campaign directory provider value for copied assets', async () => {
+    const directory = await createTempDirectory()
+    const sourceFilePath = path.join(directory, 'portrait.png')
+    let campaignsDirectory = path.join(directory, 'campaigns-a')
+    const service = new AssetImportService(() => campaignsDirectory, async () => null)
+
+    await writeFile(sourceFilePath, 'portrait-content')
+    campaignsDirectory = path.join(directory, 'campaigns-b')
+
+    const result = await service.importImageAsset({
+      campaignId: 'campaign-test',
+      kind: 'portrait',
+      sourceFilePath,
+    })
+
+    expect(result.ok).toBe(true)
+
+    if (!result.ok) {
+      return
+    }
+
+    const copiedFilePath = fileURLToPath(result.asset.filePath)
+    expect(copiedFilePath).toContain(path.join('campaigns-b', 'campaign-test', 'assets'))
+    await expect(readFile(copiedFilePath, 'utf8')).resolves.toBe('portrait-content')
+  })
 })
 
 async function createTempDirectory(): Promise<string> {

@@ -32,7 +32,7 @@ npm run dev:renderer
 4. После изменений запускается debounced autosave.
 5. При закрытии renderer выполняется финальный flush текущей кампании.
 
-В development JSON-файлы лежат в `data/campaigns`. Backup-копии хранятся в `data/campaigns/.backups` и ротируются до двух последних версий.
+По умолчанию в development JSON-файлы лежат в `data/campaigns`, а в packaged build - внутри Electron `userData`. В блоке `Папка проекта` можно открыть другую локальную папку проекта или сохранить текущую кампанию в выбранную папку. Backup-копии хранятся в `.backups` внутри активной папки проекта и ротируются до двух последних версий.
 
 ## Undo/Redo
 

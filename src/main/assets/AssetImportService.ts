@@ -4,14 +4,20 @@ import { pathToFileURL } from 'node:url'
 import type { AssetId, ImportImageAssetRequest, ImportImageAssetResult } from '../../shared/types/index.js'
 
 export type ImageFilePicker = () => Promise<string | null>
+export type CampaignsDirectoryProvider = string | (() => string)
 
 const supportedImageExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp', '.jfif'])
 
 export class AssetImportService {
+  private readonly getCampaignsDirectory: () => string
+
   constructor(
-    private readonly campaignsDirectory: string,
+    campaignsDirectory: CampaignsDirectoryProvider,
     private readonly pickImageFile: ImageFilePicker,
-  ) {}
+  ) {
+    this.getCampaignsDirectory =
+      typeof campaignsDirectory === 'function' ? campaignsDirectory : () => campaignsDirectory
+  }
 
   async importImageAsset(request: ImportImageAssetRequest): Promise<ImportImageAssetResult> {
     const sourceFilePath = request.sourceFilePath ?? (await this.pickImageFile())
@@ -62,7 +68,7 @@ export class AssetImportService {
       throw new Error(`Invalid campaign id: ${campaignId}`)
     }
 
-    return path.join(this.campaignsDirectory, campaignId, 'assets')
+    return path.join(this.getCampaignsDirectory(), campaignId, 'assets')
   }
 }
 

@@ -5,6 +5,7 @@ import type {
   Campaign,
   CampaignId,
   CampaignSummary,
+  CampaignsDirectoryInfo,
   CharacterCardId,
   CombatParticipantId,
   ImageAssetKind,
@@ -84,6 +85,17 @@ import {
 
 export type CampaignsStoreStatus = 'idle' | 'loading' | 'ready' | 'saving' | 'deleting' | 'error'
 export type CampaignMutationResult = { ok: true; campaign: Campaign } | { ok: false; reason: string }
+export type CampaignDirectoryMutationResult =
+  | {
+      ok: true
+      canceled: boolean
+      directory: CampaignsDirectoryInfo
+      campaigns: CampaignSummary[]
+    }
+  | { ok: false; reason: string }
+export type CampaignSaveToDirectoryResult =
+  | { ok: true; campaign: Campaign; directory: CampaignsDirectoryInfo }
+  | { ok: false; reason: string }
 export type AssetMutationResult =
   | { ok: true; campaign: Campaign; assetId: AssetId }
   | { ok: false; reason: string }
@@ -125,6 +137,7 @@ const CAMPAIGN_HISTORY_LIMIT = 30
 
 export function useCampaignsStore() {
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([])
+  const [campaignsDirectory, setCampaignsDirectory] = useState<CampaignsDirectoryInfo | null>(null)
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null)
   const [status, setStatus] = useState<CampaignsStoreStatus>('idle')
   const [lastError, setLastError] = useState<string | null>(null)
@@ -358,13 +371,92 @@ export function useCampaignsStore() {
     setLastError(null)
 
     try {
-      setCampaigns(await desktopApi.storage.listCampaigns())
+      const [directory, campaignSummaries] = await Promise.all([
+        desktopApi.storage.getCampaignsDirectory(),
+        desktopApi.storage.listCampaigns(),
+      ])
+      setCampaignsDirectory(directory)
+      setCampaigns(campaignSummaries)
       setStatus('ready')
     } catch {
       setLastError('Не удалось прочитать список кампаний.')
       setStatus('error')
     }
   }, [])
+
+  const selectCampaignsDirectory = useCallback(async (): Promise<CampaignDirectoryMutationResult> => {
+    setStatus('loading')
+    setLastError(null)
+    clearAutosaveTimer()
+
+    try {
+      const currentCampaign = selectedCampaignRef.current
+
+      if (currentCampaign !== null && saveState.isDirty) {
+        await saveCampaignWithStatus(currentCampaign)
+      }
+
+      const result = await desktopApi.storage.selectCampaignsDirectory()
+      setCampaignsDirectory(result.directory)
+      setCampaigns(result.campaigns)
+
+      if (!result.canceled) {
+        setSelectedCampaign(null)
+        selectedCampaignRef.current = null
+        previousSelectedCampaignRef.current = null
+        clearHistory()
+        setSaveState(createInitialSaveState())
+      }
+
+      setStatus('ready')
+      return { ok: true, ...result }
+    } catch {
+      setLastError('Не удалось открыть папку проекта.')
+      setStatus('error')
+      return { ok: false, reason: 'select-directory-failed' }
+    }
+  }, [clearAutosaveTimer, clearHistory, saveCampaignWithStatus, saveState.isDirty])
+
+  const saveSelectedCampaignToDirectory = useCallback(
+    async (name: string, description?: string): Promise<CampaignSaveToDirectoryResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для сохранения.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+      clearAutosaveTimer()
+
+      try {
+        const updatedCampaign = createUpdatedCampaignMetadata(selectedCampaign, name, description)
+        const result = await desktopApi.storage.saveCampaignToDirectory(updatedCampaign)
+        setCampaignsDirectory(result.directory)
+        setCampaigns(result.campaigns)
+
+        if (result.canceled) {
+          setStatus('ready')
+          return { ok: false, reason: 'directory-selection-canceled' }
+        }
+
+        setSelectedCampaign(updatedCampaign)
+        setSaveState({
+          status: 'saved',
+          isDirty: false,
+          lastSavedAt: new Date().toISOString(),
+          lastError: null,
+          autosaveDelayMs: AUTOSAVE_DELAY_MS,
+        })
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign, directory: result.directory }
+      } catch {
+        setLastError('Не удалось сохранить кампанию в выбранную папку.')
+        setStatus('error')
+        return { ok: false, reason: 'save-to-directory-failed' }
+      }
+    },
+    [clearAutosaveTimer, selectedCampaign],
+  )
 
   const createCampaign = useCallback(
     async (name: string, description?: string): Promise<CampaignMutationResult> => {
@@ -1528,15 +1620,18 @@ export function useCampaignsStore() {
 
   return {
     campaigns,
+    campaignsDirectory,
     selectedCampaign,
     status,
     lastError,
     saveState,
     historyState,
     refresh,
+    selectCampaignsDirectory,
     createCampaign,
     openCampaign,
     saveSelectedCampaign,
+    saveSelectedCampaignToDirectory,
     deleteSelectedCampaign,
     createScene,
     activateScene,

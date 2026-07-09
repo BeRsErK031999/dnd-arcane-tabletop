@@ -11,6 +11,10 @@ import type { DesktopApi } from './types.js'
 
 const desktopApi: DesktopApi = {
   storage: {
+    getCampaignsDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.storage.getCampaignsDirectory),
+    selectCampaignsDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.storage.selectCampaignsDirectory),
+    saveCampaignToDirectory: (campaign: Campaign) =>
+      ipcRenderer.invoke(IPC_CHANNELS.storage.saveCampaignToDirectory, campaign),
     listCampaigns: () => ipcRenderer.invoke(IPC_CHANNELS.storage.listCampaigns),
     loadCampaign: (campaignId: CampaignId) => ipcRenderer.invoke(IPC_CHANNELS.storage.loadCampaign, campaignId),
     saveCampaign: (campaign: Campaign) => ipcRenderer.invoke(IPC_CHANNELS.storage.saveCampaign, campaign),

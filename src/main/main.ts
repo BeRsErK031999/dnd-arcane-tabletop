@@ -14,9 +14,9 @@ async function bootstrap(): Promise<void> {
 
   const campaignsDirectory = getCampaignsDirectory()
   const storageService = new JsonStorageService(campaignsDirectory)
-  const assetImportService = new AssetImportService(campaignsDirectory, pickImageFile)
+  const assetImportService = new AssetImportService(() => storageService.getCampaignsDirectory(), pickImageFile)
   await storageService.initialize()
-  await seedReferenceCampaign(storageService, campaignsDirectory)
+  await seedReferenceCampaign(storageService, storageService.getCampaignsDirectory())
 
   createMasterWindow()
 

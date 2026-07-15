@@ -1,4 +1,5 @@
 import type { DesktopApi } from '../../preload/types'
+import { createCampaignSummary } from '../../shared/campaignSummary'
 import {
   createDefaultPlayerScreenState,
   type Asset,
@@ -126,18 +127,6 @@ function listBrowserFallbackCampaigns(): CampaignSummary[] {
 }
 
 export const desktopApi = window.arcaneTabletop ?? browserFallbackApi
-
-function createCampaignSummary(campaign: Campaign): CampaignSummary {
-  return {
-    id: campaign.id,
-    name: campaign.name,
-    description: campaign.description,
-    updatedAt: campaign.updatedAt,
-    sceneCount: campaign.scenes.length,
-    assetCount: campaign.assets.length,
-    characterCount: campaign.characterCards.length,
-  }
-}
 
 function createBrowserFallbackAsset(request: ImportImageAssetRequest): Asset {
   browserFallbackAssetCounter += 1

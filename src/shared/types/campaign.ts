@@ -24,6 +24,7 @@ export interface CampaignSummary {
   id: CampaignId
   name: string
   description?: string
+  previewImagePath?: string
   updatedAt: IsoDateString
   sceneCount: number
   assetCount: number

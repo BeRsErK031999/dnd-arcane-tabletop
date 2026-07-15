@@ -70,6 +70,8 @@ In a packaged build the storage directory is resolved from Electron `userData`. 
 
 Основная инструкция пользователя и сборки лежит в [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
+Актуальный продуктовый план по требованиям `TRP game builder.docx` находится в [docs/ROADMAP.md](docs/ROADMAP.md). Выполненные технические этапы 0-15 сохранены там же как архив.
+
 ## Local Verification
 
 1. Run `npm install`.

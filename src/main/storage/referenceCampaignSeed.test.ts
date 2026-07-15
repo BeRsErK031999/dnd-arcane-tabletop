@@ -32,7 +32,9 @@ describe('reference campaign seed', () => {
     await storage.initialize()
     await seedReferenceCampaign(storage, directory)
 
-    await expect(storage.listCampaigns()).resolves.toEqual([
+    const campaigns = await storage.listCampaigns()
+
+    expect(campaigns).toEqual([
       expect.objectContaining({
         id: referenceCampaignId,
         sceneCount: 1,
@@ -40,6 +42,7 @@ describe('reference campaign seed', () => {
         characterCount: 4,
       }),
     ])
+    expect(campaigns[0]?.previewImagePath).toMatch(/^data:image\/svg\+xml/)
 
     await storage.deleteCampaign(referenceCampaignId)
     await seedReferenceCampaign(storage, directory)

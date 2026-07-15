@@ -1675,6 +1675,8 @@ export function useCampaignsStore() {
   }
 }
 
+export type CampaignsStore = ReturnType<typeof useCampaignsStore>
+
 function shouldSyncPlayerInitiative(previousCampaign: Campaign, updatedCampaign: Campaign): boolean {
   return previousCampaign.playerScreenState.initiativeVisible || updatedCampaign.playerScreenState.initiativeVisible
 }

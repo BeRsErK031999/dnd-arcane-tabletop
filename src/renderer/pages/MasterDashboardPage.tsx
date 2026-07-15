@@ -10,7 +10,7 @@ import { createNoteList, type NoteInput } from '@renderer/stores/noteFactory'
 import { WORKSPACE_NAVIGATION_EVENT } from '@shared/constants'
 import { desktopApi } from '@renderer/services/desktopApi'
 import { getSceneCanvasState } from '@renderer/stores/sceneCanvasFactory'
-import { useCampaignsStore } from '@renderer/stores/useCampaignsStore'
+import type { CampaignsStore } from '@renderer/stores/useCampaignsStore'
 import type {
   SceneCanvasObjectPosition,
   SceneFogRegionInput,
@@ -140,7 +140,11 @@ const toolGroups: Array<{ title: string; items: ToolItem[] }> = [
   },
 ]
 
-export function MasterDashboardPage() {
+interface MasterDashboardPageProps {
+  campaignsStore: CampaignsStore
+}
+
+export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps) {
   const {
     campaigns,
     campaignsDirectory,
@@ -195,7 +199,7 @@ export function MasterDashboardPage() {
     sendAssetToPlayers,
     undoSelectedCampaign,
     redoSelectedCampaign,
-  } = useCampaignsStore()
+  } = campaignsStore
   const [activeWorkspaceSection, setActiveWorkspaceSection] = useState<WorkspaceSection>('scenes')
   const [activeRightPanel, setActiveRightPanel] = useState<RightPanelTab>('assets')
   const [isToolRailOpen, setIsToolRailOpen] = useState(false)

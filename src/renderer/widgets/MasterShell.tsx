@@ -4,6 +4,8 @@ import { WORKSPACE_NAVIGATION_EVENT } from '@shared/constants'
 interface MasterShellProps {
   activeScreen: string
   children: ReactNode
+  homeDisabled?: boolean
+  onHome?: () => void
 }
 
 type WorkspaceSection = 'campaigns' | 'scenes' | 'combat' | 'notes' | 'players'
@@ -16,7 +18,7 @@ const navigationItems: Array<{ id: WorkspaceSection; label: string }> = [
   { id: 'players', label: 'Экран игроков' },
 ]
 
-export function MasterShell({ activeScreen, children }: MasterShellProps) {
+export function MasterShell({ activeScreen, children, homeDisabled = false, onHome }: MasterShellProps) {
   const [activeSection, setActiveSection] = useState<WorkspaceSection>('scenes')
 
   useEffect(() => {
@@ -43,13 +45,20 @@ export function MasterShell({ activeScreen, children }: MasterShellProps) {
   return (
     <div className="app-shell" data-screen={activeScreen}>
       <aside className="sidebar">
-        <div className="brand">
+        <button
+          aria-label="Вернуться к проектам и сохранить изменения"
+          className="brand brand--button"
+          disabled={homeDisabled}
+          onClick={onHome}
+          title="К проектам"
+          type="button"
+        >
           <div className="brand__mark">D20</div>
           <div>
             <p className="brand__name">D&D Arcane Tabletop</p>
-            <span className="brand__meta">Локальное приложение</span>
+            <span className="brand__meta">{homeDisabled ? 'Сохраняем проект...' : 'К списку проектов'}</span>
           </div>
-        </div>
+        </button>
 
         <nav aria-label="Master tools">
           <ul className="nav-list">

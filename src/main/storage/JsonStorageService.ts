@@ -1,5 +1,6 @@
 import { access, copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { createCampaignSummary } from '../../shared/campaignSummary.js'
 import type { Campaign, CampaignId, CampaignSummary } from '../../shared/types/index.js'
 import type { StorageService } from './StorageService.js'
 
@@ -36,15 +37,7 @@ export class JsonStorageService implements StorageService {
 
     return campaigns
       .filter((campaign): campaign is Campaign => campaign !== null)
-      .map((campaign) => ({
-        id: campaign.id,
-        name: campaign.name,
-        description: campaign.description,
-        updatedAt: campaign.updatedAt,
-        sceneCount: campaign.scenes.length,
-        assetCount: campaign.assets.length,
-        characterCount: campaign.characterCards.length,
-      }))
+      .map(createCampaignSummary)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
   }
 

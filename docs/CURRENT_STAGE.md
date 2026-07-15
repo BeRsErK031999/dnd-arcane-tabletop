@@ -2,54 +2,27 @@
 
 ## Текущий этап
 
-Этап 15. Полировка и exe-сборка.
+Этап 16. Стартовый экран и жизненный цикл проекта.
 
-Статус: выполнено в этом этапе.
+Текущая задача: 16.1 — каталог, выбор и запуск проекта.
 
-## Цель
+Статус: выполнено и проверено.
 
-Довести приложение до финального локального desktop-среза: добавить базовую устойчивость renderer, горячие клавиши для основных операций мастера, пользовательскую инструкцию и проверить production build / Windows installer.
+## Основание
 
-## Уже реализовано до начала этапа
+Требования взяты из `TRP game builder.docx` от 2026-07-15. Документ содержит текстовые требования и 12 макетов для стартового экрана, рабочей области, слоёв, масштаба, управления player window и экрана игроков.
 
-- Electron + React + TypeScript + Vite scaffold.
-- Master/player desktop shell.
-- Typed IPC для player screen.
-- JSON campaign storage.
-- Campaign CRUD.
-- Scene creation, active scene switching и scene preview для player screen.
-- Local image asset import, tags, search и asset preview.
-- Canvas state, layers, grid, viewport, measurements и player projection.
-- Object movement, duplicate/hide и master-only token state.
-- Simple character cards для players/NPC/monster.
-- Manual fog of war для master/player canvas.
-- Notes panel, secret notes и публичные handouts.
-- Manual combat tracker и public initiative overlay.
-- Autosave status, undo/redo и две backup-копии JSON.
+## Реализовано в задаче 16.1
 
-## Что можно использовать
-
-- `electron-builder` и `npm run dist:win`.
-- `AppErrorBoundary` как renderer fallback.
-- `useCampaignsStore` для save/undo/redo.
-- `docs/USER_GUIDE.md` как пользовательскую инструкцию.
-
-## Пробелы этапа
-
-- Renderer не имел error boundary и мог показывать пустой экран при runtime error.
-- Keyboard shortcuts для save/undo/redo не были подключены на уровне master UI.
-- README не ссылался на фактическую пользовательскую инструкцию.
-- Финальный этап еще не фиксировал production build и Windows installer как проверку.
-
-## Что реализовано
-
-- Добавлен `AppErrorBoundary` вокруг React-приложения с понятным fallback и кнопкой перезагрузки интерфейса.
-- Master UI получил document-level shortcuts: `Ctrl+S`, `Ctrl+Z`, `Ctrl+Y` и `Ctrl+Shift+Z`.
-- `Ctrl+Z` не перехватывается, когда фокус находится в input, textarea, select или contenteditable.
-- Undo/Redo кнопки получили shortcut hints через `title`.
-- Добавлен `docs/USER_GUIDE.md` с фактическими сценариями кампаний, autosave, player screen, ассетов, заметок, инициативы и сборки installer.
-- README ссылается на user guide и обновляет local verification checklist.
-- Roadmap и architecture docs фиксируют финальный Stage 15.
+- Master route открывает отдельный стартовый экран проектов.
+- Проекты представлены карточками с выбранным состоянием и прокруткой.
+- `CampaignSummary` содержит превью карты активной сцены.
+- Создание проекта открывает рабочую область без перезагрузки.
+- Выбранный проект можно запустить кнопкой или двойным кликом.
+- Удаление требует подтверждения и сохраняет локальные ассеты.
+- Логотип в рабочей области возвращает к проектам после сохранения.
+- Стартовый экран и рабочая область используют один экземпляр campaign store.
+- Кнопки import/export показаны честно как следующий этап и пока disabled.
 
 ## Критерии готовности
 
@@ -57,24 +30,28 @@
 - `npm run typecheck` проходит.
 - `npm run test` проходит.
 - `npm run build` проходит.
-- `npm run dist:win` собирает Windows installer через локальный `node_modules/electron/dist`.
-- Master route проверен в browser smoke.
-- Документация пользователя соответствует текущему UI.
+- Browser smoke подтверждает empty state, создание, запуск, возврат, выбор и удаление.
+- Git diff не содержит временных файлов и исходный Word не попадает в commit автоматически.
 
-## Не входит в этап
+## Следующая задача
 
-- Mobile, web или marketplace.
-- Онлайн-сервисы.
-- Новая система тем поверх текущего рабочего оформления.
-- Новые игровые mechanics после Stage 14.
+Задача 16.2 — переносимый import/export проекта вместе с локальными ассетами и перепривязкой путей.
 
-## Следующий этап
+## Затрагиваемые области
 
-Финальный roadmap-срез выполнен. Следующие задачи можно выбирать отдельно: расширение игровых инструментов, полноценный recovery UI для backup, импорт/экспорт кампаний или релизная QA-процедура.
+- `src/renderer/pages/ProjectStartPage.tsx`
+- `src/renderer/app/App.tsx`
+- `src/renderer/widgets/MasterShell.tsx`
+- `src/renderer/pages/MasterDashboardPage.tsx`
+- `src/renderer/app/styles.css`
+- `src/shared/types/campaign.ts`
+- `src/shared/campaignSummary.ts`
+- `src/main/storage/JsonStorageService.ts`
+- `docs/ROADMAP.md`
 
 ## Риски и меры
 
-- Риск пустого renderer-экрана: error boundary показывает fallback с перезагрузкой.
-- Риск конфликтов shortcuts с редактированием текста: campaign undo/redo не перехватывает редактируемые элементы.
-- Риск устаревшей инструкции: user guide описывает текущие кнопки, маршруты и команды.
-- Риск installer-проблем: Stage 15 требует фактического запуска `npm run dist:win`; сборка использует локальный Electron dist и не перекачивает Electron на шаге packaging.
+- Риск двух независимых store: store поднят в `MasterApplication` и передаётся обоим экранам.
+- Риск превью не той сцены: приоритет у `isActive`, затем используется первая сцена.
+- Риск потери изменений при возврате: переход выполняется только после успешного сохранения.
+- Риск ложного обещания import/export: кнопки явно отмечены следующим этапом.

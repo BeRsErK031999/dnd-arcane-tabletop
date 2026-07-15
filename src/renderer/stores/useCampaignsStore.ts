@@ -89,6 +89,7 @@ import {
   type SceneMeasurementInput,
   type SceneObjectMoveDirection,
 } from './sceneToolsFactory'
+import type { SceneUserLayerId } from './sceneCanvasFactory'
 
 export type CampaignsStoreStatus = 'idle' | 'loading' | 'ready' | 'saving' | 'deleting' | 'error'
 export type CampaignMutationResult = { ok: true; campaign: Campaign } | { ok: false; reason: string }
@@ -1592,7 +1593,12 @@ export function useCampaignsStore() {
   )
 
   const importImageAsset = useCallback(
-    async (kind: ImageAssetKind, suggestedName?: string, tags?: string[]): Promise<AssetMutationResult> => {
+    async (
+      kind: ImageAssetKind,
+      suggestedName?: string,
+      tags?: string[],
+      userLayer: SceneUserLayerId = 'map',
+    ): Promise<AssetMutationResult> => {
       if (selectedCampaign === null) {
         setLastError('Нет открытой кампании для импорта изображения.')
         return { ok: false, reason: 'campaign-not-selected' }
@@ -1619,7 +1625,9 @@ export function useCampaignsStore() {
           return { ok: false, reason: result.reason }
         }
 
-        const updatedCampaign = createCampaignWithImportedAsset(selectedCampaign, result.asset)
+        const updatedCampaign = createCampaignWithImportedAsset(selectedCampaign, result.asset, {
+          bindMapToActiveScene: userLayer === 'map',
+        })
         await saveCampaignWithStatus(updatedCampaign)
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())
@@ -1727,7 +1735,7 @@ export function useCampaignsStore() {
   )
 
   const applyAssetToActiveScene = useCallback(
-    async (assetId: AssetId): Promise<AssetMutationResult> => {
+    async (assetId: AssetId, userLayer?: SceneUserLayerId): Promise<AssetMutationResult> => {
       if (selectedCampaign === null) {
         setLastError('Нет открытой кампании для использования ассета.')
         return { ok: false, reason: 'campaign-not-selected' }
@@ -1737,7 +1745,7 @@ export function useCampaignsStore() {
       setLastError(null)
 
       try {
-        const updatedCampaign = createCampaignWithAssetInActiveScene(selectedCampaign, assetId)
+        const updatedCampaign = createCampaignWithAssetInActiveScene(selectedCampaign, assetId, { userLayer })
         await saveCampaignWithStatus(updatedCampaign)
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())

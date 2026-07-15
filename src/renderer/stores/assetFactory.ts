@@ -13,10 +13,20 @@ import type {
   SceneCanvasObject,
   SceneGrid,
 } from '@shared/types'
-import { getSceneCanvasState } from './sceneCanvasFactory'
+import { getSceneCanvasState, type SceneUserLayerId } from './sceneCanvasFactory'
 import { createSceneWithHydratedState, getActiveCampaignScene } from './sceneFactory'
 
 export type AssetLibraryKindFilter = AssetKind | 'all'
+
+export interface SceneAssetPlacementOptions {
+  userLayer?: SceneUserLayerId
+  updatedAt?: IsoDateString
+}
+
+export interface ImportedAssetOptions {
+  bindMapToActiveScene?: boolean
+  updatedAt?: IsoDateString
+}
 
 export interface AssetLibraryFilters {
   searchQuery?: string
@@ -37,8 +47,9 @@ export interface AssetLibraryView {
 export function createCampaignWithImportedAsset(
   campaign: Campaign,
   asset: Asset,
-  updatedAt: IsoDateString = new Date().toISOString(),
+  options: ImportedAssetOptions = {},
 ): Campaign {
+  const updatedAt = options.updatedAt ?? new Date().toISOString()
   const activeScene = getActiveCampaignScene(campaign)
   const hydratedScenes = campaign.scenes.map(createSceneWithHydratedState)
   const normalizedAsset = normalizeAsset(asset)
@@ -48,7 +59,7 @@ export function createCampaignWithImportedAsset(
     updatedAt,
     assets: [...campaign.assets.map(normalizeAsset), normalizedAsset],
     scenes:
-      normalizedAsset.kind === 'map' && activeScene
+      normalizedAsset.kind === 'map' && activeScene && options.bindMapToActiveScene !== false
         ? hydratedScenes.map((scene) =>
             scene.id === activeScene.id
               ? {
@@ -155,9 +166,11 @@ export function createCampaignWithAssetTags(
 export function createCampaignWithAssetInActiveScene(
   campaign: Campaign,
   assetId: AssetId,
-  updatedAt: IsoDateString = new Date().toISOString(),
+  options: SceneAssetPlacementOptions = {},
 ): Campaign {
   const asset = findAssetOrThrow(campaign, assetId)
+  const userLayer = options.userLayer ?? getDefaultSceneUserLayerForAsset(asset.kind)
+  const updatedAt = options.updatedAt ?? new Date().toISOString()
   const hydratedScenes = campaign.scenes.map(createSceneWithHydratedState)
   const activeScene = getActiveCampaignScene({
     ...campaign,
@@ -177,14 +190,14 @@ export function createCampaignWithAssetInActiveScene(
         return scene
       }
 
-      if (asset.kind === 'map') {
+      if (asset.kind === 'map' && userLayer === 'map') {
         return {
           ...scene,
           backgroundAssetId: asset.id,
         }
       }
 
-      return createSceneWithAssetObject(scene, asset, updatedAt)
+      return createSceneWithAssetObject(scene, asset, userLayer, updatedAt)
     }),
   }
 }
@@ -225,9 +238,14 @@ function createAssetPlayerScreenState(campaign: Campaign, asset: Asset, updatedA
   }
 }
 
-function createSceneWithAssetObject(scene: Scene, asset: Asset, updatedAt: IsoDateString): Scene {
+function createSceneWithAssetObject(
+  scene: Scene,
+  asset: Asset,
+  userLayer: SceneUserLayerId,
+  updatedAt: IsoDateString,
+): Scene {
   const canvas = getSceneCanvasState(scene)
-  const object = createAssetCanvasObject(asset, scene.grid, canvas.width, canvas.height)
+  const object = createAssetCanvasObject(asset, userLayer, scene.grid, canvas.width, canvas.height)
 
   return {
     ...scene,
@@ -241,11 +259,12 @@ function createSceneWithAssetObject(scene: Scene, asset: Asset, updatedAt: IsoDa
 
 function createAssetCanvasObject(
   asset: Asset,
+  userLayer: SceneUserLayerId,
   grid: SceneGrid,
   canvasWidth: number,
   canvasHeight: number,
 ): SceneCanvasObject {
-  const { width, height, layerId, kind } = getAssetObjectPlacement(asset.kind, grid)
+  const { width, height, layerId, kind } = getAssetObjectPlacement(asset.kind, userLayer, grid)
 
   return {
     id: createSceneAssetObjectId(),
@@ -260,16 +279,17 @@ function createAssetCanvasObject(
     color: getAssetObjectColor(asset.kind),
     text: asset.name,
     assetId: asset.id,
-    tokenState: asset.kind === 'token' ? {} : undefined,
-    isPlayerVisible: true,
+    tokenState: userLayer === 'tokens' ? {} : undefined,
+    isPlayerVisible: userLayer !== 'master',
   }
 }
 
 function getAssetObjectPlacement(
   kind: AssetKind,
+  userLayer: SceneUserLayerId,
   grid: SceneGrid,
 ): Pick<SceneCanvasObject, 'height' | 'kind' | 'layerId' | 'width'> {
-  if (kind === 'token') {
+  if (userLayer === 'tokens') {
     return {
       layerId: 'scene-layer-tokens',
       kind: 'token-placeholder',
@@ -278,21 +298,30 @@ function getAssetObjectPlacement(
     }
   }
 
-  if (kind === 'portrait') {
-    return {
-      layerId: 'scene-layer-objects',
-      kind: 'marker',
-      width: 160,
-      height: 220,
-    }
-  }
+  const { width, height } = getAssetObjectDimensions(kind, grid)
 
   return {
-    layerId: 'scene-layer-objects',
+    layerId: userLayer === 'master' ? 'scene-layer-master' : 'scene-layer-objects',
     kind: 'marker',
-    width: 220,
-    height: 140,
+    width,
+    height,
   }
+}
+
+function getAssetObjectDimensions(kind: AssetKind, grid: SceneGrid): Pick<SceneCanvasObject, 'height' | 'width'> {
+  if (kind === 'portrait') {
+    return { width: 160, height: 220 }
+  }
+
+  if (kind === 'token') {
+    return { width: grid.size, height: grid.size }
+  }
+
+  return { width: 220, height: 140 }
+}
+
+function getDefaultSceneUserLayerForAsset(kind: AssetKind): SceneUserLayerId {
+  return kind === 'token' ? 'tokens' : 'map'
 }
 
 function getAssetObjectColor(kind: AssetKind): string {

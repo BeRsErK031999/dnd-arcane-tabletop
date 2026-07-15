@@ -17,9 +17,16 @@ import type {
 import {
   createPlayerSceneCanvasProjection,
   formatGridDistance,
+  getSceneCanvasObjectsInRenderOrder,
   getSceneCanvasLayerSummary,
   getSceneCanvasState,
+  getSceneUserLayerForObject,
+  getSceneUserLayerOpacity,
+  getSceneUserLayerSummary,
+  isSceneCanvasObjectInUserLayer,
   snapCanvasValue,
+  type SceneUserLayerId,
+  type SceneUserLayerSummary,
 } from '@renderer/stores/sceneCanvasFactory'
 import type {
   SceneCanvasObjectPosition,
@@ -34,6 +41,7 @@ import type {
 } from '@renderer/stores/sceneToolsFactory'
 
 interface SceneCanvasProps {
+  activeUserLayer: SceneUserLayerId
   scene: Scene | null
   mapAsset: Asset | null
   assets: Asset[]
@@ -41,6 +49,7 @@ interface SceneCanvasProps {
   isPlayerSynced: boolean
   isStorageBusy: boolean
   selectedObjectId: SceneCanvasObjectId | null
+  onActiveUserLayerChange(userLayer: SceneUserLayerId): void
   onAddFogRegion(region: SceneFogRegionInput): void
   onAddMeasurement(measurement: SceneMeasurementInput): void
   onClearFogRegions(): void
@@ -122,6 +131,7 @@ interface SceneFogRegionDragState {
 }
 
 export function SceneCanvas({
+  activeUserLayer,
   scene,
   mapAsset,
   assets,
@@ -129,6 +139,7 @@ export function SceneCanvas({
   isPlayerSynced,
   isStorageBusy,
   selectedObjectId,
+  onActiveUserLayerChange,
   onAddFogRegion,
   onAddMeasurement,
   onClearFogRegions,
@@ -421,6 +432,9 @@ export function SceneCanvas({
           setActiveTool({ kind: 'select' })
           return
         case 'g':
+          if (activeUserLayer !== 'map') {
+            return
+          }
           event.preventDefault()
           onUpdateGrid({ enabled: !activeScene.grid.enabled })
           return
@@ -448,7 +462,7 @@ export function SceneCanvas({
     return () => {
       window.removeEventListener('keydown', handleSceneHotkey)
     }
-  }, [onUpdateGrid, onUpdateViewport, scene])
+  }, [activeUserLayer, onUpdateGrid, onUpdateViewport, scene])
 
   if (scene === null) {
     return (
@@ -465,6 +479,8 @@ export function SceneCanvas({
   const activeScene = scene
   const canvas = getSceneCanvasState(activeScene)
   const layerSummary = getSceneCanvasLayerSummary(activeScene)
+  const userLayerSummary = getSceneUserLayerSummary(activeScene)
+  const objectsInRenderOrder = getSceneCanvasObjectsInRenderOrder(canvas)
   const assetsById = new Map(assets.map((asset) => [asset.id, asset]))
   const playerProjection = createPlayerSceneCanvasProjection(activeScene, assets)
   const viewportTransform: CSSProperties = {
@@ -472,7 +488,7 @@ export function SceneCanvas({
   }
 
   function handleObjectDragStart(object: SceneCanvasObject, event: ReactPointerEvent<HTMLButtonElement>): void {
-    if (isStorageBusy || event.button !== 0) {
+    if (isStorageBusy || !isSceneCanvasObjectInUserLayer(canvas, object, activeUserLayer) || event.button !== 0) {
       return
     }
 
@@ -599,6 +615,13 @@ export function SceneCanvas({
 
   return (
     <div className="scene-canvas">
+      <SceneUserLayerSwitcher
+        activeUserLayer={activeUserLayer}
+        isStorageBusy={isStorageBusy}
+        onChange={onActiveUserLayerChange}
+        userLayers={userLayerSummary}
+      />
+
       <div className="scene-canvas__main">
         <div className="scene-canvas__viewport" style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}>
           <div className="scene-canvas__content" style={viewportTransform}>
@@ -622,26 +645,35 @@ export function SceneCanvas({
             ) : null}
 
             <div className="scene-canvas__objects">
-              {canvas.objects.map((object) => (
-                <CanvasObject
-                  asset={object.assetId ? assetsById.get(object.assetId) : undefined}
-                  canvasHeight={canvas.height}
-                  canvasWidth={canvas.width}
-                  key={object.id}
-                  object={object}
-                  isSelected={object.id === selectedObjectId}
-                  isDragDisabled={isStorageBusy}
-                  isDragging={dragState?.objectId === object.id}
-                  onSelectObject={onSelectObject}
-                  onDragCancel={handleObjectDragCancel}
-                  onDragStart={handleObjectDragStart}
-                  previewPosition={
-                    dragState?.objectId === object.id
-                      ? { x: dragState.latestX, y: dragState.latestY }
-                      : undefined
-                  }
-                />
-              ))}
+              {objectsInRenderOrder.map((object) => {
+                const userLayer = getSceneUserLayerForObject(canvas, object)
+                const isEditable = userLayer === activeUserLayer
+                const technicalLayerOpacity = canvas.layers.find((layer) => layer.id === object.layerId)?.opacity ?? 1
+
+                return (
+                  <CanvasObject
+                    asset={object.assetId ? assetsById.get(object.assetId) : undefined}
+                    canvasHeight={canvas.height}
+                    canvasWidth={canvas.width}
+                    isDragDisabled={isStorageBusy}
+                    isDragging={dragState?.objectId === object.id}
+                    isEditable={isEditable}
+                    isMasterLayer={userLayer === 'master'}
+                    isSelected={isEditable && object.id === selectedObjectId}
+                    key={object.id}
+                    object={object}
+                    onDragCancel={handleObjectDragCancel}
+                    onDragStart={handleObjectDragStart}
+                    onSelectObject={onSelectObject}
+                    opacity={getSceneUserLayerOpacity(userLayer, activeUserLayer, technicalLayerOpacity)}
+                    previewPosition={
+                      dragState?.objectId === object.id
+                        ? { x: dragState.latestX, y: dragState.latestY }
+                        : undefined
+                    }
+                  />
+                )
+              })}
             </div>
 
             <div className="scene-canvas__measurements">
@@ -738,6 +770,7 @@ export function SceneCanvas({
           activeTool={activeTool}
           canvas={canvas}
           grid={activeScene.grid}
+          isMapLayerActive={activeUserLayer === 'map'}
           isStorageBusy={isStorageBusy}
           onClearFogRegions={onClearFogRegions}
           onClearMeasurements={onClearMeasurements}
@@ -749,6 +782,7 @@ export function SceneCanvas({
         />
 
         <SceneCanvasObjectControls
+          activeUserLayer={activeUserLayer}
           canvas={canvas}
           characterCards={characterCards}
           isStorageBusy={isStorageBusy}
@@ -760,23 +794,25 @@ export function SceneCanvas({
           selectedObjectId={selectedObjectId}
         />
 
-        <div>
-          <p className="eyebrow">Layers</p>
-          <h3>Слои сцены</h3>
-        </div>
-        <ul>
-          {layerSummary.map((layer) => (
-            <li className={getLayerClassName(layer)} key={layer.id}>
-              <div>
-                <span>{layer.name}</span>
-                <small>{getLayerVisibilityLabel(layer.visibility)}</small>
-              </div>
-              <small>
-                {getLayerKindLabel(layer.kind)} · {layer.objectCount}
-              </small>
-            </li>
-          ))}
-        </ul>
+        <details className="scene-canvas__technical-layers">
+          <summary>
+            <span>Технический стек</span>
+            <small>{layerSummary.length}</small>
+          </summary>
+          <ul>
+            {layerSummary.map((layer) => (
+              <li className={getLayerClassName(layer)} key={layer.id}>
+                <div>
+                  <span>{layer.name}</span>
+                  <small>{getLayerVisibilityLabel(layer.visibility)}</small>
+                </div>
+                <small>
+                  {getLayerKindLabel(layer.kind)} · {layer.objectCount}
+                </small>
+              </li>
+            ))}
+          </ul>
+        </details>
         <div className="scene-canvas__projection">
           <span>Игрокам</span>
           <strong>
@@ -792,7 +828,62 @@ export function SceneCanvas({
   )
 }
 
+interface SceneUserLayerSwitcherProps {
+  activeUserLayer: SceneUserLayerId
+  isStorageBusy: boolean
+  userLayers: SceneUserLayerSummary[]
+  onChange(userLayer: SceneUserLayerId): void
+}
+
+function SceneUserLayerSwitcher({
+  activeUserLayer,
+  isStorageBusy,
+  onChange,
+  userLayers,
+}: SceneUserLayerSwitcherProps) {
+  return (
+    <section className="scene-user-layers" aria-label="Пользовательские слои">
+      <div className="scene-user-layers__header">
+        <div>
+          <p className="eyebrow">Layers</p>
+          <h3>Активный слой</h3>
+        </div>
+        <span>редактируется один</span>
+      </div>
+      <div className="scene-user-layers__list" role="radiogroup" aria-label="Активный слой сцены">
+        {userLayers.map((userLayer, index) => {
+          const isActive = userLayer.id === activeUserLayer
+
+          return (
+            <button
+              aria-checked={isActive}
+              aria-label={`Активировать слой ${userLayer.label}`}
+              className={isActive ? 'scene-user-layer scene-user-layer--active' : 'scene-user-layer'}
+              disabled={isStorageBusy}
+              key={userLayer.id}
+              onClick={() => onChange(userLayer.id)}
+              role="radio"
+              type="button"
+            >
+              <span className="scene-user-layer__index">{index + 1}</span>
+              <span className="scene-user-layer__content">
+                <strong>{userLayer.label}</strong>
+                <small>{userLayer.description}</small>
+              </span>
+              <span className="scene-user-layer__meta">
+                <small>{userLayer.isPlayerVisible ? 'игрокам' : 'только ГМ'}</small>
+                <strong>{userLayer.objectCount}</strong>
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 interface SceneCanvasObjectControlsProps {
+  activeUserLayer: SceneUserLayerId
   canvas: ReturnType<typeof getSceneCanvasState>
   characterCards: CharacterCard[]
   isStorageBusy: boolean
@@ -805,6 +896,7 @@ interface SceneCanvasObjectControlsProps {
 }
 
 function SceneCanvasObjectControls({
+  activeUserLayer,
   canvas,
   characterCards,
   isStorageBusy,
@@ -815,22 +907,25 @@ function SceneCanvasObjectControls({
   onSetObjectVisibility,
   onUpdateObjectTokenState,
 }: SceneCanvasObjectControlsProps) {
+  const userLayerObjects = canvas.objects.filter((object) =>
+    isSceneCanvasObjectInUserLayer(canvas, object, activeUserLayer),
+  )
   const selectedObject = selectedObjectId
-    ? canvas.objects.find((object) => object.id === selectedObjectId) ?? null
+    ? userLayerObjects.find((object) => object.id === selectedObjectId) ?? null
     : null
 
   return (
     <section className="scene-canvas-control-group scene-canvas-object-tools">
       <div className="scene-canvas-control-group__header">
-        <h3>Объекты</h3>
-        <span>{canvas.objects.length}</span>
+        <h3>Объекты · {getSceneUserLayerLabel(activeUserLayer)}</h3>
+        <span>{userLayerObjects.length}</span>
       </div>
 
-      {canvas.objects.length === 0 ? (
-        <p className="scene-canvas-object-tools__empty">Добавьте token, portrait или handout из библиотеки ассетов.</p>
+      {userLayerObjects.length === 0 ? (
+        <p className="scene-canvas-object-tools__empty">{getSceneUserLayerEmptyMessage(activeUserLayer)}</p>
       ) : (
         <div className="scene-canvas-object-tools__list" role="list">
-          {canvas.objects.map((object) => (
+          {userLayerObjects.map((object) => (
             <button
               aria-pressed={object.id === selectedObjectId}
               className={
@@ -844,7 +939,8 @@ function SceneCanvasObjectControls({
             >
               <span>{object.name}</span>
               <small>
-                {getObjectKindLabel(object.kind)} · {getObjectVisibilityLabel(object)}
+                {getObjectKindLabel(object.kind)} ·{' '}
+                {activeUserLayer === 'master' ? 'только мастер' : getObjectVisibilityLabel(object)}
               </small>
             </button>
           ))}
@@ -926,16 +1022,28 @@ function SceneCanvasObjectControls({
             >
               ⧉
             </button>
-            <button
-              aria-label={selectedObject.isPlayerVisible ? `Скрыть ${selectedObject.name}` : `Показать ${selectedObject.name}`}
-              className="button button--secondary scene-canvas-icon-button"
-              disabled={isStorageBusy}
-              onClick={() => onSetObjectVisibility(selectedObject.id, !selectedObject.isPlayerVisible)}
-              title={selectedObject.isPlayerVisible ? 'Скрыть от игроков' : 'Показать игрокам'}
-              type="button"
-            >
-              {selectedObject.isPlayerVisible ? '◉' : '○'}
-            </button>
+            {activeUserLayer === 'master' ? (
+              <button
+                aria-label="Слой ГМ всегда скрыт от игроков"
+                className="button button--secondary scene-canvas-icon-button"
+                disabled
+                title="Слой ГМ не входит в экран игроков"
+                type="button"
+              >
+                ⊘
+              </button>
+            ) : (
+              <button
+                aria-label={selectedObject.isPlayerVisible ? `Скрыть ${selectedObject.name}` : `Показать ${selectedObject.name}`}
+                className="button button--secondary scene-canvas-icon-button"
+                disabled={isStorageBusy}
+                onClick={() => onSetObjectVisibility(selectedObject.id, !selectedObject.isPlayerVisible)}
+                title={selectedObject.isPlayerVisible ? 'Скрыть от игроков' : 'Показать игрокам'}
+                type="button"
+              >
+                {selectedObject.isPlayerVisible ? '◉' : '○'}
+              </button>
+            )}
           </div>
 
           {isTokenObject(selectedObject) ? (
@@ -1018,6 +1126,7 @@ interface SceneCanvasControlsProps {
   activeTool: SceneCanvasTool
   canvas: ReturnType<typeof getSceneCanvasState>
   grid: SceneGrid
+  isMapLayerActive: boolean
   isStorageBusy: boolean
   onClearFogRegions(): void
   onClearMeasurements(): void
@@ -1032,6 +1141,7 @@ function SceneCanvasControls({
   activeTool,
   canvas,
   grid,
+  isMapLayerActive,
   isStorageBusy,
   onClearFogRegions,
   onClearMeasurements,
@@ -1041,15 +1151,18 @@ function SceneCanvasControls({
   onUpdateGrid,
   onUpdateViewport,
 }: SceneCanvasControlsProps) {
+  const isGridEditingDisabled = isStorageBusy || !isMapLayerActive
+
   return (
     <div className="scene-canvas-controls">
       <section className="scene-canvas-control-group">
         <div className="scene-canvas-control-group__header">
           <h3>Сетка</h3>
+          {!isMapLayerActive ? <span>слой Карта</span> : null}
           <label className="switch-control">
             <input
               checked={grid.enabled}
-              disabled={isStorageBusy}
+              disabled={isGridEditingDisabled}
               onChange={(event) => onUpdateGrid({ enabled: event.target.checked })}
               type="checkbox"
             />
@@ -1059,7 +1172,7 @@ function SceneCanvasControls({
         <label>
           <span>Клетка</span>
           <input
-            disabled={isStorageBusy}
+            disabled={isGridEditingDisabled}
             max={180}
             min={24}
             onChange={(event) => onUpdateGrid({ size: getNumberValue(event.target.value, grid.size) })}
@@ -1070,7 +1183,7 @@ function SceneCanvasControls({
         <label>
           <span>Дистанция</span>
           <input
-            disabled={isStorageBusy}
+            disabled={isGridEditingDisabled}
             max={30}
             min={1}
             step={0.5}
@@ -1082,7 +1195,7 @@ function SceneCanvasControls({
         <label>
           <span>Единицы</span>
           <select
-            disabled={isStorageBusy}
+            disabled={isGridEditingDisabled}
             onChange={(event) => onUpdateGrid(getGridUnitUpdate(event.target.value))}
             value={getGridUnitValue(grid.unitLabel)}
           >
@@ -1093,7 +1206,7 @@ function SceneCanvasControls({
         <label>
           <span>Цвет</span>
           <input
-            disabled={isStorageBusy}
+            disabled={isGridEditingDisabled}
             onChange={(event) => onUpdateGrid({ color: event.target.value })}
             type="color"
             value={grid.color}
@@ -1102,7 +1215,7 @@ function SceneCanvasControls({
         <label>
           <span>Прозрачность</span>
           <input
-            disabled={isStorageBusy}
+            disabled={isGridEditingDisabled}
             max={0.9}
             min={0.08}
             onChange={(event) => onUpdateGrid({ opacity: getNumberValue(event.target.value, grid.opacity) })}
@@ -1114,7 +1227,7 @@ function SceneCanvasControls({
         <label className="switch-control switch-control--wide">
           <input
             checked={grid.snapToGrid}
-            disabled={isStorageBusy}
+            disabled={isGridEditingDisabled}
             onChange={(event) => onUpdateGrid({ snapToGrid: event.target.checked })}
             type="checkbox"
           />
@@ -1736,8 +1849,11 @@ function CanvasObject({
   canvasWidth,
   isDragDisabled,
   isDragging,
+  isEditable,
+  isMasterLayer,
   isSelected,
   object,
+  opacity,
   previewPosition,
   onDragCancel,
   onDragStart,
@@ -1748,8 +1864,11 @@ function CanvasObject({
   canvasWidth: number
   isDragDisabled: boolean
   isDragging: boolean
+  isEditable: boolean
+  isMasterLayer: boolean
   isSelected: boolean
   object: SceneCanvasObject
+  opacity: number
   previewPosition: SceneCanvasObjectPosition | undefined
   onDragCancel(object: SceneCanvasObject, event: ReactPointerEvent<HTMLButtonElement>): void
   onDragStart(object: SceneCanvasObject, event: ReactPointerEvent<HTMLButtonElement>): void
@@ -1757,8 +1876,12 @@ function CanvasObject({
 }) {
   const classNames = ['scene-canvas-object']
 
-  if (!object.isPlayerVisible) {
+  if (isMasterLayer || !object.isPlayerVisible) {
     classNames.push('scene-canvas-object--master')
+  }
+
+  if (!isEditable) {
+    classNames.push('scene-canvas-object--inactive')
   }
 
   if (asset) {
@@ -1776,14 +1899,20 @@ function CanvasObject({
   return (
     <button
       aria-label={`Выбрать объект ${object.name}`}
+      aria-disabled={!isEditable || isDragDisabled}
       aria-pressed={isSelected}
       className={classNames.join(' ')}
       disabled={isDragDisabled}
-      onClick={() => onSelectObject(object.id)}
+      onClick={() => {
+        if (isEditable) {
+          onSelectObject(object.id)
+        }
+      }}
       onPointerCancel={(event) => onDragCancel(object, event)}
       onPointerDown={(event) => onDragStart(object, event)}
-      style={getCanvasObjectStyle(object, canvasWidth, canvasHeight, previewPosition)}
-      title="Перетащите мышью, чтобы переместить объект"
+      style={getCanvasObjectStyle(object, canvasWidth, canvasHeight, opacity, previewPosition)}
+      tabIndex={isEditable ? 0 : -1}
+      title={isEditable ? 'Перетащите мышью, чтобы переместить объект' : 'Переключите активный слой для редактирования'}
       type="button"
     >
       {asset ? <img alt="" draggable={false} src={asset.filePath} /> : null}
@@ -1796,6 +1925,7 @@ function getCanvasObjectStyle(
   object: SceneCanvasObject,
   canvasWidth: number,
   canvasHeight: number,
+  opacity: number,
   previewPosition?: SceneCanvasObjectPosition,
 ): CSSProperties {
   const x = previewPosition?.x ?? object.x
@@ -1807,6 +1937,7 @@ function getCanvasObjectStyle(
     width: `${(object.width / canvasWidth) * 100}%`,
     height: `${(object.height / canvasHeight) * 100}%`,
     color: object.color,
+    opacity,
     transform: `rotate(${object.rotation}deg)`,
   }
 }
@@ -1880,6 +2011,28 @@ function getLayerClassName(layer: SceneCanvasLayer): string {
   }
 
   return classNames.join(' ')
+}
+
+function getSceneUserLayerLabel(userLayer: SceneUserLayerId): string {
+  switch (userLayer) {
+    case 'map':
+      return 'Карта'
+    case 'master':
+      return 'ГМ'
+    case 'tokens':
+      return 'Токены'
+  }
+}
+
+function getSceneUserLayerEmptyMessage(userLayer: SceneUserLayerId): string {
+  switch (userLayer) {
+    case 'map':
+      return 'Добавьте фон или элемент окружения из библиотеки ассетов.'
+    case 'master':
+      return 'Добавьте скрытое изображение мастера из библиотеки ассетов.'
+    case 'tokens':
+      return 'Добавьте токен персонажа или существа из библиотеки ассетов.'
+  }
 }
 
 function getLayerVisibilityLabel(visibility: SceneCanvasLayer['visibility']): string {

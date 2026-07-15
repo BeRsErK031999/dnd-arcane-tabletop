@@ -9,7 +9,7 @@ import { createCombatParticipantList, type CombatParticipantInput } from '@rende
 import { createNoteList, type NoteInput } from '@renderer/stores/noteFactory'
 import { WORKSPACE_NAVIGATION_EVENT } from '@shared/constants'
 import { desktopApi } from '@renderer/services/desktopApi'
-import { getSceneCanvasState } from '@renderer/stores/sceneCanvasFactory'
+import { getSceneCanvasState, type SceneUserLayerId } from '@renderer/stores/sceneCanvasFactory'
 import type { CampaignsStore } from '@renderer/stores/useCampaignsStore'
 import type {
   SceneCanvasObjectPosition,
@@ -199,6 +199,7 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
   const [isToolRailOpen, setIsToolRailOpen] = useState(false)
   const [isSceneComposerOpen, setIsSceneComposerOpen] = useState(false)
   const [isMaterialsPanelOpen, setIsMaterialsPanelOpen] = useState(() => window.innerWidth >= 1280)
+  const [activeUserLayer, setActiveUserLayer] = useState<SceneUserLayerId>('tokens')
   const [campaignActionStatus, setCampaignActionStatus] = useState('Автосохранение включено.')
   const [newSceneName, setNewSceneName] = useState('')
   const [newSceneDescription, setNewSceneDescription] = useState('')
@@ -804,7 +805,12 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
   }
 
   async function handleImportImageAsset(): Promise<void> {
-    const result = await importImageAsset(assetKind, assetName, normalizeAssetTags(assetImportTags))
+    const result = await importImageAsset(
+      assetKind,
+      assetName,
+      normalizeAssetTags(assetImportTags),
+      activeUserLayer,
+    )
 
     if (result.ok) {
       const asset = result.campaign.assets.find((candidate) => candidate.id === result.assetId)
@@ -812,7 +818,7 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
       setAssetImportTags('')
       setAssetActionStatus(`Изображение "${asset?.name ?? 'без названия'}" импортировано.`)
 
-      if (asset?.kind === 'map') {
+      if (asset?.kind === 'map' && activeUserLayer === 'map') {
         setSceneActionStatus(`Карта "${asset.name}" привязана к активной сцене.`)
       }
 
@@ -835,20 +841,21 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
   }
 
   async function handleUseAssetInActiveScene(assetId: AssetId): Promise<void> {
-    const result = await applyAssetToActiveScene(assetId)
+    const result = await applyAssetToActiveScene(assetId, activeUserLayer)
 
     if (result.ok) {
       const asset = result.campaign.assets.find((candidate) => candidate.id === assetId)
       const assetName = asset?.name ?? 'ассет'
 
-      if (asset?.kind === 'map') {
+      if (asset?.kind === 'map' && activeUserLayer === 'map') {
         setSceneActionStatus(`Карта "${assetName}" привязана к активной сцене.`)
         setAssetActionStatus(`Карта "${assetName}" используется как фон сцены.`)
         return
       }
 
-      setSceneActionStatus(`Ассет "${assetName}" добавлен в активную сцену.`)
-      setAssetActionStatus(`Ассет "${assetName}" добавлен в активную сцену.`)
+      const userLayerLabel = getSceneUserLayerLabel(activeUserLayer)
+      setSceneActionStatus(`Ассет "${assetName}" добавлен на слой «${userLayerLabel}».`)
+      setAssetActionStatus(`Ассет "${assetName}" добавлен на слой «${userLayerLabel}».`)
       const updatedActiveScene = getActiveSceneFromCampaign(result.campaign)
       const addedObject = updatedActiveScene ? getSceneCanvasState(updatedActiveScene).objects.at(-1) : undefined
 
@@ -1234,6 +1241,7 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
   }
 
   const rightPanelContentProps: RightPanelContentProps = {
+    activeUserLayer,
     activeRightPanel,
     assetActionStatus,
     assetImportTags,
@@ -1507,11 +1515,16 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
                 </div>
 
                 <SceneCanvas
+                  activeUserLayer={activeUserLayer}
                   assets={selectedCampaign?.assets ?? []}
                   characterCards={characterCards}
                   isPlayerSynced={Boolean(activeScene && playerStatus.state.activeSceneId === activeScene.id)}
                   isStorageBusy={isStorageBusy}
                   mapAsset={activeMapAsset}
+                  onActiveUserLayerChange={(userLayer) => {
+                    setActiveUserLayer(userLayer)
+                    setSceneActionStatus(`Активен слой «${getSceneUserLayerLabel(userLayer)}».`)
+                  }}
                   onAddMeasurement={(template) => void handleAddActiveSceneMeasurement(template)}
                   onClearMeasurements={() => void handleClearActiveSceneMeasurements()}
                   onAddFogRegion={(shape) => void handleAddActiveSceneFogRegion(shape)}
@@ -2071,6 +2084,7 @@ function PlayerScreenControls({ playerActionStatus, playerStatus, runPlayerActio
 }
 
 interface RightPanelContentProps {
+  activeUserLayer: SceneUserLayerId
   activeRightPanel: RightPanelTab
   assetActionStatus: string
   assetImportTags: string
@@ -2539,6 +2553,7 @@ function CharacterPanel({
 }
 
 function AssetPanel({
+  activeUserLayer,
   assetActionStatus,
   assetImportTags,
   assetKind,
@@ -2711,12 +2726,13 @@ function AssetPanel({
                   </div>
                   <div className="asset-item__actions">
                     <button
+                      aria-label={`Добавить ${asset.name} на слой ${getSceneUserLayerLabel(activeUserLayer)}`}
                       className="button button--secondary"
                       disabled={!canUseAssetsInScene || isStorageBusy}
                       onClick={() => void onUseAssetInActiveScene(asset.id)}
                       type="button"
                     >
-                      В сцену
+                      На слой {getSceneUserLayerLabel(activeUserLayer)}
                     </button>
                     <button
                       className="button button--secondary"
@@ -2745,6 +2761,17 @@ function AssetPanel({
       <p className="form-status">{assetActionStatus}</p>
     </section>
   )
+}
+
+function getSceneUserLayerLabel(userLayer: SceneUserLayerId): string {
+  switch (userLayer) {
+    case 'map':
+      return 'Карта'
+    case 'master':
+      return 'ГМ'
+    case 'tokens':
+      return 'Токены'
+  }
 }
 
 function getWorkspaceNavigationSection(event: Event): WorkspaceSection | null {

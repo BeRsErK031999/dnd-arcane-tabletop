@@ -44,6 +44,19 @@ Master window не должен напрямую создавать `BrowserWind
 
 На desktop shell занимает фиксированную узкую колонку, а на ширине до 840 px становится горизонтальным dock. Utility drawer на мобильной ширине занимает всю рабочую область. Эти responsive-переходы меняют только представление и не создают отдельное мобильное состояние домена.
 
+### Пользовательские слои сцены
+
+С этапа 23 master workspace показывает три пользовательских режима поверх неизменного технического render stack:
+
+- `Карта` агрегирует `map`, `grid` и `object`;
+- `ГМ` соответствует `master` и всегда исключён из player projection;
+- `Токены` соответствует `token`;
+- `fog` и measurements остаются независимыми overlay-инструментами и не переключаются вместе с пользовательским слоем.
+
+`SceneUserLayerId` является renderer-level режимом редактирования и не сохраняется в `SceneCanvasState`. `sceneCanvasFactory` предоставляет чистый адаптер для mapping, summary, opacity и render order. Поэтому выбор слоя не создаёт campaign mutation, autosave или undo history entry.
+
+`assetFactory` получает выбранный user layer только в момент размещения. На `ГМ` объект получает technical layer `master` и `isPlayerVisible: false`; на `Токены` объект получает layer `token`, token state и размер текущей клетки; `Карта` использует background для map asset либо technical `object` для элемента окружения. Player projection по-прежнему строится только из `player-visible` technical layers и дополнительно сортирует объекты по user-layer order.
+
 ## Player Window
 
 Player window - отдельное Electron-окно для второго монитора, телевизора или проектора. Оно загружает renderer route `/?screen=player`.

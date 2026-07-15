@@ -18,6 +18,17 @@ import type {
 } from '@shared/types'
 
 export type SceneCanvasMeasurementTemplate = 'ruler' | 'circle' | 'cone' | 'square'
+export const sceneUserLayerOrder = ['map', 'master', 'tokens'] as const
+export type SceneUserLayerId = (typeof sceneUserLayerOrder)[number]
+
+export interface SceneUserLayerSummary {
+  id: SceneUserLayerId
+  label: string
+  description: string
+  isPlayerVisible: boolean
+  objectCount: number
+  technicalLayerKinds: SceneCanvasLayerKind[]
+}
 
 export interface SceneCanvasMeasurementDraft {
   template: SceneCanvasMeasurementTemplate
@@ -58,6 +69,33 @@ const defaultSceneCanvasLayers: SceneCanvasLayer[] = [
   createCanvasLayer('scene-layer-master', 'master', 'Слой мастера', 'master-only', 40, false),
   createCanvasLayer('scene-layer-fog', 'fog', 'Туман войны', 'disabled', 50, true, 0),
 ]
+
+const sceneUserLayerTechnicalKinds: Record<SceneUserLayerId, SceneCanvasLayerKind[]> = {
+  map: ['map', 'grid', 'object'],
+  master: ['master'],
+  tokens: ['token'],
+}
+
+const sceneUserLayerMetadata: Record<
+  SceneUserLayerId,
+  Pick<SceneUserLayerSummary, 'description' | 'isPlayerVisible' | 'label'>
+> = {
+  map: {
+    label: 'Карта',
+    description: 'Фон и элементы окружения',
+    isPlayerVisible: true,
+  },
+  master: {
+    label: 'ГМ',
+    description: 'Скрытые материалы мастера',
+    isPlayerVisible: false,
+  },
+  tokens: {
+    label: 'Токены',
+    description: 'Персонажи и существа',
+    isPlayerVisible: true,
+  },
+}
 
 export function createDefaultSceneCanvas(
   updatedAt: IsoDateString = new Date().toISOString(),
@@ -137,9 +175,8 @@ export function createPlayerSceneCanvasProjection(
       zIndex: layer.zIndex,
       opacity: layer.opacity,
     })),
-    objects: canvas.objects
+    objects: getSceneCanvasObjectsInRenderOrder(canvas)
       .filter((object) => object.isPlayerVisible && playerLayerIds.has(object.layerId))
-      .sort(sortObjects)
       .map(({ id, kind, name, x, y, width, height, rotation, color, text, assetId }) => {
         const objectAsset = assetId ? assets.find((asset) => asset.id === assetId) : undefined
 
@@ -191,6 +228,75 @@ export function createPlayerSceneCanvasProjection(
   }
 }
 
+export function getSceneUserLayerForLayerKind(kind: SceneCanvasLayerKind): SceneUserLayerId | null {
+  switch (kind) {
+    case 'map':
+    case 'grid':
+    case 'object':
+      return 'map'
+    case 'master':
+      return 'master'
+    case 'token':
+      return 'tokens'
+    case 'fog':
+      return null
+  }
+}
+
+export function getSceneUserLayerForObject(
+  canvas: Pick<SceneCanvasState, 'layers'>,
+  object: Pick<SceneCanvasObject, 'layerId'>,
+): SceneUserLayerId {
+  const technicalLayer = canvas.layers.find((layer) => layer.id === object.layerId)
+
+  return technicalLayer ? getSceneUserLayerForLayerKind(technicalLayer.kind) ?? 'map' : 'map'
+}
+
+export function isSceneCanvasObjectInUserLayer(
+  canvas: Pick<SceneCanvasState, 'layers'>,
+  object: Pick<SceneCanvasObject, 'layerId'>,
+  userLayer: SceneUserLayerId,
+): boolean {
+  return getSceneUserLayerForObject(canvas, object) === userLayer
+}
+
+export function getSceneUserLayerOpacity(
+  userLayer: SceneUserLayerId,
+  activeUserLayer: SceneUserLayerId,
+  baseOpacity = 1,
+): number {
+  return userLayer === 'master' && activeUserLayer !== 'master' ? baseOpacity * 0.5 : baseOpacity
+}
+
+export function getSceneCanvasObjectsInRenderOrder(canvas: SceneCanvasState): SceneCanvasObject[] {
+  const userLayerRanks = new Map(sceneUserLayerOrder.map((userLayer, index) => [userLayer, index]))
+  const technicalLayerRanks = new Map(canvas.layers.map((layer) => [layer.id, layer.zIndex]))
+
+  return [...canvas.objects].sort((left, right) => {
+    const leftUserLayerRank = userLayerRanks.get(getSceneUserLayerForObject(canvas, left)) ?? 0
+    const rightUserLayerRank = userLayerRanks.get(getSceneUserLayerForObject(canvas, right)) ?? 0
+
+    return (
+      leftUserLayerRank - rightUserLayerRank ||
+      (technicalLayerRanks.get(left.layerId) ?? 0) - (technicalLayerRanks.get(right.layerId) ?? 0) ||
+      sortObjects(left, right)
+    )
+  })
+}
+
+export function getSceneUserLayerSummary(scene: Scene): SceneUserLayerSummary[] {
+  const canvas = getSceneCanvasState(scene)
+
+  return sceneUserLayerOrder.map((id) => ({
+    id,
+    ...sceneUserLayerMetadata[id],
+    objectCount:
+      canvas.objects.filter((object) => isSceneCanvasObjectInUserLayer(canvas, object, id)).length +
+      (id === 'map' && scene.backgroundAssetId ? 1 : 0),
+    technicalLayerKinds: [...sceneUserLayerTechnicalKinds[id]],
+  }))
+}
+
 function createPlayerSceneCanvasAsset(asset: Asset): PlayerSceneCanvasAsset {
   return {
     id: asset.id,
@@ -202,7 +308,7 @@ function createPlayerSceneCanvasAsset(asset: Asset): PlayerSceneCanvasAsset {
 export function getSceneCanvasLayerSummary(scene: Scene): Array<SceneCanvasLayer & { objectCount: number }> {
   const canvas = getSceneCanvasState(scene)
 
-  return canvas.layers.sort(sortLayers).map((layer) => ({
+  return [...canvas.layers].sort(sortLayers).map((layer) => ({
     ...layer,
     objectCount:
       layer.kind === 'fog'

@@ -27,7 +27,9 @@ describe('assetFactory', () => {
     )
     const asset = createAssetFixture({ kind: 'map' })
 
-    const updated = createCampaignWithImportedAsset(campaign, asset, '2026-07-07T02:00:00.000Z')
+    const updated = createCampaignWithImportedAsset(campaign, asset, {
+      updatedAt: '2026-07-07T02:00:00.000Z',
+    })
 
     expect(updated.assets).toEqual([asset])
     expect(updated.scenes[0]).toMatchObject({
@@ -35,6 +37,26 @@ describe('assetFactory', () => {
       backgroundAssetId: 'asset-test',
     })
     expect(updated.updatedAt).toBe('2026-07-07T02:00:00.000Z')
+  })
+
+  it('keeps an imported map in the library when another user layer is active', () => {
+    const campaign = createCampaignWithNewScene(
+      createEmptyCampaign({
+        id: 'campaign-test',
+        name: 'Campaign',
+        timestamp: '2026-07-07T00:00:00.000Z',
+      }),
+      { id: 'scene-test', name: 'Scene' },
+      '2026-07-07T01:00:00.000Z',
+    )
+
+    const updated = createCampaignWithImportedAsset(campaign, createAssetFixture({ kind: 'map' }), {
+      bindMapToActiveScene: false,
+      updatedAt: '2026-07-07T02:00:00.000Z',
+    })
+
+    expect(updated.assets).toHaveLength(1)
+    expect(updated.scenes[0].backgroundAssetId).toBeUndefined()
   })
 
   it('builds player image preview state for an imported asset', () => {
@@ -45,7 +67,7 @@ describe('assetFactory', () => {
         timestamp: '2026-07-07T00:00:00.000Z',
       }),
       createAssetFixture({ kind: 'handout' }),
-      '2026-07-07T01:00:00.000Z',
+      { updatedAt: '2026-07-07T01:00:00.000Z' },
     )
 
     const updated = createCampaignWithAssetPreview(campaign, 'asset-test', '2026-07-07T02:00:00.000Z')
@@ -95,7 +117,7 @@ describe('assetFactory', () => {
         timestamp: '2026-07-07T00:00:00.000Z',
       }),
       createAssetFixture({ kind: 'handout', tags: ['old'] }),
-      '2026-07-07T01:00:00.000Z',
+      { updatedAt: '2026-07-07T01:00:00.000Z' },
     )
 
     const updated = createCampaignWithAssetTags(campaign, 'asset-test', ' ночной зал, boss, boss ', '2026-07-07T02:00:00.000Z')
@@ -120,10 +142,12 @@ describe('assetFactory', () => {
     const withAsset = createCampaignWithImportedAsset(
       campaign,
       createAssetFixture({ id: 'asset-token', kind: 'token', name: 'Skeleton token' }),
-      '2026-07-07T02:00:00.000Z',
+      { updatedAt: '2026-07-07T02:00:00.000Z' },
     )
 
-    const updated = createCampaignWithAssetInActiveScene(withAsset, 'asset-token', '2026-07-07T03:00:00.000Z')
+    const updated = createCampaignWithAssetInActiveScene(withAsset, 'asset-token', {
+      updatedAt: '2026-07-07T03:00:00.000Z',
+    })
 
     expect(updated.scenes[0].canvas.objects).toHaveLength(1)
     expect(updated.scenes[0].canvas.objects[0]).toMatchObject({
@@ -131,6 +155,67 @@ describe('assetFactory', () => {
       layerId: 'scene-layer-tokens',
       kind: 'token-placeholder',
       name: 'Skeleton token',
+      width: 70,
+      height: 70,
+      isPlayerVisible: true,
+    })
+  })
+
+  it('places an image on the master layer without exposing it to players', () => {
+    const campaign = createCampaignWithNewScene(
+      createEmptyCampaign({
+        id: 'campaign-test',
+        name: 'Campaign',
+        timestamp: '2026-07-07T00:00:00.000Z',
+      }),
+      { id: 'scene-test', name: 'Scene' },
+      '2026-07-07T01:00:00.000Z',
+    )
+    const withAsset = createCampaignWithImportedAsset(
+      campaign,
+      createAssetFixture({ id: 'asset-secret', kind: 'handout', name: 'Secret door' }),
+      { updatedAt: '2026-07-07T02:00:00.000Z' },
+    )
+
+    const updated = createCampaignWithAssetInActiveScene(withAsset, 'asset-secret', {
+      userLayer: 'master',
+      updatedAt: '2026-07-07T03:00:00.000Z',
+    })
+
+    expect(updated.scenes[0].canvas.objects[0]).toMatchObject({
+      assetId: 'asset-secret',
+      layerId: 'scene-layer-master',
+      kind: 'marker',
+      isPlayerVisible: false,
+    })
+  })
+
+  it('uses the grid cell size for every image placed on the token layer', () => {
+    const campaign = createCampaignWithNewScene(
+      createEmptyCampaign({
+        id: 'campaign-test',
+        name: 'Campaign',
+        timestamp: '2026-07-07T00:00:00.000Z',
+      }),
+      { id: 'scene-test', name: 'Scene' },
+      '2026-07-07T01:00:00.000Z',
+    )
+    const withAsset = createCampaignWithImportedAsset(
+      campaign,
+      createAssetFixture({ id: 'asset-portrait', kind: 'portrait', name: 'Rogue portrait' }),
+      { updatedAt: '2026-07-07T02:00:00.000Z' },
+    )
+
+    const updated = createCampaignWithAssetInActiveScene(withAsset, 'asset-portrait', {
+      userLayer: 'tokens',
+      updatedAt: '2026-07-07T03:00:00.000Z',
+    })
+
+    expect(updated.scenes[0].canvas.objects[0]).toMatchObject({
+      layerId: 'scene-layer-tokens',
+      kind: 'token-placeholder',
+      width: 70,
+      height: 70,
       isPlayerVisible: true,
     })
   })
@@ -150,10 +235,12 @@ describe('assetFactory', () => {
     const withMap = createCampaignWithImportedAsset(
       activeSecond,
       createAssetFixture({ id: 'asset-map', kind: 'map', name: 'Second map' }),
-      '2026-07-07T02:00:00.000Z',
+      { updatedAt: '2026-07-07T02:00:00.000Z' },
     )
 
-    const updated = createCampaignWithAssetInActiveScene(withMap, 'asset-map', '2026-07-07T03:00:00.000Z')
+    const updated = createCampaignWithAssetInActiveScene(withMap, 'asset-map', {
+      updatedAt: '2026-07-07T03:00:00.000Z',
+    })
 
     expect(updated.scenes.map((scene) => [scene.id, scene.backgroundAssetId])).toEqual([
       ['scene-first', undefined],

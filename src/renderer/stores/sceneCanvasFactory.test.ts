@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import type { Asset, Scene } from '@shared/types'
+import type { Asset, Scene, SceneCanvasObject } from '@shared/types'
 import { createEmptyScene } from './sceneFactory'
 import {
   createPlayerSceneCanvasProjection,
+  getSceneCanvasObjectsInRenderOrder,
   getSceneCanvasLayerSummary,
   getSceneCanvasState,
+  getSceneUserLayerForObject,
+  getSceneUserLayerOpacity,
+  getSceneUserLayerSummary,
+  isSceneCanvasObjectInUserLayer,
 } from './sceneCanvasFactory'
 
 describe('sceneCanvasFactory', () => {
@@ -39,6 +44,34 @@ describe('sceneCanvasFactory', () => {
       ['master', 'master-only'],
       ['fog', 'disabled'],
     ])
+  })
+
+  it('adapts technical layers to the fixed map, master, and token editing order', () => {
+    const scene = createEmptyScene({
+      campaignId: 'campaign-test',
+      id: 'scene-test',
+      name: 'Layered scene',
+    })
+    scene.canvas.objects = [
+      createCanvasObjectFixture('object-token', 'scene-layer-tokens', 20),
+      createCanvasObjectFixture('object-master', 'scene-layer-master', 10),
+      createCanvasObjectFixture('object-map', 'scene-layer-objects', 300),
+    ]
+
+    const orderedObjects = getSceneCanvasObjectsInRenderOrder(scene.canvas)
+    const userLayers = getSceneUserLayerSummary(scene)
+    const projection = createPlayerSceneCanvasProjection(scene, [])
+
+    expect(orderedObjects.map((object) => object.id)).toEqual(['object-map', 'object-master', 'object-token'])
+    expect(userLayers.map((layer) => layer.id)).toEqual(['map', 'master', 'tokens'])
+    expect(userLayers.map((layer) => layer.objectCount)).toEqual([1, 1, 1])
+    expect(userLayers[0].technicalLayerKinds).toEqual(['map', 'grid', 'object'])
+    expect(getSceneUserLayerForObject(scene.canvas, scene.canvas.objects[0])).toBe('tokens')
+    expect(isSceneCanvasObjectInUserLayer(scene.canvas, scene.canvas.objects[1], 'master')).toBe(true)
+    expect(getSceneUserLayerOpacity('master', 'tokens')).toBe(0.5)
+    expect(getSceneUserLayerOpacity('master', 'master')).toBe(1)
+    expect(getSceneUserLayerOpacity('map', 'tokens')).toBe(1)
+    expect(projection.objects.map((object) => object.id)).toEqual(['object-map', 'object-token'])
   })
 
   it('projects only player-visible canvas layers, objects, and measurements', () => {
@@ -222,5 +255,21 @@ function createAssetFixture(): Asset {
     filePath: 'file:///tmp/map.png',
     tags: [],
     createdAt: '2026-07-07T00:00:00.000Z',
+  }
+}
+
+function createCanvasObjectFixture(id: string, layerId: string, y: number): SceneCanvasObject {
+  return {
+    id,
+    layerId,
+    kind: layerId === 'scene-layer-tokens' ? 'token-placeholder' : 'marker',
+    name: id,
+    x: 20,
+    y,
+    width: 70,
+    height: 70,
+    rotation: 0,
+    color: '#2c806f',
+    isPlayerVisible: true,
   }
 }

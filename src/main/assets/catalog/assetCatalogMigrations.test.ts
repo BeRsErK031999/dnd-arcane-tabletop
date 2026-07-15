@@ -12,11 +12,11 @@ describe('asset catalog migrations', () => {
     await expect(migrateAssetCatalog(database)).resolves.toEqual({
       previousVersion: 0,
       currentVersion: ASSET_CATALOG_SCHEMA_VERSION,
-      appliedVersions: [1, 2],
+      appliedVersions: [1, 2, 3],
     })
     expect(database.version).toBe(ASSET_CATALOG_SCHEMA_VERSION)
-    expect(database.statements.filter((statement) => statement === 'BEGIN IMMEDIATE')).toHaveLength(2)
-    expect(database.statements.filter((statement) => statement === 'COMMIT')).toHaveLength(2)
+    expect(database.statements.filter((statement) => statement === 'BEGIN IMMEDIATE')).toHaveLength(3)
+    expect(database.statements.filter((statement) => statement === 'COMMIT')).toHaveLength(3)
     expect(database.statements.some((statement) => statement.includes('CREATE TABLE indexed_assets'))).toBe(true)
     expect(database.statements.some((statement) => statement.includes('CREATE TABLE managed_asset_blobs'))).toBe(true)
     expect(database.statements.some((statement) => statement.includes('CREATE TABLE campaign_asset_references'))).toBe(
@@ -29,8 +29,8 @@ describe('asset catalog migrations', () => {
 
     await expect(migrateAssetCatalog(database)).resolves.toEqual({
       previousVersion: 1,
-      currentVersion: 2,
-      appliedVersions: [2],
+      currentVersion: 3,
+      appliedVersions: [2, 3],
     })
     expect(database.statements.some((statement) => statement.includes('CREATE TABLE asset_library_sources'))).toBe(
       false,

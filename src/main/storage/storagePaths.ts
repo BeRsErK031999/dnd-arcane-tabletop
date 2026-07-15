@@ -8,3 +8,11 @@ export function getCampaignsDirectory(): string {
 
   return path.join(process.cwd(), 'data', 'campaigns')
 }
+
+export function getAssetLibraryDirectory(): string {
+  if (app.isPackaged) {
+    return path.join(app.getPath('userData'), 'asset-library')
+  }
+
+  return path.join(process.cwd(), 'data', 'asset-library')
+}

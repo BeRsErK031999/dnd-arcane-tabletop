@@ -29,12 +29,17 @@ export interface IndexedAssetPage {
 export interface AssetIndexService {
   initialize(): Promise<void>
   listSources(): Promise<AssetLibrarySource[]>
+  getSource(sourceId: AssetLibrarySourceId): Promise<AssetLibrarySource | null>
+  findSourceByRootPath(rootPath: string): Promise<AssetLibrarySource | null>
   saveSource(source: AssetLibrarySource): Promise<void>
   removeSource(sourceId: AssetLibrarySourceId): Promise<void>
   getAsset(assetId: IndexedAssetId): Promise<IndexedAsset | null>
+  getAssetByCanonicalPath(sourceId: AssetLibrarySourceId, canonicalPath: string): Promise<IndexedAsset | null>
   findBySha256(sha256: Sha256Digest): Promise<IndexedAsset[]>
   queryAssets(query: IndexedAssetQuery): Promise<IndexedAssetPage>
   saveAsset(asset: IndexedAsset): Promise<void>
+  saveAssets(assets: IndexedAsset[], scanId?: string): Promise<void>
+  markSourceAssetsMissing(sourceId: AssetLibrarySourceId, completedScanId: string): Promise<void>
   updateTags(assetId: IndexedAssetId, tags: string[]): Promise<void>
 }
 

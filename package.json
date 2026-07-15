@@ -19,12 +19,15 @@
   },
   "dependencies": {
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "sharp": "^0.35.3",
+    "sql.js": "^1.14.1"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/sql.js": "^1.4.11",
     "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
@@ -39,6 +42,10 @@
   "build": {
     "appId": "local.dnd.arcane-tabletop",
     "productName": "D&D Arcane Tabletop",
+    "asarUnpack": [
+      "**/node_modules/sharp/**/*",
+      "**/node_modules/@img/**/*"
+    ],
     "directories": {
       "output": "release"
     },

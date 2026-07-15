@@ -13,6 +13,13 @@ export const IPC_CHANNELS = {
   assets: {
     importImage: 'assets:importImage',
   },
+  assetLibrary: {
+    getSnapshot: 'asset-library:snapshot:get',
+    connectDirectory: 'asset-library:directory:connect',
+    startIndexing: 'asset-library:indexing:start',
+    cancelIndexing: 'asset-library:indexing:cancel',
+    snapshotChanged: 'asset-library:snapshot:changed',
+  },
   playerScreen: {
     open: 'player:open',
     close: 'player:close',

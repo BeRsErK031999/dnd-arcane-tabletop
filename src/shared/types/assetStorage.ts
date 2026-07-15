@@ -8,6 +8,8 @@ export type Sha256Digest = string
 export type AssetLibrarySourceStatus = 'idle' | 'indexing' | 'ready' | 'unavailable' | 'error'
 export type IndexedAssetAvailability = 'available' | 'missing' | 'unreadable'
 export type CampaignAssetExportPolicy = 'when-used' | 'always'
+export type AssetIndexJobStatus = 'idle' | 'running' | 'cancelling' | 'completed' | 'cancelled' | 'failed'
+export type AssetIndexPhase = 'idle' | 'discovering' | 'processing' | 'finalizing'
 
 export interface AssetLibrarySource {
   id: AssetLibrarySourceId
@@ -85,3 +87,54 @@ export interface CampaignAssetBinding {
   createdAt: IsoDateString
   updatedAt: IsoDateString
 }
+
+export interface AssetIndexProgress {
+  status: AssetIndexJobStatus
+  phase: AssetIndexPhase
+  sourceId?: AssetLibrarySourceId
+  sourceName?: string
+  discoveredCount: number
+  processedCount: number
+  indexedCount: number
+  skippedCount: number
+  errorCount: number
+  currentFileName?: string
+  startedAt?: IsoDateString
+  finishedAt?: IsoDateString
+  message?: string
+}
+
+export interface AssetLibrarySnapshot {
+  sources: AssetLibrarySource[]
+  progress: AssetIndexProgress
+}
+
+export type ConnectAssetLibraryResult =
+  | {
+      ok: true
+      source: AssetLibrarySource
+      snapshot: AssetLibrarySnapshot
+    }
+  | {
+      ok: false
+      reason:
+        | 'cancelled'
+        | 'source-unavailable'
+        | 'indexing-in-progress'
+        | 'storage-failed'
+        | 'desktop-api-unavailable'
+    }
+
+export type StartAssetIndexResult =
+  | { ok: true; snapshot: AssetLibrarySnapshot }
+  | {
+      ok: false
+      reason:
+        | 'source-not-found'
+        | 'source-unavailable'
+        | 'indexing-in-progress'
+        | 'storage-failed'
+        | 'desktop-api-unavailable'
+    }
+
+export type CancelAssetIndexResult = { ok: true; snapshot: AssetLibrarySnapshot }

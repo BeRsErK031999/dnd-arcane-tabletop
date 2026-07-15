@@ -3,6 +3,7 @@ import { createCampaignSummary } from '../../shared/campaignSummary'
 import {
   createDefaultPlayerScreenState,
   type Asset,
+  type AssetLibrarySnapshot,
   type Campaign,
   type CampaignId,
   type CampaignSummary,
@@ -28,6 +29,18 @@ const browserFallbackStatus: PlayerScreenStatus = {
   isOpen: false,
   isFullscreen: false,
   state: browserFallbackState,
+}
+const browserFallbackAssetLibrarySnapshot: AssetLibrarySnapshot = {
+  sources: [],
+  progress: {
+    status: 'idle',
+    phase: 'idle',
+    discoveredCount: 0,
+    processedCount: 0,
+    indexedCount: 0,
+    skippedCount: 0,
+    errorCount: 0,
+  },
 }
 const browserFallbackStateListeners = new Set<(state: PlayerScreenState) => void>()
 const browserFallbackStatusListeners = new Set<(status: PlayerScreenStatus) => void>()
@@ -67,6 +80,13 @@ const browserFallbackApi: DesktopApi = {
       ok: true,
       asset: createBrowserFallbackAsset(request),
     }),
+  },
+  assetLibrary: {
+    getSnapshot: async () => browserFallbackAssetLibrarySnapshot,
+    connectDirectory: async () => ({ ok: false, reason: 'desktop-api-unavailable' }),
+    startIndexing: async () => ({ ok: false, reason: 'desktop-api-unavailable' }),
+    cancelIndexing: async () => ({ ok: true, snapshot: browserFallbackAssetLibrarySnapshot }),
+    onSnapshotChanged: () => () => undefined,
   },
   playerScreen: {
     open: async () => ({

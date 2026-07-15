@@ -47,8 +47,8 @@ export const ASSET_CATALOG_MIGRATIONS: readonly AssetCatalogMigration[] = [
         kind TEXT NOT NULL CHECK (kind IN ('map', 'token', 'portrait', 'handout', 'other')),
         mime_type TEXT NOT NULL,
         format TEXT NOT NULL,
-        width INTEGER NOT NULL CHECK (width > 0),
-        height INTEGER NOT NULL CHECK (height > 0),
+        width INTEGER NOT NULL CHECK (width >= 0),
+        height INTEGER NOT NULL CHECK (height >= 0),
         sha256 TEXT CHECK (
           sha256 IS NULL OR (length(sha256) = 64 AND sha256 NOT GLOB '*[^0-9a-f]*')
         ),
@@ -101,6 +101,14 @@ export const ASSET_CATALOG_MIGRATIONS: readonly AssetCatalogMigration[] = [
       'CREATE INDEX campaign_asset_references_sha256_idx ON campaign_asset_references(sha256) WHERE sha256 IS NOT NULL',
       'CREATE INDEX campaign_asset_references_indexed_asset_idx ON campaign_asset_references(indexed_asset_id) WHERE indexed_asset_id IS NOT NULL',
       'CREATE INDEX campaign_asset_references_export_policy_idx ON campaign_asset_references(campaign_id, export_policy)',
+    ],
+  },
+  {
+    version: 3,
+    name: 'track_incremental_asset_scans',
+    statements: [
+      'ALTER TABLE indexed_assets ADD COLUMN last_seen_scan_id TEXT',
+      'CREATE INDEX indexed_assets_last_seen_scan_idx ON indexed_assets(source_id, last_seen_scan_id)',
     ],
   },
 ]

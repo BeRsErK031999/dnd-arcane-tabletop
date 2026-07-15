@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { IPC_CHANNELS } from '../shared/constants/index.js'
 import type {
+  AssetLibrarySnapshot,
+  AssetLibrarySourceId,
   Campaign,
   CampaignId,
   ImportImageAssetRequest,
@@ -24,6 +26,15 @@ const desktopApi: DesktopApi = {
   },
   assets: {
     importImageAsset: (request: ImportImageAssetRequest) => ipcRenderer.invoke(IPC_CHANNELS.assets.importImage, request),
+  },
+  assetLibrary: {
+    getSnapshot: () => ipcRenderer.invoke(IPC_CHANNELS.assetLibrary.getSnapshot),
+    connectDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.assetLibrary.connectDirectory),
+    startIndexing: (sourceId: AssetLibrarySourceId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.assetLibrary.startIndexing, sourceId),
+    cancelIndexing: () => ipcRenderer.invoke(IPC_CHANNELS.assetLibrary.cancelIndexing),
+    onSnapshotChanged: (listener: (snapshot: AssetLibrarySnapshot) => void) =>
+      subscribeToIpc(IPC_CHANNELS.assetLibrary.snapshotChanged, listener),
   },
   playerScreen: {
     open: () => ipcRenderer.invoke(IPC_CHANNELS.playerScreen.open),

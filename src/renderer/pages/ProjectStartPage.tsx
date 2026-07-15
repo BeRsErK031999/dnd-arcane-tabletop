@@ -1,6 +1,12 @@
 import { useState, type FormEvent } from 'react'
-import type { CampaignId, CampaignSummary } from '@shared/types'
+import type {
+  AssetIndexJobStatus,
+  AssetLibrarySnapshot,
+  CampaignId,
+  CampaignSummary,
+} from '@shared/types'
 import type { CampaignsStore } from '@renderer/stores/useCampaignsStore'
+import { useAssetLibraryStore } from '@renderer/stores/useAssetLibraryStore'
 
 interface ProjectStartPageProps {
   campaignsStore: CampaignsStore
@@ -10,6 +16,7 @@ interface ProjectStartPageProps {
 type ProjectDialog = 'create' | 'delete' | null
 
 export function ProjectStartPage({ campaignsStore, onLaunchProject }: ProjectStartPageProps) {
+  const assetLibraryStore = useAssetLibraryStore()
   const {
     campaigns,
     campaignsDirectory,
@@ -32,6 +39,17 @@ export function ProjectStartPage({ campaignsStore, onLaunchProject }: ProjectSta
       : 'Выберите проект, чтобы открыть рабочую область.',
   )
   const isBusy = status === 'loading' || status === 'saving' || status === 'deleting'
+  const assetLibrarySource =
+    assetLibraryStore.snapshot.sources.find(
+      (source) => source.id === assetLibraryStore.snapshot.progress.sourceId,
+    ) ??
+    assetLibraryStore.snapshot.sources.reduce<(typeof assetLibraryStore.snapshot.sources)[number] | undefined>(
+      (latest, source) => (!latest || source.updatedAt > latest.updatedAt ? source : latest),
+      undefined,
+    )
+  const isAssetIndexing =
+    assetLibraryStore.snapshot.progress.status === 'running' ||
+    assetLibraryStore.snapshot.progress.status === 'cancelling'
 
   async function selectProject(campaignId: CampaignId): Promise<boolean> {
     if (selectedCampaign?.id === campaignId) {
@@ -196,6 +214,82 @@ export function ProjectStartPage({ campaignsStore, onLaunchProject }: ProjectSta
             </button>
           </div>
 
+          <section className="asset-library-connect" aria-label="Общая библиотека изображений">
+            <div className="asset-library-connect__header">
+              <div>
+                <span className="project-actions__kicker">Ассеты</span>
+                <h2>Общая библиотека</h2>
+              </div>
+              <span
+                className={`asset-library-connect__badge asset-library-connect__badge--${getAssetLibraryTone(assetLibraryStore.snapshot.progress.status)}`}
+              >
+                {getAssetLibraryStatusLabel(
+                  assetLibraryStore.snapshot.progress.status,
+                  assetLibraryStore.snapshot.sources.length,
+                )}
+              </span>
+            </div>
+            <p className="asset-library-connect__source" title={assetLibrarySource?.rootPath}>
+              {assetLibrarySource?.displayName ?? 'Папка изображений ещё не подключена'}
+            </p>
+            {isAssetIndexing ? (
+              <div className="asset-library-connect__progress">
+                <div
+                  aria-label="Прогресс индексации"
+                  aria-valuemax={Math.max(assetLibraryStore.snapshot.progress.discoveredCount, 1)}
+                  aria-valuemin={0}
+                  aria-valuenow={assetLibraryStore.snapshot.progress.processedCount}
+                  className="asset-library-connect__track"
+                  role="progressbar"
+                >
+                  <span style={{ width: getAssetIndexProgressWidth(assetLibraryStore.snapshot) }} />
+                </div>
+                <small>
+                  {assetLibraryStore.snapshot.progress.processedCount} /{' '}
+                  {assetLibraryStore.snapshot.progress.discoveredCount}
+                  {assetLibraryStore.snapshot.progress.currentFileName
+                    ? ` · ${assetLibraryStore.snapshot.progress.currentFileName}`
+                    : ''}
+                </small>
+              </div>
+            ) : (
+              <p className="asset-library-connect__summary">
+                {assetLibraryStore.snapshot.progress.message ??
+                  'Оригиналы остаются на месте; приложение создаёт только каталог и миниатюры.'}
+              </p>
+            )}
+            <div className="asset-library-connect__actions">
+              <button
+                disabled={isAssetIndexing || assetLibraryStore.status === 'working'}
+                onClick={() => void assetLibraryStore.connectDirectory()}
+                type="button"
+              >
+                Подключить папку
+              </button>
+              {isAssetIndexing ? (
+                <button
+                  className="asset-library-connect__stop"
+                  disabled={assetLibraryStore.snapshot.progress.status === 'cancelling'}
+                  onClick={() => void assetLibraryStore.cancelIndexing()}
+                  type="button"
+                >
+                  Остановить
+                </button>
+              ) : (
+                <button
+                  disabled={!assetLibrarySource || assetLibraryStore.status === 'working'}
+                  onClick={() => assetLibrarySource && void assetLibraryStore.startIndexing(assetLibrarySource.id)}
+                  type="button"
+                >
+                  Пересканировать
+                </button>
+              )}
+            </div>
+            {assetLibraryStore.lastError ? (
+              <p className="asset-library-connect__error" role="alert">{assetLibraryStore.lastError}</p>
+            ) : null}
+          </section>
+
           <p className={lastError ? 'project-actions__status project-actions__status--error' : 'project-actions__status'}>
             {lastError ?? actionMessage}
           </p>
@@ -326,6 +420,58 @@ export function ProjectStartPage({ campaignsStore, onLaunchProject }: ProjectSta
       ) : null}
     </main>
   )
+}
+
+function getAssetLibraryTone(status: AssetIndexJobStatus): 'neutral' | 'active' | 'ready' | 'danger' {
+  if (status === 'running' || status === 'cancelling') {
+    return 'active'
+  }
+  if (status === 'completed') {
+    return 'ready'
+  }
+  if (status === 'failed') {
+    return 'danger'
+  }
+  return 'neutral'
+}
+
+function getAssetLibraryStatusLabel(status: AssetIndexJobStatus, sourceCount: number): string {
+  if (status === 'running') {
+    return 'Индексация'
+  }
+  if (status === 'cancelling') {
+    return 'Остановка'
+  }
+  if (status === 'completed') {
+    return 'Готово'
+  }
+  if (status === 'failed') {
+    return 'Ошибка'
+  }
+  return sourceCount > 0 ? `${sourceCount} ${getAssetSourceCountLabel(sourceCount)}` : 'Не подключена'
+}
+
+function getAssetIndexProgressWidth(snapshot: AssetLibrarySnapshot): string {
+  const { discoveredCount, processedCount } = snapshot.progress
+  if (discoveredCount === 0) {
+    return '8%'
+  }
+  return `${Math.max(8, Math.min(100, (processedCount / discoveredCount) * 100))}%`
+}
+
+function getAssetSourceCountLabel(count: number): string {
+  const lastTwoDigits = count % 100
+  const lastDigit = count % 10
+  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) {
+    return 'источников'
+  }
+  if (lastDigit === 1) {
+    return 'источник'
+  }
+  if (lastDigit >= 2 && lastDigit <= 4) {
+    return 'источника'
+  }
+  return 'источников'
 }
 
 interface ProjectCardProps {

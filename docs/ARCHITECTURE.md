@@ -184,22 +184,27 @@ Storage layer находится в `src/main/storage`.
 
 ## Перенос проектов
 
-`ProjectTransferService` в main process реализует первый versioned формат `campaign.arcane-campaign`.
+`ProjectTransferService` в main process записывает формат `campaign.arcane-campaign` версии 2 и сохраняет совместимый импорт версии 1.
 
 Экспорт:
 
 1. Загружает актуальный campaign JSON через `StorageService`.
-2. Читает прикреплённые локальные `file:` ассеты, вычисляет SHA-256 и заменяет absolute paths внутренними `arcane-project-asset:` ссылками.
-3. Сохраняет встроенные `data:` ассеты непосредственно в JSON кампании.
-4. Записывает пакет через temporary file и rename.
+2. `CampaignExportPlanner` обходит фоны и объекты сцен, токены, портреты, handouts и player projection, затем добавляет ассеты с `exportPolicy: always`.
+3. Разрешает `managed`, legacy `file:` и встроенные `data:` источники, проверяет размер/SHA-256 и объединяет одинаковые blob по checksum.
+4. Возвращает renderer одноразовый preview token, состав ассетов, число уникальных blob и общий размер.
+5. После подтверждения повторно проверяет campaign revision и фактические bytes, строит portable campaign без неиспользуемых ассетов и absolute paths.
+6. Записывает package version 2 через temporary file и rename. Manifest разделяет логические asset entries и уникальные blob entries, а payload хранит каждый SHA-256 один раз.
 
 Импорт:
 
-1. Проверяет format/version, минимальный campaign contract, безопасные имена, base64 и SHA-256.
-2. При конфликте существующего JSON или папки создаёт новый campaign id.
-3. Пишет файлы в staging directory и только затем подключает папку ассетов.
-4. Перепривязывает пути и campaign id во всех campaign-owned сущностях.
-5. При ошибке удаляет staging и неполные результаты.
+1. Выбирает versioned reader и до записи проверяет format/schema, campaign contract, уникальность id/SHA/path, безопасные относительные пути, base64, размер и checksum всех blob.
+2. При конфликте существующего JSON создаёт новый campaign id.
+3. Публикует проверенные bytes через `ManagedAssetStore`: существующий SHA-256 переиспользуется, новый устанавливается атомарно.
+4. Перепривязывает asset references и campaign id во всех campaign-owned сущностях, сохраняет JSON и синхронизирует campaign bindings.
+5. Возвращает отчёт о новых, дедуплицированных, пропущенных и повреждённых blob.
+6. При ошибке удаляет неполную кампанию и только созданные unreferenced blob. Version 1 проходит тот же managed-store import path после legacy-валидации.
+
+Preview является частью контракта записи, а не приблизительной оценкой. Token нельзя использовать повторно; изменение кампании, размера или checksum источника после preview возвращает `preview-outdated` и не создаёт пакет.
 
 Renderer не читает файлы напрямую: native dialogs и transfer service доступны только через typed IPC/preload API.
 
@@ -215,7 +220,7 @@ RoadMap фиксирует три разных уровня, которые не
 
 Фоновый indexer живёт в main process/worker boundary, рекурсивно сканирует подключённые папки, строит миниатюры и обновляет SQLite транзакциями. Renderer получает только состояние очереди и страницы результатов для Asset Manager, поэтому большая библиотека не блокирует UI.
 
-Развитый экспорт определяет транзитивно используемые сценами, токенами, handouts и player projection ассеты, добавляет явно отмеченные дополнительные файлы и кладёт каждый уникальный SHA-256 в пакет один раз. Package manifest хранит только относительные безопасные пути и checksums; импорт сначала валидирует весь manifest, а затем дедуплицирует файлы в managed store.
+Экспорт версии 2 определяет транзитивно используемые сценами, токенами, handouts и player projection ассеты, добавляет явно отмеченные дополнительные файлы и кладёт каждый уникальный SHA-256 в пакет один раз. Package manifest хранит только относительные безопасные пути и checksums; импорт сначала валидирует весь manifest, а затем дедуплицирует файлы в managed store.
 
 ### Фундамент этапа 17
 
@@ -225,7 +230,7 @@ RoadMap фиксирует три разных уровня, которые не
 - `legacy-file` сохраняет текущий `file:` URL до copy-on-use миграции;
 - `managed` хранит SHA-256 и переносимые метаданные без absolute path.
 
-`migrateLegacyCampaignAssetReferences` lossless добавляет `storageRef` и default export policy `when-used` при чтении и записи JSON. Исходный `filePath` при этом не меняется. При экспорте package version 1 legacy `storageRef` удаляется вместе с absolute path, а после импорта строится заново для нового локального URL.
+`migrateLegacyCampaignAssetReferences` lossless добавляет `storageRef` и default export policy `when-used` при чтении и записи JSON. Исходный `filePath` при этом не меняется. Новый экспорт версии 2 преобразует выбранные legacy references в переносимые managed references без absolute path. Reader версии 1 сохраняется только для обратной совместимости и после импорта также создаёт managed references.
 
 Main process использует три driver-neutral контракта:
 

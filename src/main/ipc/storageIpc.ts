@@ -6,6 +6,7 @@ import type {
   CampaignsDirectoryInfo,
   CampaignsDirectorySelectionResult,
   ProjectExportResult,
+  ProjectExportPreviewResult,
   ProjectImportResult,
 } from '../../shared/types/index.js'
 import type { ProjectTransferService } from '../projects/ProjectTransferService.js'
@@ -88,8 +89,14 @@ export function registerStorageIpc(
   })
 
   ipcMain.handle(
+    IPC_CHANNELS.storage.previewProjectExport,
+    (_event, campaignId: CampaignId): Promise<ProjectExportPreviewResult> =>
+      projectTransferService.previewCampaignExport(campaignId),
+  )
+
+  ipcMain.handle(
     IPC_CHANNELS.storage.exportProject,
-    async (event, campaignId: CampaignId): Promise<ProjectExportResult> => {
+    async (event, campaignId: CampaignId, previewToken: string): Promise<ProjectExportResult> => {
       const campaign = await storageService.loadCampaign(campaignId)
 
       if (campaign === null) {
@@ -103,7 +110,7 @@ export function registerStorageIpc(
 
       return targetFilePath === null
         ? { ok: false, reason: 'cancelled' }
-        : projectTransferService.exportCampaign(campaignId, targetFilePath)
+        : projectTransferService.exportCampaign(campaignId, targetFilePath, previewToken)
     },
   )
 }

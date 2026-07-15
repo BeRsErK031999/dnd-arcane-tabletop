@@ -8,6 +8,7 @@ export const IPC_CHANNELS = {
     saveCampaign: 'storage:saveCampaign',
     deleteCampaign: 'storage:deleteCampaign',
     importProject: 'storage:importProject',
+    previewProjectExport: 'storage:previewProjectExport',
     exportProject: 'storage:exportProject',
   },
   assets: {

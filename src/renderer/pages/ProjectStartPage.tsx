@@ -4,6 +4,7 @@ import type {
   AssetLibrarySnapshot,
   CampaignId,
   CampaignSummary,
+  ProjectExportPreview,
 } from '@shared/types'
 import type { CampaignsStore } from '@renderer/stores/useCampaignsStore'
 import { useAssetLibraryStore } from '@renderer/stores/useAssetLibraryStore'
@@ -13,7 +14,7 @@ interface ProjectStartPageProps {
   onLaunchProject: (campaignId: CampaignId) => void
 }
 
-type ProjectDialog = 'create' | 'delete' | null
+type ProjectDialog = 'create' | 'delete' | 'export' | null
 
 export function ProjectStartPage({ campaignsStore, onLaunchProject }: ProjectStartPageProps) {
   const assetLibraryStore = useAssetLibraryStore()
@@ -28,11 +29,13 @@ export function ProjectStartPage({ campaignsStore, onLaunchProject }: ProjectSta
     openCampaign,
     deleteSelectedCampaign,
     importProject,
+    previewSelectedProjectExport,
     exportSelectedProject,
   } = campaignsStore
   const [dialog, setDialog] = useState<ProjectDialog>(null)
   const [projectName, setProjectName] = useState('')
   const [projectDescription, setProjectDescription] = useState('')
+  const [exportPreview, setExportPreview] = useState<ProjectExportPreview | null>(null)
   const [actionMessage, setActionMessage] = useState(() =>
     selectedCampaign
       ? `Проект «${selectedCampaign.name}» выбран.`
@@ -117,24 +120,42 @@ export function ProjectStartPage({ campaignsStore, onLaunchProject }: ProjectSta
 
     setActionMessage(
       result.campaignIdChanged
-        ? `Проект «${result.campaign.name}» импортирован с новым внутренним ID.`
-        : `Проект «${result.campaign.name}» импортирован и выбран.`,
+        ? `Проект «${result.campaign.name}» импортирован с новым внутренним ID. Повторно использовано blob: ${result.deduplicatedBlobCount}.`
+        : `Проект «${result.campaign.name}» импортирован и выбран. Повторно использовано blob: ${result.deduplicatedBlobCount}.`,
     )
   }
 
+  async function handlePreviewProjectExport(): Promise<void> {
+    const result = await previewSelectedProjectExport()
+
+    if (!result.ok) {
+      return
+    }
+
+    setExportPreview(result.preview)
+    setDialog('export')
+  }
+
   async function handleExportProject(): Promise<void> {
-    const result = await exportSelectedProject()
+    if (!exportPreview) {
+      return
+    }
+    const result = await exportSelectedProject(exportPreview.token)
 
     if (!result.ok) {
       if (result.reason === 'cancelled') {
         setActionMessage('Экспорт проекта отменён.')
       }
+      setDialog(null)
+      setExportPreview(null)
       return
     }
 
     setActionMessage(
-      `Проект экспортирован: ${result.exportedAssetCount} ${getAssetCountLabel(result.exportedAssetCount)} в автономном пакете.`,
+      `Проект экспортирован: ${result.exportedAssetCount} ${getAssetCountLabel(result.exportedAssetCount)}, ${result.exportedBlobCount} уникальных blob, ${formatFileSize(result.totalByteSize)}.`,
     )
+    setDialog(null)
+    setExportPreview(null)
   }
 
   return (
@@ -196,7 +217,7 @@ export function ProjectStartPage({ campaignsStore, onLaunchProject }: ProjectSta
             <button
               className="project-action"
               disabled={selectedCampaign === null || isBusy}
-              onClick={() => void handleExportProject()}
+              onClick={() => void handlePreviewProjectExport()}
               title="Экспортировать выбранный проект в .arcane-campaign"
               type="button"
             >
@@ -418,6 +439,88 @@ export function ProjectStartPage({ campaignsStore, onLaunchProject }: ProjectSta
           </section>
         </div>
       ) : null}
+
+      {dialog === 'export' && exportPreview ? (
+        <div className="project-dialog-backdrop" role="presentation">
+          <section
+            aria-labelledby="export-project-title"
+            aria-modal="true"
+            className="project-dialog project-dialog--export"
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                setDialog(null)
+                setExportPreview(null)
+              }
+            }}
+            role="dialog"
+          >
+            <button
+              aria-label="Закрыть предварительный просмотр экспорта"
+              autoFocus
+              className="project-dialog__close"
+              onClick={() => {
+                setDialog(null)
+                setExportPreview(null)
+              }}
+              type="button"
+            >
+              ×
+            </button>
+            <span className="project-actions__kicker">Автономный пакет</span>
+            <h2 id="export-project-title">Состав экспорта</h2>
+            <p>В пакет попадут используемые материалы и ассеты с флагом «Всегда добавлять».</p>
+
+            <dl className="project-export-summary">
+              <div><dt>Ассеты</dt><dd>{exportPreview.assets.length}</dd></div>
+              <div><dt>Уникальные blob</dt><dd>{exportPreview.uniqueBlobCount}</dd></div>
+              <div><dt>Объём файлов</dt><dd>{formatFileSize(exportPreview.totalByteSize)}</dd></div>
+            </dl>
+
+            <div className="project-export-breakdown">
+              <span>Используются: {exportPreview.usedAssetCount}</span>
+              <span>Добавлены вручную: {exportPreview.additionalAssetCount}</span>
+              <span>Встроены в JSON: {exportPreview.embeddedAssetCount}</span>
+            </div>
+
+            {exportPreview.assets.length > 0 ? (
+              <ul className="project-export-assets">
+                {exportPreview.assets.map((asset) => (
+                  <li key={asset.assetId}>
+                    <div>
+                      <strong>{asset.name}</strong>
+                      <span>{asset.kind} · {asset.inclusion === 'used' ? 'используется' : 'добавлен вручную'}</span>
+                    </div>
+                    <small>{formatFileSize(asset.byteSize)}</small>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="project-export-empty">Кампания не содержит используемых или дополнительно выбранных ассетов.</p>
+            )}
+
+            <div className="project-dialog__actions">
+              <button
+                className="project-dialog__secondary"
+                onClick={() => {
+                  setDialog(null)
+                  setExportPreview(null)
+                }}
+                type="button"
+              >
+                Отмена
+              </button>
+              <button
+                className="project-dialog__primary"
+                disabled={isBusy}
+                onClick={() => void handleExportProject()}
+                type="button"
+              >
+                {isBusy ? 'Собираем пакет...' : 'Выбрать файл и экспортировать'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   )
 }
@@ -564,4 +667,14 @@ function getAssetCountLabel(count: number): string {
   }
 
   return 'ассетов'
+}
+
+function formatFileSize(byteSize: number): string {
+  if (byteSize < 1024) {
+    return `${byteSize} Б`
+  }
+  if (byteSize < 1024 * 1024) {
+    return `${(byteSize / 1024).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} КБ`
+  }
+  return `${(byteSize / (1024 * 1024)).toLocaleString('ru-RU', { maximumFractionDigits: 1 })} МБ`
 }

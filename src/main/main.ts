@@ -25,10 +25,10 @@ async function bootstrap(): Promise<void> {
 
   const campaignsDirectory = getCampaignsDirectory()
   const storageService = new JsonStorageService(campaignsDirectory)
-  const projectTransferService = new ProjectTransferService(storageService)
   const assetLibraryDirectory = getAssetLibraryDirectory()
   const assetCatalog = new SqlJsAssetCatalog(path.join(assetLibraryDirectory, 'asset-catalog.sqlite'))
   const managedAssetStore = new FileSystemManagedAssetStore(getManagedAssetStoreDirectory(), assetCatalog)
+  const projectTransferService = new ProjectTransferService(storageService, managedAssetStore)
   const assetImportService = new AssetImportService(managedAssetStore, pickImageFile, assetCatalog)
   const assetLibraryIndexer = new AssetLibraryIndexer(
     assetCatalog,

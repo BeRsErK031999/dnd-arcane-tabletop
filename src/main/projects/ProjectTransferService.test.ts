@@ -4,225 +4,283 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { Campaign } from '../../shared/types/index.js'
+import type { Asset, Campaign } from '../../shared/types/index.js'
+import { FileSystemManagedAssetStore } from '../assets/FileSystemManagedAssetStore.js'
+import { SqlJsAssetCatalog } from '../assets/catalog/SqlJsAssetCatalog.js'
 import { JsonStorageService } from '../storage/JsonStorageService.js'
 import { createReferenceCampaign } from '../storage/referenceCampaignSeed.js'
 import { ProjectTransferService } from './ProjectTransferService.js'
 
 const tempDirectories: string[] = []
+const openCatalogs: SqlJsAssetCatalog[] = []
 
 afterEach(async () => {
+  await Promise.all(openCatalogs.splice(0).map((catalog) => catalog.close()))
   await Promise.all(tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
 })
 
 describe('ProjectTransferService', () => {
-  it('exports and imports a versioned autonomous package with SHA-256 asset integrity', async () => {
+  it('previews, exports and imports a deduplicated version 2 package', async () => {
     const sourceDirectory = await createTempDirectory()
     const targetDirectory = await createTempDirectory()
     const transferDirectory = await createTempDirectory()
-    const sourceStorage = new JsonStorageService(sourceDirectory)
-    const targetStorage = new JsonStorageService(targetDirectory)
-    const transferService = new ProjectTransferService(sourceStorage)
+    const source = await createTransferContext(sourceDirectory)
+    const target = await createTransferContext(targetDirectory)
     const assetContents = Buffer.from('portable-map-binary')
-    const campaign = await createCampaignWithLocalMap(sourceDirectory, assetContents)
+    const campaign = await createCampaignWithExportPolicies(sourceDirectory, assetContents, source.managedStore)
     const packagePath = path.join(transferDirectory, 'grot.arcane-campaign')
+    await source.storage.saveCampaign(campaign)
 
-    await sourceStorage.initialize()
-    await targetStorage.initialize()
-    await sourceStorage.saveCampaign(campaign)
+    const previewResult = await source.service.previewCampaignExport(campaign.id)
+    expect(previewResult).toMatchObject({
+      ok: true,
+      preview: {
+        usedAssetCount: 2,
+        additionalAssetCount: 1,
+        embeddedAssetCount: 1,
+        uniqueBlobCount: 1,
+        totalByteSize: expect.any(Number),
+      },
+    })
+    if (!previewResult.ok) {
+      return
+    }
+    expect(previewResult.preview.assets.map((asset) => asset.assetId)).toEqual([
+      'asset-reference-grotto-map',
+      'asset-reference-merchant-letter',
+      'asset-always-copy',
+    ])
+    expect(previewResult.preview.assets.map((asset) => asset.storage)).toEqual([
+      'managed',
+      'embedded-data',
+      'legacy-file',
+    ])
 
-    const exportResult = await transferService.exportCampaign(campaign.id, packagePath)
-
-    expect(exportResult).toEqual({
+    const exportResult = await source.service.exportCampaign(campaign.id, packagePath, previewResult.preview.token)
+    expect(exportResult).toMatchObject({
       ok: true,
       campaignId: campaign.id,
       filePath: packagePath,
-      exportedAssetCount: 1,
+      exportedAssetCount: 3,
+      exportedBlobCount: 1,
     })
-    await expect(transferService.exportCampaign(campaign.id, packagePath)).resolves.toMatchObject({ ok: true })
+    await expect(source.service.exportCampaign(campaign.id, packagePath, previewResult.preview.token)).resolves.toEqual({
+      ok: false,
+      reason: 'preview-outdated',
+    })
 
-    const projectPackage = JSON.parse(await readFile(packagePath, 'utf8')) as PortablePackageFixture
+    const projectPackage = JSON.parse(await readFile(packagePath, 'utf8')) as PortablePackageV2Fixture
     expect(projectPackage.format).toBe('dnd-arcane-tabletop-campaign')
-    expect(projectPackage.version).toBe(1)
-    expect(projectPackage.assets).toEqual([
-      expect.objectContaining({
-        assetId: campaign.assets[0]?.id,
-        fileName: 'grot-map.png',
-        sha256: createHash('sha256').update(assetContents).digest('hex'),
-        dataBase64: assetContents.toString('base64'),
-      }),
-    ])
-    expect(projectPackage.campaign.assets[0]?.filePath).toBe(
-      `arcane-project-asset:${encodeURIComponent(campaign.assets[0]?.id ?? '')}`,
-    )
-    expect(projectPackage.campaign.assets[0]?.storageRef).toBeUndefined()
+    expect(projectPackage.version).toBe(2)
+    expect(projectPackage.manifest.assets).toHaveLength(2)
+    expect(projectPackage.manifest.blobs).toHaveLength(1)
+    expect(projectPackage.blobs).toHaveLength(1)
+    expect(projectPackage.manifest.assets[0]?.relativePath).toBe(projectPackage.manifest.assets[1]?.relativePath)
+    expect(projectPackage.campaign.assets.some((asset) => asset.id === 'asset-unused')).toBe(false)
+    expect(JSON.stringify(projectPackage)).not.toContain(sourceDirectory.replace(/\\/g, '\\\\'))
 
-    const importResult = await new ProjectTransferService(targetStorage).importCampaign(packagePath)
-
-    expect(importResult.ok).toBe(true)
-
-    if (!importResult.ok) {
-      return
-    }
-
-    expect(importResult.campaignIdChanged).toBe(false)
-    expect(importResult.importedAssetCount).toBe(1)
-    const importedMap = importResult.campaign.assets[0]
-    expect(importedMap?.filePath.startsWith('file:')).toBe(true)
-
-    if (!importedMap) {
-      throw new Error('Imported campaign is missing its map asset')
-    }
-
-    await expect(readFile(fileURLToPath(importedMap.filePath))).resolves.toEqual(assetContents)
-    expect(importedMap.storageRef).toEqual({ kind: 'legacy-file', fileUrl: importedMap.filePath })
-    expect(importResult.campaign.playerScreenState.sceneCanvas?.backgroundAsset?.filePath).toBe(importedMap.filePath)
-    expect(importResult.campaign.assets[1]?.filePath.startsWith('data:')).toBe(true)
-    expect(importResult.campaign.assets[1]?.storageRef?.kind).toBe('embedded-data')
-    await expect(targetStorage.loadCampaign(campaign.id)).resolves.toEqual(importResult.campaign)
-  })
-
-  it('assigns a new campaign id on conflict and rewrites every campaign-owned entity', async () => {
-    const directory = await createTempDirectory()
-    const transferDirectory = await createTempDirectory()
-    const storage = new JsonStorageService(directory)
-    const campaign = await createCampaignWithLocalMap(directory, Buffer.from('conflict-map'))
-    const packagePath = path.join(transferDirectory, 'conflict.arcane-campaign')
-    const transferService = new ProjectTransferService(storage)
-
-    await storage.initialize()
-    await storage.saveCampaign(campaign)
-    await expect(transferService.exportCampaign(campaign.id, packagePath)).resolves.toMatchObject({ ok: true })
-
-    const importResult = await transferService.importCampaign(packagePath)
-
-    expect(importResult.ok).toBe(true)
-
-    if (!importResult.ok) {
-      return
-    }
-
-    expect(importResult.campaignIdChanged).toBe(true)
-    expect(importResult.campaign.id).not.toBe(campaign.id)
-    expect(importResult.campaign.scenes.every((scene) => scene.campaignId === importResult.campaign.id)).toBe(true)
-    expect(importResult.campaign.assets.every((asset) => asset.campaignId === importResult.campaign.id)).toBe(true)
-    expect(importResult.campaign.characterCards.every((card) => card.campaignId === importResult.campaign.id)).toBe(true)
-    expect(importResult.campaign.notes.every((note) => note.campaignId === importResult.campaign.id)).toBe(true)
-    expect(importResult.campaign.combatState.campaignId).toBe(importResult.campaign.id)
-    expect(importResult.campaign.playerScreenState.campaignId).toBe(importResult.campaign.id)
-    await expect(storage.loadCampaign(campaign.id)).resolves.toMatchObject({
-      id: campaign.id,
-      name: campaign.name,
-      assets: [
-        expect.objectContaining({
-          id: campaign.assets[0]?.id,
-          filePath: campaign.assets[0]?.filePath,
-        }),
-        expect.objectContaining({ id: campaign.assets[1]?.id }),
-      ],
+    const importResult = await target.service.importCampaign(packagePath)
+    expect(importResult).toMatchObject({
+      ok: true,
+      importedAssetCount: 3,
+      importedBlobCount: 1,
+      deduplicatedBlobCount: 0,
+      damagedBlobCount: 0,
+      packageVersion: 2,
+      campaignIdChanged: false,
     })
-    await expect(storage.loadCampaign(importResult.campaign.id)).resolves.toEqual(importResult.campaign)
+    if (!importResult.ok) {
+      return
+    }
+    const importedFileAssets = importResult.campaign.assets.filter((asset) => asset.storageRef?.kind === 'managed')
+    expect(importedFileAssets).toHaveLength(2)
+    expect(importedFileAssets[0]?.filePath).toBe(importedFileAssets[1]?.filePath)
+    expect(importResult.campaign.assets.find((asset) => asset.kind === 'handout')?.storageRef?.kind).toBe('embedded-data')
+    await expect(readFile(fileURLToPath(importedFileAssets[0]!.filePath))).resolves.toEqual(assetContents)
+
+    const duplicateImport = await target.service.importCampaign(packagePath)
+    expect(duplicateImport).toMatchObject({
+      ok: true,
+      importedBlobCount: 0,
+      deduplicatedBlobCount: 1,
+      campaignIdChanged: true,
+      packageVersion: 2,
+    })
+    if (duplicateImport.ok) {
+      expect(duplicateImport.campaign.scenes.every((scene) => scene.campaignId === duplicateImport.campaign.id)).toBe(true)
+      expect(duplicateImport.campaign.assets.every((asset) => asset.campaignId === duplicateImport.campaign.id)).toBe(true)
+      expect(duplicateImport.campaign.combatState.campaignId).toBe(duplicateImport.campaign.id)
+    }
   })
 
-  it('rejects unsupported versions, tampered asset bytes, and unsafe projection paths', async () => {
+  it('imports a version 1 package into the managed store', async () => {
+    const targetDirectory = await createTempDirectory()
+    const transferDirectory = await createTempDirectory()
+    const target = await createTransferContext(targetDirectory)
+    const contents = Buffer.from('legacy-package-map')
+    const legacyPackage = createLegacyPackage(contents)
+    const packagePath = path.join(transferDirectory, 'legacy.arcane-campaign')
+    await writeFile(packagePath, JSON.stringify(legacyPackage), 'utf8')
+
+    const result = await target.service.importCampaign(packagePath)
+    expect(result).toMatchObject({
+      ok: true,
+      importedAssetCount: 1,
+      importedBlobCount: 1,
+      deduplicatedBlobCount: 0,
+      packageVersion: 1,
+    })
+    if (!result.ok) {
+      return
+    }
+    const importedMap = result.campaign.assets[0]
+    expect(importedMap?.storageRef).toMatchObject({
+      kind: 'managed',
+      sha256: createHash('sha256').update(contents).digest('hex'),
+    })
+    expect(result.campaign.playerScreenState.sceneCanvas?.backgroundAsset?.filePath).toBe(importedMap?.filePath)
+    await expect(readFile(fileURLToPath(importedMap!.filePath))).resolves.toEqual(contents)
+  })
+
+  it('rejects outdated previews, unsupported versions and damaged packages before publication', async () => {
     const sourceDirectory = await createTempDirectory()
     const targetDirectory = await createTempDirectory()
     const transferDirectory = await createTempDirectory()
-    const sourceStorage = new JsonStorageService(sourceDirectory)
-    const targetStorage = new JsonStorageService(targetDirectory)
-    const assetContents = Buffer.from('original-map')
-    const campaign = await createCampaignWithLocalMap(sourceDirectory, assetContents)
+    const source = await createTransferContext(sourceDirectory)
+    const target = await createTransferContext(targetDirectory)
+    const campaign = await createCampaignWithExportPolicies(sourceDirectory, Buffer.from('original-map'))
     const packagePath = path.join(transferDirectory, 'campaign.arcane-campaign')
+    await source.storage.saveCampaign(campaign)
 
-    await sourceStorage.initialize()
-    await targetStorage.initialize()
-    await sourceStorage.saveCampaign(campaign)
-    await new ProjectTransferService(sourceStorage).exportCampaign(campaign.id, packagePath)
+    const stalePreview = await source.service.previewCampaignExport(campaign.id)
+    if (!stalePreview.ok) {
+      throw new Error('Preview unexpectedly failed')
+    }
+    await source.storage.saveCampaign({ ...campaign, updatedAt: '2026-07-16T00:00:00.000Z' })
+    await expect(source.service.exportCampaign(campaign.id, packagePath, stalePreview.preview.token)).resolves.toEqual({
+      ok: false,
+      reason: 'preview-outdated',
+    })
 
-    const projectPackage = JSON.parse(await readFile(packagePath, 'utf8')) as PortablePackageFixture
-    await writeFile(packagePath, JSON.stringify({ ...projectPackage, version: 999 }), 'utf8')
-    await expect(new ProjectTransferService(targetStorage).importCampaign(packagePath)).resolves.toEqual({
+    await source.storage.saveCampaign(campaign)
+    const changedFilePreview = await source.service.previewCampaignExport(campaign.id)
+    if (!changedFilePreview.ok) {
+      throw new Error('Preview unexpectedly failed')
+    }
+    await writeFile(path.join(sourceDirectory, 'grot-map.png'), Buffer.from('changed-after-preview'))
+    await expect(source.service.exportCampaign(campaign.id, packagePath, changedFilePreview.preview.token)).resolves.toEqual({
+      ok: false,
+      reason: 'preview-outdated',
+    })
+
+    await writeFile(path.join(sourceDirectory, 'grot-map.png'), Buffer.from('original-map'))
+    const preview = await source.service.previewCampaignExport(campaign.id)
+    if (!preview.ok) {
+      throw new Error('Preview unexpectedly failed')
+    }
+    await source.service.exportCampaign(campaign.id, packagePath, preview.preview.token)
+    const validPackage = JSON.parse(await readFile(packagePath, 'utf8')) as PortablePackageV2Fixture
+
+    await writeFile(packagePath, JSON.stringify({ ...validPackage, version: 999 }), 'utf8')
+    await expect(target.service.importCampaign(packagePath)).resolves.toEqual({
       ok: false,
       reason: 'unsupported-version',
     })
 
-    const [portableAsset] = projectPackage.assets
+    const damagedPackage = structuredClone(validPackage)
+    damagedPackage.blobs[0]!.dataBase64 = Buffer.from('tampered').toString('base64')
+    await writeFile(packagePath, JSON.stringify(damagedPackage), 'utf8')
+    await expect(target.service.importCampaign(packagePath)).resolves.toEqual({
+      ok: false,
+      reason: 'invalid-package',
+      damagedBlobCount: 1,
+    })
 
-    if (!portableAsset) {
-      throw new Error('Exported package is missing its portable asset')
-    }
-
-    portableAsset.dataBase64 = Buffer.from('tampered-map').toString('base64')
-    await writeFile(packagePath, JSON.stringify(projectPackage), 'utf8')
-    await expect(new ProjectTransferService(targetStorage).importCampaign(packagePath)).resolves.toEqual({
+    const unsafePackage = structuredClone(validPackage)
+    unsafePackage.manifest.blobs[0]!.relativePath = '../outside.png'
+    await writeFile(packagePath, JSON.stringify(unsafePackage), 'utf8')
+    await expect(target.service.importCampaign(packagePath)).resolves.toEqual({
       ok: false,
       reason: 'invalid-package',
     })
-
-    portableAsset.dataBase64 = assetContents.toString('base64')
-    const embeddedAsset = projectPackage.campaign.assets[1]
-
-    if (!embeddedAsset) {
-      throw new Error('Exported package is missing its embedded asset')
-    }
-
-    embeddedAsset.storageRef = {
-      kind: 'legacy-file',
-      fileUrl: 'file:///outside-library/secret.png',
-    }
-    await writeFile(packagePath, JSON.stringify(projectPackage), 'utf8')
-    await expect(new ProjectTransferService(targetStorage).importCampaign(packagePath)).resolves.toEqual({
-      ok: false,
-      reason: 'invalid-package',
-    })
-
-    embeddedAsset.storageRef = {
-      kind: 'embedded-data',
-    }
-    const projectedMap = projectPackage.campaign.playerScreenState.sceneCanvas?.backgroundAsset
-
-    if (!projectedMap) {
-      throw new Error('Exported package is missing its projected map')
-    }
-
-    projectedMap.filePath = 'file:///outside-library/map.png'
-    await writeFile(packagePath, JSON.stringify(projectPackage), 'utf8')
-    await expect(new ProjectTransferService(targetStorage).importCampaign(packagePath)).resolves.toEqual({
-      ok: false,
-      reason: 'invalid-package',
-    })
-    await expect(targetStorage.listCampaigns()).resolves.toEqual([])
+    await expect(target.storage.listCampaigns()).resolves.toEqual([])
+    await expect(target.catalog.listUnreferencedManagedBlobs()).resolves.toEqual([])
   })
 })
 
-interface PortablePackageFixture {
+interface TransferContext {
+  catalog: SqlJsAssetCatalog
+  managedStore: FileSystemManagedAssetStore
+  storage: JsonStorageService
+  service: ProjectTransferService
+}
+
+interface PortablePackageV2Fixture {
   format: string
   version: number
   campaign: Campaign
-  assets: Array<{
-    assetId: string
-    fileName: string
-    sha256: string
-    dataBase64: string
-  }>
+  manifest: {
+    assets: Array<{ assetId: string; relativePath: string }>
+    blobs: Array<{ sha256: string; relativePath: string }>
+  }
+  blobs: Array<{ sha256: string; relativePath: string; dataBase64: string }>
 }
 
-async function createCampaignWithLocalMap(directory: string, contents: Uint8Array): Promise<Campaign> {
+async function createTransferContext(directory: string): Promise<TransferContext> {
+  const storage = new JsonStorageService(path.join(directory, 'campaigns'))
+  const catalog = new SqlJsAssetCatalog(path.join(directory, 'asset-catalog.sqlite'))
+  openCatalogs.push(catalog)
+  const managedStore = new FileSystemManagedAssetStore(path.join(directory, 'managed-store'), catalog)
+  await storage.initialize()
+  await managedStore.initialize()
+  return {
+    catalog,
+    managedStore,
+    storage,
+    service: new ProjectTransferService(storage, managedStore),
+  }
+}
+
+async function createCampaignWithExportPolicies(
+  directory: string,
+  contents: Uint8Array,
+  managedStore?: FileSystemManagedAssetStore,
+): Promise<Campaign> {
   const campaign = createReferenceCampaign()
   const localAssetPath = path.join(directory, 'grot-map.png')
   const localAssetUrl = pathToFileURL(localAssetPath).toString()
-
   await writeFile(localAssetPath, contents)
 
-  const [mapAsset, ...otherAssets] = campaign.assets
-
-  if (!mapAsset || !campaign.playerScreenState.sceneCanvas?.backgroundAsset) {
-    throw new Error('Reference campaign is missing its map projection')
+  const [mapAsset, handoutAsset] = campaign.assets
+  if (!mapAsset || !handoutAsset || !campaign.playerScreenState.sceneCanvas?.backgroundAsset) {
+    throw new Error('Reference campaign is missing export fixtures')
   }
+  const alwaysAsset: Asset = {
+    ...mapAsset,
+    id: 'asset-always-copy',
+    name: 'Резервная копия карты',
+    filePath: localAssetUrl,
+    exportPolicy: 'always',
+  }
+  const unusedAsset: Asset = {
+    ...mapAsset,
+    id: 'asset-unused',
+    name: 'Неиспользуемый ассет',
+    filePath: localAssetUrl,
+    exportPolicy: 'when-used',
+  }
+  const managedMap = managedStore
+    ? await createManagedAsset(mapAsset, localAssetPath, contents, managedStore)
+    : { ...mapAsset, filePath: localAssetUrl, exportPolicy: 'when-used' as const }
 
   return {
     ...campaign,
-    assets: [{ ...mapAsset, filePath: localAssetUrl }, ...otherAssets],
+    assets: [
+      managedMap,
+      { ...handoutAsset, exportPolicy: 'when-used' },
+      alwaysAsset,
+      unusedAsset,
+    ],
     playerScreenState: {
       ...campaign.playerScreenState,
       sceneCanvas: {
@@ -233,6 +291,72 @@ async function createCampaignWithLocalMap(directory: string, contents: Uint8Arra
         },
       },
     },
+  }
+}
+
+async function createManagedAsset(
+  asset: Asset,
+  sourceFilePath: string,
+  contents: Uint8Array,
+  managedStore: FileSystemManagedAssetStore,
+): Promise<Asset> {
+  const sha256 = createHash('sha256').update(contents).digest('hex')
+  const blob = await managedStore.put({
+    sourceFilePath,
+    sha256,
+    byteSize: contents.byteLength,
+    mimeType: 'image/png',
+    fileExtension: '.png',
+  })
+  const fileUrl = await managedStore.resolveFileUrl(blob.sha256)
+  if (!fileUrl) {
+    throw new Error('Managed export fixture could not be resolved')
+  }
+  return {
+    ...asset,
+    filePath: fileUrl,
+    exportPolicy: 'when-used',
+    storageRef: {
+      kind: 'managed',
+      sha256,
+      fileName: 'grot-map.png',
+      mimeType: 'image/png',
+      byteSize: contents.byteLength,
+    },
+  }
+}
+
+function createLegacyPackage(contents: Buffer): object {
+  const campaign = createReferenceCampaign()
+  const [mapAsset, handoutAsset] = campaign.assets
+  if (!mapAsset || !handoutAsset || !campaign.playerScreenState.sceneCanvas?.backgroundAsset) {
+    throw new Error('Reference campaign is missing legacy fixtures')
+  }
+  const portablePath = `arcane-project-asset:${encodeURIComponent(mapAsset.id)}`
+  return {
+    format: 'dnd-arcane-tabletop-campaign',
+    version: 1,
+    exportedAt: '2026-07-15T00:00:00.000Z',
+    campaign: {
+      ...campaign,
+      assets: [{ ...mapAsset, filePath: portablePath, storageRef: undefined }, handoutAsset],
+      playerScreenState: {
+        ...campaign.playerScreenState,
+        sceneCanvas: {
+          ...campaign.playerScreenState.sceneCanvas,
+          backgroundAsset: {
+            ...campaign.playerScreenState.sceneCanvas.backgroundAsset,
+            filePath: portablePath,
+          },
+        },
+      },
+    },
+    assets: [{
+      assetId: mapAsset.id,
+      fileName: 'legacy-map.png',
+      sha256: createHash('sha256').update(contents).digest('hex'),
+      dataBase64: contents.toString('base64'),
+    }],
   }
 }
 

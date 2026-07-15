@@ -20,6 +20,7 @@ import type {
   PlayerScreenState,
   PlayerScreenStatus,
   ProjectExportResult,
+  ProjectExportPreviewResult,
   ProjectImportResult,
   StartAssetIndexResult,
   CollectManagedAssetGarbageResult,
@@ -39,7 +40,8 @@ export interface DesktopApi {
     saveCampaign(campaign: Campaign): Promise<void>
     deleteCampaign(campaignId: CampaignId): Promise<void>
     importProject(): Promise<ProjectImportResult>
-    exportProject(campaignId: CampaignId): Promise<ProjectExportResult>
+    previewProjectExport(campaignId: CampaignId): Promise<ProjectExportPreviewResult>
+    exportProject(campaignId: CampaignId, previewToken: string): Promise<ProjectExportResult>
   }
   assets: {
     importImageAsset(request: ImportImageAssetRequest): Promise<ImportImageAssetResult>

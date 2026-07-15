@@ -14,6 +14,7 @@ import {
   type PlayerScreenState,
   type PlayerScreenStatus,
   type ProjectExportResult,
+  type ProjectExportPreviewResult,
   type ProjectImportResult,
 } from '@shared/types'
 
@@ -70,6 +71,27 @@ const browserFallbackApi: DesktopApi = {
       ok: false,
       reason: 'desktop-api-unavailable',
     }),
+    previewProjectExport: async (campaignId: CampaignId): Promise<ProjectExportPreviewResult> => {
+      const campaign = browserFallbackCampaigns.get(campaignId)
+      return campaign
+        ? {
+            ok: true,
+            preview: {
+              token: `browser-preview-${campaignId}`,
+              campaignId,
+              campaignName: campaign.name,
+              campaignUpdatedAt: campaign.updatedAt,
+              generatedAt: new Date().toISOString(),
+              assets: [],
+              usedAssetCount: 0,
+              additionalAssetCount: 0,
+              embeddedAssetCount: 0,
+              uniqueBlobCount: 0,
+              totalByteSize: 0,
+            },
+          }
+        : { ok: false, reason: 'campaign-not-found' }
+    },
     exportProject: async (): Promise<ProjectExportResult> => ({
       ok: false,
       reason: 'desktop-api-unavailable',

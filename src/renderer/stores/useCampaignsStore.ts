@@ -14,6 +14,7 @@ import type {
   NoteId,
   PlayerScreenCommandResult,
   ProjectExportResult,
+  ProjectExportPreviewResult,
   ProjectImportResult,
   ProjectTransferFailureReason,
   SceneCanvasFogRegionId,
@@ -574,7 +575,11 @@ export function useCampaignsStore() {
           return result
         }
 
-        setLastError(getProjectTransferErrorMessage(result.reason, 'import'))
+        setLastError(
+          result.damagedBlobCount
+            ? `Пакет повреждён: файлов с неверным размером или SHA-256 — ${result.damagedBlobCount}. Импорт не выполнялся.`
+            : getProjectTransferErrorMessage(result.reason, 'import'),
+        )
         setStatus('error')
         return result
       }
@@ -595,7 +600,7 @@ export function useCampaignsStore() {
     }
   }, [])
 
-  const exportSelectedProject = useCallback(async (): Promise<ProjectExportResult> => {
+  const previewSelectedProjectExport = useCallback(async (): Promise<ProjectExportPreviewResult> => {
     if (selectedCampaign === null) {
       setLastError('Нет выбранного проекта для экспорта.')
       return { ok: false, reason: 'campaign-not-found' }
@@ -607,14 +612,9 @@ export function useCampaignsStore() {
 
     try {
       await saveCampaignWithStatus(selectedCampaign)
-      const result = await desktopApi.storage.exportProject(selectedCampaign.id)
+      const result = await desktopApi.storage.previewProjectExport(selectedCampaign.id)
 
       if (!result.ok) {
-        if (result.reason === 'cancelled') {
-          setStatus('ready')
-          return result
-        }
-
         setLastError(getProjectTransferErrorMessage(result.reason, 'export'))
         setStatus('error')
         return result
@@ -624,11 +624,42 @@ export function useCampaignsStore() {
       setStatus('ready')
       return result
     } catch {
+      setLastError('Не удалось подготовить состав экспортного пакета.')
+      setStatus('error')
+      return { ok: false, reason: 'asset-read-failed' }
+    }
+  }, [clearAutosaveTimer, saveCampaignWithStatus, selectedCampaign])
+
+  const exportSelectedProject = useCallback(async (previewToken: string): Promise<ProjectExportResult> => {
+    if (selectedCampaign === null) {
+      setLastError('Нет выбранного проекта для экспорта.')
+      return { ok: false, reason: 'campaign-not-found' }
+    }
+
+    setStatus('saving')
+    setLastError(null)
+    clearAutosaveTimer()
+
+    try {
+      const result = await desktopApi.storage.exportProject(selectedCampaign.id, previewToken)
+      if (!result.ok) {
+        if (result.reason === 'cancelled') {
+          setStatus('ready')
+          return result
+        }
+        setLastError(getProjectTransferErrorMessage(result.reason, 'export'))
+        setStatus('error')
+        return result
+      }
+      setCampaigns(await desktopApi.storage.listCampaigns())
+      setStatus('ready')
+      return result
+    } catch {
       setLastError('Не удалось экспортировать проект.')
       setStatus('error')
       return { ok: false, reason: 'write-failed' }
     }
-  }, [clearAutosaveTimer, saveCampaignWithStatus, selectedCampaign])
+  }, [clearAutosaveTimer, selectedCampaign])
 
   const createScene = useCallback(
     async (name: string, description?: string): Promise<CampaignMutationResult> => {
@@ -1775,6 +1806,7 @@ export function useCampaignsStore() {
     saveSelectedCampaignToDirectory,
     deleteSelectedCampaign,
     importProject,
+    previewSelectedProjectExport,
     exportSelectedProject,
     createScene,
     activateScene,
@@ -1855,6 +1887,8 @@ function getProjectTransferErrorMessage(
       return 'Проект содержит неподдерживаемую ссылку на ассет.'
     case 'asset-read-failed':
       return 'Не удалось прочитать один из локальных ассетов проекта.'
+    case 'preview-outdated':
+      return 'Кампания или её ассеты изменились после предварительного просмотра. Откройте экспорт заново.'
     case 'desktop-api-unavailable':
       return 'Импорт и экспорт доступны только в desktop-приложении.'
     case 'campaign-not-found':

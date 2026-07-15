@@ -141,9 +141,27 @@ export class SqlJsAssetCatalog implements AssetIndexService, AssetCatalogMigrati
 
     const search = query.search?.trim()
     if (search) {
-      clauses.push('(indexed_assets.file_name LIKE ? ESCAPE \'\\\' OR indexed_assets.relative_path LIKE ? ESCAPE \'\\\')')
+      clauses.push(`(
+        unicode_lower(indexed_assets.file_name) LIKE unicode_lower(?) ESCAPE '\\' OR
+        unicode_lower(indexed_assets.relative_path) LIKE unicode_lower(?) ESCAPE '\\' OR
+        EXISTS (
+          SELECT 1 FROM indexed_asset_tags search_tag
+          WHERE search_tag.asset_id = indexed_assets.id AND
+            unicode_lower(search_tag.tag) LIKE unicode_lower(?) ESCAPE '\\'
+        )
+      )`)
       const pattern = `%${escapeLikePattern(search)}%`
-      parameters.push(pattern, pattern)
+      parameters.push(pattern, pattern, pattern)
+    }
+
+    if (query.minByteSize !== undefined) {
+      clauses.push('indexed_assets.byte_size >= ?')
+      parameters.push(Math.max(0, Math.trunc(query.minByteSize)))
+    }
+
+    if (query.maxByteSize !== undefined) {
+      clauses.push('indexed_assets.byte_size <= ?')
+      parameters.push(Math.max(0, Math.trunc(query.maxByteSize)))
     }
 
     for (const tag of normalizeTags(query.tags ?? [])) {
@@ -156,7 +174,7 @@ export class SqlJsAssetCatalog implements AssetIndexService, AssetCatalogMigrati
     const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
     const countRow = this.queryRows(`SELECT COUNT(*) AS total FROM indexed_assets ${whereClause}`, parameters)[0]
     const total = readNumber(countRow, 'total')
-    const limit = Math.max(1, Math.min(500, Math.trunc(query.limit)))
+    const limit = Math.max(1, Math.min(2_000, Math.trunc(query.limit)))
     const offset = Math.max(0, Math.trunc(query.offset))
     const rows = this.queryRows(
       `SELECT * FROM indexed_assets ${whereClause}
@@ -321,7 +339,9 @@ export class SqlJsAssetCatalog implements AssetIndexService, AssetCatalogMigrati
 
   private async persist(): Promise<void> {
     const temporaryPath = `${this.databaseFilePath}.tmp`
-    await writeFile(temporaryPath, this.requireDatabase().export())
+    const databaseBytes = this.requireDatabase().export()
+    this.registerFunctions()
+    await writeFile(temporaryPath, databaseBytes)
     try {
       await rename(temporaryPath, this.databaseFilePath)
     } catch (error) {
@@ -338,6 +358,12 @@ export class SqlJsAssetCatalog implements AssetIndexService, AssetCatalogMigrati
       throw new Error('Asset catalog is not initialized')
     }
     return this.database
+  }
+
+  private registerFunctions(): void {
+    this.requireDatabase().create_function('unicode_lower', (value: unknown) =>
+      typeof value === 'string' ? value.toLocaleLowerCase('ru') : value,
+    )
   }
 
   private queryRows(sql: string, parameters?: BindParams): ParamsObject[] {

@@ -1,5 +1,7 @@
 import type {
   Campaign,
+  AssetLibraryPage,
+  AssetLibraryQuery,
   AssetLibrarySnapshot,
   AssetLibrarySourceId,
   CancelAssetIndexResult,
@@ -9,6 +11,7 @@ import type {
   CampaignsDirectorySelectionResult,
   ImportImageAssetRequest,
   ImportImageAssetResult,
+  IndexedAssetId,
   ConnectAssetLibraryResult,
   PlayerScreenCommandResult,
   PlayerScreenOpenResult,
@@ -17,6 +20,7 @@ import type {
   ProjectExportResult,
   ProjectImportResult,
   StartAssetIndexResult,
+  UpdateIndexedAssetTagsResult,
 } from '../shared/types/index.js'
 
 export type DesktopEventUnsubscribe = () => void
@@ -41,6 +45,8 @@ export interface DesktopApi {
     connectDirectory(): Promise<ConnectAssetLibraryResult>
     startIndexing(sourceId: AssetLibrarySourceId): Promise<StartAssetIndexResult>
     cancelIndexing(): Promise<CancelAssetIndexResult>
+    queryAssets(query: AssetLibraryQuery): Promise<AssetLibraryPage>
+    updateTags(assetId: IndexedAssetId, tags: string[]): Promise<UpdateIndexedAssetTagsResult>
     onSnapshotChanged(listener: (snapshot: AssetLibrarySnapshot) => void): DesktopEventUnsubscribe
   }
   playerScreen: {

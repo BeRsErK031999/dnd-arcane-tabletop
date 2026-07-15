@@ -58,6 +58,37 @@ describe('SqlJsAssetCatalog', () => {
     await expect(catalog.getAsset(mapAsset.id)).resolves.toMatchObject({ availability: 'available' })
     await expect(catalog.getAsset(portraitAsset.id)).resolves.toMatchObject({ availability: 'missing' })
   })
+
+  it('searches unicode tags and applies byte-size boundaries', async () => {
+    const catalog = trackCatalog(new SqlJsAssetCatalog(await createDatabaseFilePath()))
+    const source = createSource()
+    const smallAsset = {
+      ...createAsset(source.id, 'maps/moon.png', ['Ночной Зал']),
+      byteSize: 800_000,
+    }
+    const largeAsset = {
+      ...createAsset(source.id, 'maps/castle.webp', ['крепость']),
+      byteSize: 12_000_000,
+    }
+    await catalog.initialize()
+    await catalog.saveSource(source)
+    await catalog.saveAssets([smallAsset, largeAsset], 'scan-1')
+
+    await expect(catalog.queryAssets({ search: 'НОЧНОЙ', offset: 0, limit: 20 })).resolves.toMatchObject({
+      total: 1,
+      items: [{ id: smallAsset.id }],
+    })
+    await expect(
+      catalog.queryAssets({ minByteSize: 10_000_000, availability: ['available'], offset: 0, limit: 20 }),
+    ).resolves.toMatchObject({
+      total: 1,
+      items: [{ id: largeAsset.id }],
+    })
+    await expect(catalog.queryAssets({ maxByteSize: 1_000_000, offset: 0, limit: 20 })).resolves.toMatchObject({
+      total: 1,
+      items: [{ id: smallAsset.id }],
+    })
+  })
 })
 
 async function createDatabaseFilePath(): Promise<string> {

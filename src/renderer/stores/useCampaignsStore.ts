@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { desktopApi } from '@renderer/services/desktopApi'
 import type {
   AssetId,
+  AssetLibraryItem,
   Campaign,
+  CampaignAssetExportPolicy,
   CampaignId,
   CampaignSummary,
   CampaignsDirectoryInfo,
@@ -27,6 +29,7 @@ import {
   createCampaignWithAssetPreview,
   createCampaignWithAssetTags,
   createCampaignWithImportedAsset,
+  createCampaignWithIndexedAsset,
 } from './assetFactory'
 import { createEmptyCampaign, createUpdatedCampaignMetadata } from './campaignFactory'
 import {
@@ -1626,6 +1629,48 @@ export function useCampaignsStore() {
     [saveCampaignWithStatus, selectedCampaign],
   )
 
+  const selectIndexedAsset = useCallback(
+    async (
+      indexedAsset: AssetLibraryItem,
+      kind: ImageAssetKind,
+      exportPolicy: CampaignAssetExportPolicy,
+    ): Promise<AssetMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для выбора ассета из общей библиотеки.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithIndexedAsset(
+          selectedCampaign,
+          indexedAsset,
+          kind,
+          exportPolicy,
+        )
+        const selectedAsset = updatedCampaign.assets.find(
+          (asset) =>
+            asset.storageRef?.kind === 'legacy-file' && asset.storageRef.indexedAssetId === indexedAsset.id,
+        )
+        if (!selectedAsset) {
+          throw new Error('indexed-asset-selection-failed')
+        }
+        await saveCampaignWithStatus(updatedCampaign)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign, assetId: selectedAsset.id }
+      } catch {
+        setLastError('Не удалось добавить ассет из общей библиотеки в кампанию.')
+        setStatus('error')
+        return { ok: false, reason: 'select-indexed-asset-failed' }
+      }
+    },
+    [saveCampaignWithStatus, selectedCampaign],
+  )
+
   const applyAssetToActiveScene = useCallback(
     async (assetId: AssetId): Promise<AssetMutationResult> => {
       if (selectedCampaign === null) {
@@ -1741,6 +1786,7 @@ export function useCampaignsStore() {
     setActiveSceneObjectVisibility,
     updateActiveSceneObjectTokenState,
     importImageAsset,
+    selectIndexedAsset,
     updateAssetTags,
     applyAssetToActiveScene,
     sendAssetToPlayers,

@@ -2,7 +2,10 @@ import type {
   Asset,
   AssetId,
   AssetKind,
+  AssetLibraryItem,
   Campaign,
+  CampaignAssetExportPolicy,
+  ImageAssetKind,
   IsoDateString,
   PlayerScreenState,
   Scene,
@@ -54,6 +57,55 @@ export function createCampaignWithImportedAsset(
               : scene,
           )
         : hydratedScenes,
+  }
+}
+
+export function createCampaignWithIndexedAsset(
+  campaign: Campaign,
+  indexedAsset: AssetLibraryItem,
+  kind: ImageAssetKind,
+  exportPolicy: CampaignAssetExportPolicy,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): Campaign {
+  if (indexedAsset.availability !== 'available' || !indexedAsset.fileUrl) {
+    throw new Error('indexed-asset-unavailable')
+  }
+
+  const existingAsset = campaign.assets.find(
+    (asset) => asset.storageRef?.kind === 'legacy-file' && asset.storageRef.indexedAssetId === indexedAsset.id,
+  )
+  const libraryAsset: Asset = {
+    id: existingAsset?.id ?? createCampaignAssetId(),
+    campaignId: campaign.id,
+    kind,
+    name: existingAsset?.name ?? createAssetName(indexedAsset.fileName),
+    filePath: indexedAsset.fileUrl,
+    storageRef: {
+      kind: 'legacy-file',
+      fileUrl: indexedAsset.fileUrl,
+      sha256: indexedAsset.sha256,
+      indexedAssetId: indexedAsset.id,
+    },
+    exportPolicy,
+    tags: normalizeAssetTags(indexedAsset.tags),
+    createdAt: existingAsset?.createdAt ?? updatedAt,
+    metadata: {
+      originalFileName: indexedAsset.fileName,
+      relativePath: indexedAsset.relativePath,
+      byteSize: indexedAsset.byteSize,
+      width: indexedAsset.width,
+      height: indexedAsset.height,
+      mimeType: indexedAsset.mimeType,
+      format: indexedAsset.format,
+    },
+  }
+
+  return {
+    ...campaign,
+    updatedAt,
+    assets: existingAsset
+      ? campaign.assets.map((asset) => (asset.id === existingAsset.id ? libraryAsset : normalizeAsset(asset)))
+      : [...campaign.assets.map(normalizeAsset), libraryAsset],
   }
 }
 
@@ -263,6 +315,15 @@ function createSceneAssetObjectId(): string {
   }
 
   return `object-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function createCampaignAssetId(): AssetId {
+  const randomId = globalThis.crypto?.randomUUID?.()
+  return randomId ? `asset-${randomId}` : `asset-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function createAssetName(fileName: string): string {
+  return fileName.replace(/\.[^.]+$/, '') || fileName
 }
 
 function createAssetDescription(asset: Asset): string {

@@ -1,5 +1,6 @@
 import type {
   Asset,
+  AssetLibraryQuery,
   AssetLibrarySource,
   AssetLibrarySourceId,
   CampaignAssetStorageReference,
@@ -9,15 +10,7 @@ import type {
   Sha256Digest,
 } from '../../shared/types/index.js'
 
-export interface IndexedAssetQuery {
-  sourceIds?: AssetLibrarySourceId[]
-  search?: string
-  tags?: string[]
-  formats?: string[]
-  availability?: IndexedAsset['availability'][]
-  offset: number
-  limit: number
-}
+export type IndexedAssetQuery = AssetLibraryQuery
 
 export interface IndexedAssetPage {
   items: IndexedAsset[]

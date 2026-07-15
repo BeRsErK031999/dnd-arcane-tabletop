@@ -86,6 +86,13 @@ const browserFallbackApi: DesktopApi = {
     connectDirectory: async () => ({ ok: false, reason: 'desktop-api-unavailable' }),
     startIndexing: async () => ({ ok: false, reason: 'desktop-api-unavailable' }),
     cancelIndexing: async () => ({ ok: true, snapshot: browserFallbackAssetLibrarySnapshot }),
+    queryAssets: async (query) => ({
+      items: [],
+      total: 0,
+      offset: query.offset,
+      limit: query.limit,
+    }),
+    updateTags: async () => ({ ok: false, reason: 'desktop-api-unavailable' }),
     onSnapshotChanged: () => () => undefined,
   },
   playerScreen: {

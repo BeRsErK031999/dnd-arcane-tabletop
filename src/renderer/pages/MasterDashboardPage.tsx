@@ -19,6 +19,7 @@ import type {
   SceneObjectMoveDirection,
 } from '@renderer/stores/sceneToolsFactory'
 import { SceneCanvas } from '@renderer/widgets/SceneCanvas'
+import { AssetManagerPanel } from '@renderer/widgets/AssetManagerPanel'
 import {
   createDefaultPlayerScreenState,
   type Asset,
@@ -49,7 +50,7 @@ import {
 
 type PlayerActionResult = PlayerScreenCommandResult | PlayerScreenOpenResult
 type RightPanelTab = 'assets' | 'characters' | 'notes'
-type WorkspaceSection = 'campaigns' | 'scenes' | 'combat' | 'notes' | 'players'
+type WorkspaceSection = 'campaigns' | 'scenes' | 'assets' | 'combat' | 'notes' | 'players'
 
 interface CharacterCardDraft {
   name: string
@@ -194,6 +195,7 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
     setActiveSceneObjectVisibility,
     updateActiveSceneObjectTokenState,
     importImageAsset,
+    selectIndexedAsset,
     updateAssetTags,
     applyAssetToActiveScene,
     sendAssetToPlayers,
@@ -1588,6 +1590,21 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
 
       <WorkspaceSectionPanel
         activeSection={activeWorkspaceSection}
+        badge={selectedCampaign ? `${selectedCampaign.assets.length} выбрано` : 'общая'}
+        id="assets"
+        onSelect={handleSelectWorkspaceSection}
+        summary="Индексируемая библиотека изображений"
+        title="Ассеты"
+      >
+        <AssetManagerPanel
+          campaign={selectedCampaign}
+          isCampaignBusy={isStorageBusy}
+          onSelectAsset={selectIndexedAsset}
+        />
+      </WorkspaceSectionPanel>
+
+      <WorkspaceSectionPanel
+        activeSection={activeWorkspaceSection}
         badge={selectedCampaign ? `${selectedCampaign.scenes.length} сцен` : 'нет кампании'}
         id="scenes"
         onSelect={handleSelectWorkspaceSection}
@@ -2961,6 +2978,7 @@ function isWorkspaceSection(value: unknown): value is WorkspaceSection {
   return (
     value === 'campaigns' ||
     value === 'scenes' ||
+    value === 'assets' ||
     value === 'combat' ||
     value === 'notes' ||
     value === 'players'

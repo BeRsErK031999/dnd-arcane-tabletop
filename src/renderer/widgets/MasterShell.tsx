@@ -8,10 +8,11 @@ interface MasterShellProps {
   onHome?: () => void
 }
 
-type WorkspaceSection = 'campaigns' | 'scenes' | 'combat' | 'notes' | 'players'
+type WorkspaceSection = 'campaigns' | 'scenes' | 'assets' | 'combat' | 'notes' | 'players'
 
 const navigationItems: Array<{ id: WorkspaceSection; label: string }> = [
   { id: 'campaigns', label: 'Кампании' },
+  { id: 'assets', label: 'Ассеты' },
   { id: 'scenes', label: 'Сцены' },
   { id: 'combat', label: 'Бой' },
   { id: 'notes', label: 'Заметки' },
@@ -100,6 +101,7 @@ function isWorkspaceSection(value: unknown): value is WorkspaceSection {
   return (
     value === 'campaigns' ||
     value === 'scenes' ||
+    value === 'assets' ||
     value === 'combat' ||
     value === 'notes' ||
     value === 'players'

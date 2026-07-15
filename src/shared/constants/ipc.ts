@@ -18,6 +18,8 @@ export const IPC_CHANNELS = {
     connectDirectory: 'asset-library:directory:connect',
     startIndexing: 'asset-library:indexing:start',
     cancelIndexing: 'asset-library:indexing:cancel',
+    queryAssets: 'asset-library:assets:query',
+    updateTags: 'asset-library:assets:tags:update',
     snapshotChanged: 'asset-library:snapshot:changed',
   },
   playerScreen: {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Asset } from '@shared/types'
+import type { Asset, AssetLibraryItem } from '@shared/types'
 import { createEmptyCampaign } from './campaignFactory'
 import {
   createAssetLibraryView,
@@ -7,6 +7,7 @@ import {
   createCampaignWithAssetPreview,
   createCampaignWithAssetTags,
   createCampaignWithImportedAsset,
+  createCampaignWithIndexedAsset,
 } from './assetFactory'
 import { createCampaignWithActiveScene, createCampaignWithNewScene } from './sceneFactory'
 
@@ -159,6 +160,74 @@ describe('assetFactory', () => {
       ['scene-second', 'asset-map'],
     ])
   })
+
+  it('selects an indexed asset for a campaign without leaking its absolute path into metadata', () => {
+    const campaign = createEmptyCampaign({
+      id: 'campaign-test',
+      name: 'Campaign',
+      timestamp: '2026-07-07T00:00:00.000Z',
+    })
+    const indexedAsset = createIndexedAssetFixture()
+
+    const selected = createCampaignWithIndexedAsset(
+      campaign,
+      indexedAsset,
+      'map',
+      'always',
+      '2026-07-07T01:00:00.000Z',
+    )
+
+    expect(selected.assets).toHaveLength(1)
+    expect(selected.assets[0]).toMatchObject({
+      campaignId: 'campaign-test',
+      kind: 'map',
+      name: 'ritual-map',
+      filePath: indexedAsset.fileUrl,
+      exportPolicy: 'always',
+      tags: ['карта', 'ночь'],
+      storageRef: {
+        kind: 'legacy-file',
+        fileUrl: indexedAsset.fileUrl,
+        sha256: indexedAsset.sha256,
+        indexedAssetId: indexedAsset.id,
+      },
+      metadata: {
+        originalFileName: 'ritual-map.png',
+        relativePath: 'maps/ritual-map.png',
+        width: 1920,
+        height: 1080,
+      },
+    })
+    expect(selected.assets[0].metadata).not.toHaveProperty('canonicalPath')
+    expect(selected.scenes).toEqual([])
+
+    const updated = createCampaignWithIndexedAsset(
+      selected,
+      { ...indexedAsset, tags: ['обновлено'] },
+      'token',
+      'when-used',
+      '2026-07-07T02:00:00.000Z',
+    )
+    expect(updated.assets).toHaveLength(1)
+    expect(updated.assets[0]).toMatchObject({
+      id: selected.assets[0].id,
+      kind: 'token',
+      exportPolicy: 'when-used',
+      tags: ['обновлено'],
+    })
+  })
+
+  it('rejects selecting an unavailable indexed asset', () => {
+    const campaign = createEmptyCampaign({ id: 'campaign-test', name: 'Campaign' })
+    expect(() =>
+      createCampaignWithIndexedAsset(
+        campaign,
+        { ...createIndexedAssetFixture(), availability: 'missing', fileUrl: undefined },
+        'other',
+        'when-used',
+      ),
+    ).toThrow('indexed-asset-unavailable')
+  })
 })
 
 function createAssetFixture(options: Partial<Pick<Asset, 'id' | 'kind' | 'name' | 'tags'>> & Pick<Asset, 'kind'>): Asset {
@@ -173,5 +242,29 @@ function createAssetFixture(options: Partial<Pick<Asset, 'id' | 'kind' | 'name' 
     metadata: {
       originalFileName: 'imported-image.png',
     },
+  }
+}
+
+function createIndexedAssetFixture(): AssetLibraryItem {
+  return {
+    id: 'indexed-ritual-map',
+    sourceId: 'asset-source-test',
+    canonicalPath: 'C:\\private\\art-library\\maps\\ritual-map.png',
+    relativePath: 'maps/ritual-map.png',
+    fileName: 'ritual-map.png',
+    byteSize: 2_048_000,
+    modifiedAt: '2026-07-07T00:00:00.000Z',
+    kind: 'other',
+    mimeType: 'image/png',
+    format: 'png',
+    width: 1920,
+    height: 1080,
+    sha256: 'a'.repeat(64),
+    previewPath: 'C:\\private\\previews\\ritual-map.webp',
+    tags: ['карта', 'ночь'],
+    availability: 'available',
+    indexedAt: '2026-07-07T00:00:00.000Z',
+    fileUrl: 'file:///C:/private/art-library/maps/ritual-map.png',
+    previewUrl: 'file:///C:/private/previews/ritual-map.webp',
   }
 }

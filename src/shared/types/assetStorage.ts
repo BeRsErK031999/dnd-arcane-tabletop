@@ -109,6 +109,37 @@ export interface AssetLibrarySnapshot {
   progress: AssetIndexProgress
 }
 
+export interface AssetLibraryQuery {
+  sourceIds?: AssetLibrarySourceId[]
+  search?: string
+  tags?: string[]
+  formats?: string[]
+  availability?: IndexedAssetAvailability[]
+  minByteSize?: number
+  maxByteSize?: number
+  offset: number
+  limit: number
+}
+
+export interface AssetLibraryItem extends IndexedAsset {
+  fileUrl?: string
+  previewUrl?: string
+}
+
+export interface AssetLibraryPage {
+  items: AssetLibraryItem[]
+  total: number
+  offset: number
+  limit: number
+}
+
+export type UpdateIndexedAssetTagsResult =
+  | { ok: true; asset: AssetLibraryItem }
+  | {
+      ok: false
+      reason: 'asset-not-found' | 'storage-failed' | 'desktop-api-unavailable'
+    }
+
 export type ConnectAssetLibraryResult =
   | {
       ok: true

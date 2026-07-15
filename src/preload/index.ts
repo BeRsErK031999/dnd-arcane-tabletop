@@ -1,11 +1,13 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { IPC_CHANNELS } from '../shared/constants/index.js'
 import type {
+  AssetLibraryQuery,
   AssetLibrarySnapshot,
   AssetLibrarySourceId,
   Campaign,
   CampaignId,
   ImportImageAssetRequest,
+  IndexedAssetId,
   PlayerScreenState,
   PlayerScreenStatus,
 } from '../shared/types/index.js'
@@ -33,6 +35,9 @@ const desktopApi: DesktopApi = {
     startIndexing: (sourceId: AssetLibrarySourceId) =>
       ipcRenderer.invoke(IPC_CHANNELS.assetLibrary.startIndexing, sourceId),
     cancelIndexing: () => ipcRenderer.invoke(IPC_CHANNELS.assetLibrary.cancelIndexing),
+    queryAssets: (query: AssetLibraryQuery) => ipcRenderer.invoke(IPC_CHANNELS.assetLibrary.queryAssets, query),
+    updateTags: (assetId: IndexedAssetId, tags: string[]) =>
+      ipcRenderer.invoke(IPC_CHANNELS.assetLibrary.updateTags, assetId, tags),
     onSnapshotChanged: (listener: (snapshot: AssetLibrarySnapshot) => void) =>
       subscribeToIpc(IPC_CHANNELS.assetLibrary.snapshotChanged, listener),
   },

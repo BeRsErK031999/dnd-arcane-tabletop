@@ -1,13 +1,19 @@
 import { createHash } from 'node:crypto'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import type {
+  AssetLibraryItem,
+  AssetLibraryPage,
+  AssetLibraryQuery,
   AssetLibrarySnapshot,
   AssetLibrarySource,
   AssetLibrarySourceId,
   CancelAssetIndexResult,
   ConnectAssetLibraryResult,
+  IndexedAsset,
   StartAssetIndexResult,
+  UpdateIndexedAssetTagsResult,
 } from '../../shared/types/index.js'
 import type { AssetIndexService } from './hybridStorageContracts.js'
 import { AssetLibraryIndexer } from './indexing/AssetLibraryIndexer.js'
@@ -38,6 +44,30 @@ export class AssetLibraryService {
     return {
       sources: await this.catalog.listSources(),
       progress: this.indexer.getProgress(),
+    }
+  }
+
+  async queryAssets(query: AssetLibraryQuery): Promise<AssetLibraryPage> {
+    const page = await this.catalog.queryAssets(normalizeQuery(query))
+    return {
+      ...page,
+      items: page.items.map(toLibraryItem),
+    }
+  }
+
+  async updateTags(assetId: string, tags: string[]): Promise<UpdateIndexedAssetTagsResult> {
+    try {
+      const asset = await this.catalog.getAsset(assetId)
+      if (!asset) {
+        return { ok: false, reason: 'asset-not-found' }
+      }
+      await this.catalog.updateTags(assetId, normalizeTags(tags))
+      const updatedAsset = await this.catalog.getAsset(assetId)
+      return updatedAsset
+        ? { ok: true, asset: toLibraryItem(updatedAsset) }
+        : { ok: false, reason: 'asset-not-found' }
+    } catch {
+      return { ok: false, reason: 'storage-failed' }
     }
   }
 
@@ -134,5 +164,64 @@ async function isAvailableDirectory(directoryPath: string): Promise<boolean> {
     return (await stat(directoryPath)).isDirectory()
   } catch {
     return false
+  }
+}
+
+function normalizeQuery(query: AssetLibraryQuery): AssetLibraryQuery {
+  const availability = query.availability?.filter(
+    (value) => value === 'available' || value === 'missing' || value === 'unreadable',
+  )
+  return {
+    sourceIds: normalizeStrings(query.sourceIds, 100, 200),
+    search: typeof query.search === 'string' ? query.search.trim().slice(0, 200) : undefined,
+    tags: normalizeStrings(query.tags, 20, 64),
+    formats: normalizeStrings(query.formats, 20, 20)?.map((format) => format.toLocaleLowerCase('en-US')),
+    availability: availability && availability.length > 0 ? [...new Set(availability)] : undefined,
+    minByteSize: normalizeByteSize(query.minByteSize),
+    maxByteSize: normalizeByteSize(query.maxByteSize),
+    offset: normalizeInteger(query.offset, 0, Number.MAX_SAFE_INTEGER, 0),
+    limit: normalizeInteger(query.limit, 1, 2_000, 200),
+  }
+}
+
+function normalizeStrings(
+  values: readonly string[] | undefined,
+  maxItems: number,
+  maxLength: number,
+): string[] | undefined {
+  if (!values) {
+    return undefined
+  }
+  const normalized = [...new Set(values.map((value) => value.trim()).filter(Boolean))]
+    .slice(0, maxItems)
+    .map((value) => value.slice(0, maxLength))
+  return normalized.length > 0 ? normalized : undefined
+}
+
+function normalizeTags(tags: readonly string[]): string[] {
+  return normalizeStrings(tags, 30, 64)?.sort((left, right) => left.localeCompare(right, 'ru')) ?? []
+}
+
+function normalizeByteSize(value: number | undefined): number | undefined {
+  if (value === undefined || !Number.isFinite(value)) {
+    return undefined
+  }
+  return normalizeInteger(value, 0, Number.MAX_SAFE_INTEGER, 0)
+}
+
+function normalizeInteger(value: number, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback
+  }
+  return Math.max(min, Math.min(max, Math.trunc(value)))
+}
+
+function toLibraryItem(asset: IndexedAsset): AssetLibraryItem {
+  return {
+    ...asset,
+    ...(asset.availability === 'available'
+      ? { fileUrl: pathToFileURL(asset.canonicalPath).toString() }
+      : {}),
+    ...(asset.previewPath ? { previewUrl: pathToFileURL(asset.previewPath).toString() } : {}),
   }
 }

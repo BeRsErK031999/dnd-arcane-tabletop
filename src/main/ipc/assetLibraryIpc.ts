@@ -1,5 +1,10 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
-import type { AssetLibrarySourceId, ConnectAssetLibraryResult } from '../../shared/types/index.js'
+import type {
+  AssetLibraryQuery,
+  AssetLibrarySourceId,
+  ConnectAssetLibraryResult,
+  IndexedAssetId,
+} from '../../shared/types/index.js'
 import { IPC_CHANNELS } from '../../shared/constants/index.js'
 import type { AssetLibraryService } from '../assets/AssetLibraryService.js'
 
@@ -21,6 +26,12 @@ export function registerAssetLibraryIpc(assetLibraryService: AssetLibraryService
     assetLibraryService.startIndexing(sourceId),
   )
   ipcMain.handle(IPC_CHANNELS.assetLibrary.cancelIndexing, () => assetLibraryService.cancelIndexing())
+  ipcMain.handle(IPC_CHANNELS.assetLibrary.queryAssets, (_event, query: AssetLibraryQuery) =>
+    assetLibraryService.queryAssets(query),
+  )
+  ipcMain.handle(IPC_CHANNELS.assetLibrary.updateTags, (_event, assetId: IndexedAssetId, tags: string[]) =>
+    assetLibraryService.updateTags(assetId, tags),
+  )
 
   assetLibraryService.subscribe((snapshot) => {
     for (const window of BrowserWindow.getAllWindows()) {

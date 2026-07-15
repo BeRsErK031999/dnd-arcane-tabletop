@@ -285,8 +285,11 @@ function writeStoredBrowserFallbackState(state: PlayerScreenState): void {
 }
 
 function cloneBrowserFallbackState(state: PlayerScreenState): PlayerScreenState {
+  const playerViewport = state.playerViewport ?? state.sceneCanvas?.viewport ?? { zoom: 1, panX: 0, panY: 0 }
+
   return {
     ...state,
+    playerViewport: { ...playerViewport },
     visibleTokenIds: [...state.visibleTokenIds],
     revealedAssetIds: [...state.revealedAssetIds],
     initiativeTracker: state.initiativeTracker
@@ -299,7 +302,7 @@ function cloneBrowserFallbackState(state: PlayerScreenState): PlayerScreenState 
         ? {
           ...state.sceneCanvas,
           grid: { ...state.sceneCanvas.grid },
-          viewport: { ...state.sceneCanvas.viewport },
+          viewport: { ...playerViewport },
           backgroundAsset: state.sceneCanvas.backgroundAsset ? { ...state.sceneCanvas.backgroundAsset } : undefined,
           layers: state.sceneCanvas.layers.map((layer) => ({ ...layer })),
           objects: state.sceneCanvas.objects.map((object) => ({ ...object })),

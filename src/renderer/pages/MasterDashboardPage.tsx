@@ -158,6 +158,7 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
     sendActiveSceneToPlayers,
     updateActiveSceneGrid,
     updateActiveSceneViewport,
+    updatePlayerSceneViewport,
     addActiveSceneMeasurement,
     clearActiveSceneMeasurements,
     updateActiveSceneFog,
@@ -292,6 +293,29 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
     window.history.scrollRestoration = 'manual'
     window.scrollTo({ top: 0, left: 0 })
   }, [])
+
+  useEffect(() => {
+    if (
+      selectedCampaign === null ||
+      playerStatus.state.campaignId !== selectedCampaign.id ||
+      playerStatus.state.sceneCanvas === undefined
+    ) {
+      return
+    }
+
+    const storedViewport = selectedCampaign.playerScreenState.playerViewport
+    const liveViewport = playerStatus.state.playerViewport
+
+    if (
+      storedViewport.zoom === liveViewport.zoom &&
+      storedViewport.panX === liveViewport.panX &&
+      storedViewport.panY === liveViewport.panY
+    ) {
+      return
+    }
+
+    void updatePlayerSceneViewport(liveViewport)
+  }, [playerStatus.state, selectedCampaign, updatePlayerSceneViewport])
 
   useEffect(() => {
     function handleWorkspaceNavigation(event: Event): void {
@@ -682,6 +706,12 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
     const result = await updateActiveSceneViewport(viewport)
 
     setSceneActionStatus(result.ok ? 'Положение canvas сохранено.' : 'Не удалось сохранить положение canvas.')
+  }
+
+  async function handleUpdatePlayerSceneViewport(viewport: Partial<SceneCanvasViewport>): Promise<void> {
+    const result = await updatePlayerSceneViewport(viewport)
+
+    setPlayerActionStatus(result.ok ? 'Вид экрана игроков сохранён.' : 'Не удалось сохранить вид экрана игроков.')
   }
 
   async function handleAddActiveSceneMeasurement(input: SceneMeasurementInput): Promise<void> {
@@ -1521,6 +1551,7 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
                   isPlayerSynced={Boolean(activeScene && playerStatus.state.activeSceneId === activeScene.id)}
                   isStorageBusy={isStorageBusy}
                   mapAsset={activeMapAsset}
+                  playerViewport={selectedCampaign?.playerScreenState.playerViewport}
                   onActiveUserLayerChange={(userLayer) => {
                     setActiveUserLayer(userLayer)
                     setSceneActionStatus(`Активен слой «${getSceneUserLayerLabel(userLayer)}».`)
@@ -1546,6 +1577,7 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
                     void handleUpdateActiveSceneFogRegion(regionId, regionUpdate)
                   }
                   onUpdateGrid={(grid) => void handleUpdateActiveSceneGrid(grid)}
+                  onUpdatePlayerViewport={(viewport) => void handleUpdatePlayerSceneViewport(viewport)}
                   onUpdateViewport={(viewport) => void handleUpdateActiveSceneViewport(viewport)}
                   scene={activeScene}
                   selectedObjectId={selectedSceneObjectId}

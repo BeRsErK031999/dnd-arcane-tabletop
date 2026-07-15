@@ -12,6 +12,7 @@ import type {
   SceneGrid,
 } from '@shared/types'
 import {
+  createHydratedSceneCanvasViewport,
   createSceneCanvasWithFogRegion,
   createSceneCanvasWithFogSettings,
   createSceneCanvasWithMeasurement,
@@ -69,6 +70,34 @@ export function createCampaignWithActiveSceneViewport(
     ...scene,
     canvas: createSceneCanvasWithViewport(getSceneCanvasState(scene), viewport, updatedAt),
   }))
+}
+
+export function createCampaignWithPlayerSceneViewport(
+  campaign: Campaign,
+  viewport: Partial<SceneCanvasViewport>,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): Campaign {
+  const playerViewport = createHydratedSceneCanvasViewport({
+    ...campaign.playerScreenState.playerViewport,
+    ...viewport,
+  })
+
+  return {
+    ...campaign,
+    updatedAt,
+    playerScreenState: {
+      ...campaign.playerScreenState,
+      playerViewport,
+      sceneCanvas: campaign.playerScreenState.sceneCanvas
+        ? {
+            ...campaign.playerScreenState.sceneCanvas,
+            viewport: { ...playerViewport },
+            updatedAt,
+          }
+        : undefined,
+      updatedAt,
+    },
+  }
 }
 
 export function createCampaignWithActiveSceneMeasurement(

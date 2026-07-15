@@ -132,7 +132,7 @@ export function getSceneCanvasState(scene: Scene): SceneCanvasState {
   return {
     width,
     height,
-    viewport: normalizeCanvasViewport(legacyCanvas.viewport),
+    viewport: createHydratedSceneCanvasViewport(legacyCanvas.viewport),
     layers: mergeCanvasLayers(legacyCanvas.layers, fog.enabled),
     objects: Array.isArray(legacyCanvas.objects) ? legacyCanvas.objects.map(normalizeCanvasObject) : [],
     measurements: Array.isArray(legacyCanvas.measurements)
@@ -146,6 +146,7 @@ export function getSceneCanvasState(scene: Scene): SceneCanvasState {
 export function createPlayerSceneCanvasProjection(
   scene: Scene,
   assets: Asset[],
+  playerViewport?: Partial<SceneCanvasViewport>,
 ): PlayerSceneCanvasProjection {
   const canvas = getSceneCanvasState(scene)
   const playerLayers = canvas.layers
@@ -159,7 +160,7 @@ export function createPlayerSceneCanvasProjection(
   return {
     width: canvas.width,
     height: canvas.height,
-    viewport: { ...canvas.viewport },
+    viewport: createHydratedSceneCanvasViewport(playerViewport),
     grid: { ...scene.grid },
     backgroundAsset: backgroundAsset
       ? {
@@ -324,7 +325,7 @@ export function createSceneCanvasWithViewport(
 ): SceneCanvasState {
   return {
     ...canvas,
-    viewport: normalizeCanvasViewport({
+    viewport: createHydratedSceneCanvasViewport({
       ...canvas.viewport,
       ...viewport,
     }),
@@ -581,7 +582,9 @@ function normalizeCanvasObjectTokenState(
   return Object.values(normalizedState).some((value) => value !== undefined) ? normalizedState : undefined
 }
 
-function normalizeCanvasViewport(viewport: Partial<SceneCanvasViewport> | undefined): SceneCanvasViewport {
+export function createHydratedSceneCanvasViewport(
+  viewport?: Partial<SceneCanvasViewport>,
+): SceneCanvasViewport {
   return {
     zoom: clampNumber(viewport?.zoom, 0.5, 3, defaultCanvasViewport.zoom),
     panX: clampNumber(viewport?.panX, -800, 800, defaultCanvasViewport.panX),

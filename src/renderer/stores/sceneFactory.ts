@@ -8,6 +8,7 @@ import type {
   SceneId,
 } from '@shared/types'
 import {
+  createHydratedSceneCanvasViewport,
   createDefaultSceneCanvas,
   createPlayerSceneCanvasProjection,
   createSceneWithHydratedCanvas,
@@ -149,13 +150,16 @@ function createSceneSelectionState(campaign: Campaign, scene: Scene, updatedAt: 
 }
 
 function createScenePlayerScreenState(campaign: Campaign, scene: Scene, updatedAt: IsoDateString): PlayerScreenState {
+  const playerViewport = createHydratedSceneCanvasViewport(campaign.playerScreenState.playerViewport)
+
   return {
     ...createSceneSelectionState(campaign, scene, updatedAt),
     mode: 'scene',
     isHidden: false,
     title: scene.name,
     message: scene.description ?? 'Сцена готова к показу игрокам.',
-    sceneCanvas: createPlayerSceneCanvasProjection(scene, campaign.assets),
+    playerViewport,
+    sceneCanvas: createPlayerSceneCanvasProjection(scene, campaign.assets, playerViewport),
     visibleTokenIds: scene.tokens.map((token) => token.id),
     revealedAssetIds: scene.backgroundAssetId ? [scene.backgroundAssetId] : [],
   }

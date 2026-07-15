@@ -177,13 +177,18 @@ describe('sceneCanvasFactory', () => {
       },
     ]
 
-    const projection = createPlayerSceneCanvasProjection(scene, [createAssetFixture()])
+    const projection = createPlayerSceneCanvasProjection(scene, [createAssetFixture()], {
+      zoom: 0.8,
+      panX: -30,
+      panY: 10,
+    })
 
     expect(projection.backgroundAsset).toMatchObject({
       id: 'asset-map',
       filePath: 'file:///tmp/map.png',
     })
-    expect(projection.viewport).toEqual({ zoom: 1.2, panX: 40, panY: -20 })
+    expect(projection.viewport).toEqual({ zoom: 0.8, panX: -30, panY: 10 })
+    expect(scene.canvas.viewport).toEqual({ zoom: 1.2, panX: 40, panY: -20 })
     expect(projection.layers.map((layer) => layer.kind)).toEqual(['map', 'grid', 'object', 'token', 'fog'])
     expect(projection.objects.map((object) => object.id)).toEqual(['object-visible'])
     expect(projection.objects[0].asset).toMatchObject({

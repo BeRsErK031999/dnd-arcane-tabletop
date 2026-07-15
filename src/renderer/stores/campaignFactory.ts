@@ -1,4 +1,10 @@
-import { createDefaultPlayerScreenState, type Campaign, type CampaignId, type IsoDateString } from '@shared/types'
+import {
+  createDefaultPlayerScreenState,
+  type Campaign,
+  type CampaignId,
+  type IsoDateString,
+} from '@shared/types'
+import { createHydratedSceneCanvasViewport } from './sceneCanvasFactory'
 
 interface CreateEmptyCampaignOptions {
   id?: CampaignId
@@ -49,6 +55,28 @@ export function createUpdatedCampaignMetadata(
     name: normalizeCampaignName(name),
     description: trimmedDescription === '' ? undefined : trimmedDescription,
     updatedAt,
+  }
+}
+
+export function createCampaignWithHydratedPlayerScreenState(campaign: Campaign): Campaign {
+  const legacyState = campaign.playerScreenState as Partial<Campaign['playerScreenState']>
+  const playerViewport = createHydratedSceneCanvasViewport(
+    legacyState.playerViewport ?? legacyState.sceneCanvas?.viewport,
+  )
+
+  return {
+    ...campaign,
+    playerScreenState: {
+      ...createDefaultPlayerScreenState(campaign.updatedAt),
+      ...legacyState,
+      playerViewport,
+      sceneCanvas: legacyState.sceneCanvas
+        ? {
+            ...legacyState.sceneCanvas,
+            viewport: { ...playerViewport },
+          }
+        : undefined,
+    },
   }
 }
 

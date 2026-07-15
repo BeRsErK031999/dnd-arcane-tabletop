@@ -8,6 +8,7 @@ describe('createDefaultPlayerScreenState', () => {
     expect(state).toMatchObject({
       mode: 'blank',
       isHidden: false,
+      playerViewport: { zoom: 1, panX: 0, panY: 0 },
       title: 'Экран игроков',
       initiativeVisible: false,
       updatedAt: '2026-07-07T00:00:00.000Z',
@@ -20,5 +21,6 @@ describe('createDefaultPlayerScreenState', () => {
 
     expect(left.visibleTokenIds).not.toBe(right.visibleTokenIds)
     expect(left.revealedAssetIds).not.toBe(right.revealedAssetIds)
+    expect(left.playerViewport).not.toBe(right.playerViewport)
   })
 })

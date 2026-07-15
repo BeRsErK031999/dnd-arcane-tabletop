@@ -91,6 +91,7 @@ function createCampaign(assets: Asset[]): Campaign {
     playerScreenState: {
       mode: 'blank',
       isHidden: false,
+      playerViewport: { zoom: 1, panX: 0, panY: 0 },
       initiativeVisible: false,
       visibleTokenIds: [],
       revealedAssetIds: [],

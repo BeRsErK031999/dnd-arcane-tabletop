@@ -1,5 +1,6 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties, type WheelEvent as ReactWheelEvent } from 'react'
 import { desktopApi } from '@renderer/services/desktopApi'
+import { createHydratedSceneCanvasViewport } from '@renderer/stores/sceneCanvasFactory'
 import {
   createDefaultPlayerScreenState,
   type PlayerInitiativeTracker,
@@ -9,6 +10,7 @@ import {
   type PlayerSceneCanvasObject,
   type PlayerSceneCanvasProjection,
   type PlayerScreenState,
+  type SceneCanvasViewport,
 } from '@shared/types'
 
 export function PlayerScreenPlaceholderPage() {
@@ -33,6 +35,27 @@ export function PlayerScreenPlaceholderPage() {
     }
   }, [])
 
+  function handlePlayerViewportChange(viewportUpdate: Partial<SceneCanvasViewport>): void {
+    const playerViewport = createHydratedSceneCanvasViewport({
+      ...playerScreenState.playerViewport,
+      ...viewportUpdate,
+    })
+    const nextState: PlayerScreenState = {
+      ...playerScreenState,
+      playerViewport,
+      sceneCanvas: playerScreenState.sceneCanvas
+        ? {
+            ...playerScreenState.sceneCanvas,
+            viewport: { ...playerViewport },
+          }
+        : undefined,
+      updatedAt: new Date().toISOString(),
+    }
+
+    setPlayerScreenState(nextState)
+    void desktopApi.playerScreen.updateState(nextState)
+  }
+
   if (playerScreenState.isHidden) {
     return (
       <main className="player-screen player-screen--hidden">
@@ -47,7 +70,7 @@ export function PlayerScreenPlaceholderPage() {
 
   return (
     <main className={`player-screen player-screen--${playerScreenState.mode}`}>
-      {renderPlayerScreenContent(playerScreenState)}
+      {renderPlayerScreenContent(playerScreenState, handlePlayerViewportChange)}
       {playerScreenState.initiativeVisible && playerScreenState.initiativeTracker ? (
         <PlayerInitiativePanel tracker={playerScreenState.initiativeTracker} />
       ) : null}
@@ -55,13 +78,16 @@ export function PlayerScreenPlaceholderPage() {
   )
 }
 
-function renderPlayerScreenContent(state: PlayerScreenState) {
+function renderPlayerScreenContent(
+  state: PlayerScreenState,
+  onUpdatePlayerViewport: (viewport: Partial<SceneCanvasViewport>) => void,
+) {
   switch (state.mode) {
     case 'scene':
       return (
         <section className="player-screen__scene">
           {state.sceneCanvas ? (
-            <PlayerSceneCanvas canvas={state.sceneCanvas} />
+            <PlayerSceneCanvas canvas={state.sceneCanvas} onUpdateViewport={onUpdatePlayerViewport} />
           ) : (
             <div className="player-screen__map-preview" aria-hidden="true" />
           )}
@@ -147,13 +173,34 @@ function PlayerInitiativePanel({ tracker }: { tracker: PlayerInitiativeTracker }
   )
 }
 
-function PlayerSceneCanvas({ canvas }: { canvas: PlayerSceneCanvasProjection }) {
+function PlayerSceneCanvas({
+  canvas,
+  onUpdateViewport,
+}: {
+  canvas: PlayerSceneCanvasProjection
+  onUpdateViewport(viewport: Partial<SceneCanvasViewport>): void
+}) {
   const viewportTransform: CSSProperties = {
     transform: `translate(${canvas.viewport.panX}px, ${canvas.viewport.panY}px) scale(${canvas.viewport.zoom})`,
   }
 
+  function handleWheel(event: ReactWheelEvent<HTMLDivElement>): void {
+    if (event.deltaY === 0) {
+      return
+    }
+
+    event.preventDefault()
+    const direction = event.deltaY < 0 ? 1 : -1
+    onUpdateViewport({ zoom: Math.round((canvas.viewport.zoom + direction * 0.1) * 10) / 10 })
+  }
+
   return (
-    <div className="player-scene-canvas" style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}>
+    <div
+      aria-label="Область сцены игроков. Колесо мыши изменяет масштаб."
+      className="player-scene-canvas"
+      onWheel={handleWheel}
+      style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}
+    >
       <div className="player-scene-canvas__content" style={viewportTransform}>
         {canvas.backgroundAsset ? (
           <img className="player-scene-canvas__map" alt="" src={canvas.backgroundAsset.filePath} />
@@ -193,6 +240,18 @@ function PlayerSceneCanvas({ canvas }: { canvas: PlayerSceneCanvasProjection }) 
           ))}
         </div>
         <PlayerSceneFogOverlay canvasHeight={canvas.height} canvasWidth={canvas.width} fog={canvas.fog} />
+      </div>
+      <div className="player-scene-canvas__viewport-controls" aria-label="Масштаб экрана игроков">
+        <button aria-label="Уменьшить масштаб" onClick={() => onUpdateViewport({ zoom: canvas.viewport.zoom - 0.1 })} type="button">
+          −
+        </button>
+        <span aria-live="polite">{Math.round(canvas.viewport.zoom * 100)}%</span>
+        <button aria-label="Увеличить масштаб" onClick={() => onUpdateViewport({ zoom: canvas.viewport.zoom + 0.1 })} type="button">
+          +
+        </button>
+        <button aria-label="Центрировать сетку" onClick={() => onUpdateViewport({ panX: 0, panY: 0 })} type="button">
+          Центр
+        </button>
       </div>
     </div>
   )

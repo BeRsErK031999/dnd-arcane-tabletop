@@ -32,7 +32,11 @@ import {
   createCampaignWithImportedAsset,
   createCampaignWithIndexedAsset,
 } from './assetFactory'
-import { createEmptyCampaign, createUpdatedCampaignMetadata } from './campaignFactory'
+import {
+  createCampaignWithHydratedPlayerScreenState,
+  createEmptyCampaign,
+  createUpdatedCampaignMetadata,
+} from './campaignFactory'
 import {
   createCampaignWithHydratedCharacterCards,
   createCampaignWithNewCharacterCard,
@@ -76,6 +80,7 @@ import {
   createCampaignWithActiveSceneObjectTokenState,
   createCampaignWithActiveSceneObjectVisibility,
   createCampaignWithActiveSceneViewport,
+  createCampaignWithPlayerSceneViewport,
   createCampaignWithDuplicatedActiveSceneObject,
   createCampaignWithMovedActiveSceneObject,
   createCampaignWithPositionedActiveSceneObject,
@@ -502,7 +507,9 @@ export function useCampaignsStore() {
 
       const hydratedCampaign = createCampaignWithHydratedCombatState(
         createCampaignWithHydratedNotes(
-          createCampaignWithHydratedCharacterCards(createCampaignWithHydratedScenes(campaign)),
+          createCampaignWithHydratedCharacterCards(
+            createCampaignWithHydratedScenes(createCampaignWithHydratedPlayerScreenState(campaign)),
+          ),
         ),
       )
       setSelectedCampaign(hydratedCampaign)
@@ -587,7 +594,9 @@ export function useCampaignsStore() {
 
       const hydratedCampaign = createCampaignWithHydratedCombatState(
         createCampaignWithHydratedNotes(
-          createCampaignWithHydratedCharacterCards(createCampaignWithHydratedScenes(result.campaign)),
+          createCampaignWithHydratedCharacterCards(
+            createCampaignWithHydratedScenes(createCampaignWithHydratedPlayerScreenState(result.campaign)),
+          ),
         ),
       )
       setSelectedCampaign(hydratedCampaign)
@@ -799,6 +808,33 @@ export function useCampaignsStore() {
         setLastError('Не удалось сохранить положение canvas.')
         setStatus('error')
         return { ok: false, reason: 'update-viewport-failed' }
+      }
+    },
+    [saveCampaignWithStatus, selectedCampaign],
+  )
+
+  const updatePlayerSceneViewport = useCallback(
+    async (viewport: Partial<SceneCanvasViewport>): Promise<CampaignMutationResult> => {
+      if (selectedCampaign === null) {
+        setLastError('Нет открытой кампании для настройки экрана игроков.')
+        return { ok: false, reason: 'campaign-not-selected' }
+      }
+
+      setStatus('saving')
+      setLastError(null)
+
+      try {
+        const updatedCampaign = createCampaignWithPlayerSceneViewport(selectedCampaign, viewport)
+        await saveCampaignWithStatus(updatedCampaign)
+        await desktopApi.playerScreen.updateState(updatedCampaign.playerScreenState)
+        setSelectedCampaign(updatedCampaign)
+        setCampaigns(await desktopApi.storage.listCampaigns())
+        setStatus('ready')
+        return { ok: true, campaign: updatedCampaign }
+      } catch {
+        setLastError('Не удалось сохранить вид экрана игроков.')
+        setStatus('error')
+        return { ok: false, reason: 'update-player-viewport-failed' }
       }
     },
     [saveCampaignWithStatus, selectedCampaign],
@@ -1821,6 +1857,7 @@ export function useCampaignsStore() {
     sendActiveSceneToPlayers,
     updateActiveSceneGrid,
     updateActiveSceneViewport,
+    updatePlayerSceneViewport,
     addActiveSceneMeasurement,
     clearActiveSceneMeasurements,
     updateActiveSceneFog,

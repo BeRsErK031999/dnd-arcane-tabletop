@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { createEmptyCampaign, createUpdatedCampaignMetadata } from './campaignFactory'
+import {
+  createCampaignWithHydratedPlayerScreenState,
+  createEmptyCampaign,
+  createUpdatedCampaignMetadata,
+} from './campaignFactory'
 
 describe('campaignFactory', () => {
   it('creates an empty campaign with replaceable JSON storage shape', () => {
@@ -31,6 +35,7 @@ describe('campaignFactory', () => {
         campaignId: 'campaign-test',
         mode: 'blank',
         isHidden: false,
+        playerViewport: { zoom: 1, panX: 0, panY: 0 },
       },
     })
   })
@@ -68,5 +73,44 @@ describe('campaignFactory', () => {
     })
 
     expect(campaign.name).toBe('Новая кампания')
+  })
+
+  it('hydrates a legacy player viewport independently from the master scene viewport', () => {
+    const campaign = createEmptyCampaign({
+      id: 'campaign-test',
+      name: 'Legacy',
+      timestamp: '2026-07-07T00:00:00.000Z',
+    })
+    const legacyCampaign = {
+      ...campaign,
+      playerScreenState: {
+        ...campaign.playerScreenState,
+        playerViewport: undefined,
+        sceneCanvas: {
+          width: 1600,
+          height: 900,
+          viewport: { zoom: 0.7, panX: 90, panY: -60 },
+          grid: {
+            enabled: true,
+            size: 70,
+            color: '#8b7a5a',
+            opacity: 0.35,
+            distancePerCell: 5,
+            unitLabel: 'ft',
+            snapToGrid: true,
+          },
+          layers: [],
+          objects: [],
+          measurements: [],
+          fog: { enabled: false, opacity: 0.84, regions: [] },
+          updatedAt: campaign.updatedAt,
+        },
+      },
+    } as unknown as typeof campaign
+
+    const hydrated = createCampaignWithHydratedPlayerScreenState(legacyCampaign)
+
+    expect(hydrated.playerScreenState.playerViewport).toEqual({ zoom: 0.7, panX: 90, panY: -60 })
+    expect(hydrated.playerScreenState.sceneCanvas?.viewport).toEqual({ zoom: 0.7, panX: 90, panY: -60 })
   })
 })

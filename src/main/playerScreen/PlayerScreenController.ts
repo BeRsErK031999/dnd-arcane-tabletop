@@ -96,8 +96,21 @@ export class PlayerScreenController {
   }
 
   updateState(nextState: PlayerScreenState): PlayerScreenCommandResult {
+    const playerViewport = nextState.playerViewport ?? nextState.sceneCanvas?.viewport ?? {
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+    }
+
     this.playerScreenState = {
       ...nextState,
+      playerViewport: { ...playerViewport },
+      sceneCanvas: nextState.sceneCanvas
+        ? {
+            ...nextState.sceneCanvas,
+            viewport: { ...playerViewport },
+          }
+        : undefined,
       visibleTokenIds: [...nextState.visibleTokenIds],
       revealedAssetIds: [...nextState.revealedAssetIds],
       updatedAt: this.createTimestamp(),

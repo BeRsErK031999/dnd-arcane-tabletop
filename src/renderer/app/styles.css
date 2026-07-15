@@ -4090,6 +4090,50 @@ button.asset-tag {
   transition: transform 160ms ease;
 }
 
+.player-scene-canvas__viewport-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  color: #f4eee4;
+  background: rgba(17, 19, 21, 0.88);
+  border: 1px solid #4a5057;
+  border-radius: 7px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(8px);
+}
+
+.player-scene-canvas__viewport-controls button {
+  min-width: 34px;
+  min-height: 32px;
+  padding: 5px 9px;
+  color: inherit;
+  background: #24282c;
+  border: 1px solid #555d64;
+  border-radius: 5px;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.player-scene-canvas__viewport-controls button:hover,
+.player-scene-canvas__viewport-controls button:focus-visible {
+  background: #345d57;
+  border-color: #78b8aa;
+  outline: none;
+}
+
+.player-scene-canvas__viewport-controls span {
+  min-width: 52px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .player-scene-canvas__map,
 .player-scene-canvas__placeholder,
 .player-scene-canvas__grid,

@@ -60,6 +60,7 @@ export function createReferenceCampaign(): Campaign {
   const playerScreenState: PlayerScreenState = {
     mode: 'scene',
     isHidden: false,
+    playerViewport: { ...sceneCanvas.viewport },
     title: scene.name,
     message: scene.description,
     scenePreview: {

@@ -333,7 +333,7 @@ campaign.arcane-campaign
 
 ## Этап 24. Независимые viewport и масштаб
 
-Статус: запланировано следующим.
+Статус: выполнено и проверено.
 
 Цель: разделить положение/масштаб master workspace и player screen.
 
@@ -346,9 +346,26 @@ campaign.arcane-campaign
 - сохранение master viewport в сцене и player viewport в player screen state;
 - тесты, что масштаб не мутирует изображения и объекты слоёв.
 
+Реализовано:
+
+- master viewport остаётся в `Scene.canvas.viewport`, player viewport вынесен в `PlayerScreenState.playerViewport`;
+- player projection больше не наследует масштаб мастера и получает собственный нормализованный viewport;
+- рабочая область и экран игроков поддерживают ограниченный wheel zoom `50–300%`;
+- кнопка `Центр` сбрасывает только `panX/panY`, сохраняя текущий процент масштаба;
+- master workspace показывает независимые controls `Вид мастера` и `Вид игроков`;
+- player screen хранит изменения собственного вида через typed player-screen state;
+- legacy state без `playerViewport` гидратируется из старого projection viewport либо безопасного default;
+- unit tests фиксируют независимость viewport и неизменность scene objects.
+
+Критерии готовности:
+
+- browser flow показывает разные проценты master/player и сохранение zoom при центрировании;
+- player page получает сохранённый player viewport и имеет собственные controls;
+- typecheck и профильные tests проходят.
+
 ## Этап 25. Управление экраном игроков
 
-Статус: запланировано.
+Статус: запланировано следующим.
 
 Цель: собрать существующие IPC-команды в компактный блок по макету.
 

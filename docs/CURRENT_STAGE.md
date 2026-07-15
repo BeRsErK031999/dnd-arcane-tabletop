@@ -2,55 +2,53 @@
 
 ## Текущий этап
 
-Этап 23. Пользовательские слои `Карта / ГМ / Токены`.
+Этап 24. Независимые viewport и масштаб.
 
 Статус: выполнено и проверено.
 
 ## Результат
 
-Master workspace получил постоянный пользовательский layer switcher поверх существующего typed render stack. Активным и редактируемым остаётся один слой, а player-safe границы технических слоёв сохранены.
+Рабочая область мастера и экран игроков получили независимые сохранённые виды. Масштаб и центрирование меняют только viewport и не затрагивают изображения, координаты или размеры объектов.
 
-## Реализовано в этапе 23
+## Реализовано в этапе 24
 
-- Порядок пользовательских слоёв зафиксирован как `Карта -> ГМ -> Токены`.
-- `Карта` адаптирует `map/grid/object`, `ГМ` — `master`, `Токены` — `token`.
-- Fog и measurements не входят в переключатель и продолжают работать независимо.
-- Layer selection является UI-only состоянием и не меняет JSON, autosave или undo/redo history.
-- Неактивные объекты исключены из pointer/keyboard editing.
-- Сетка редактируется только при активном слое `Карта`.
-- Asset placement учитывает текущий слой.
-- `ГМ` всегда master-only и становится 50% opacity в неактивном состоянии.
-- `Токены` используют размер клетки независимо от исходного типа изображения.
-- Player projection исключает ГМ и сохраняет render order карты перед токенами.
+- `Scene.canvas.viewport` остаётся единственным master viewport.
+- `PlayerScreenState.playerViewport` хранит отдельный player viewport.
+- Player projection получает player viewport явно и не наследует master zoom/pan.
+- В master workspace доступны `Вид мастера` и `Вид игроков` с `− / +`, процентом и `Центр`.
+- Canvas мастера и player screen поддерживают wheel zoom в диапазоне `50–300%`.
+- `Центр` сбрасывает только pan и сохраняет процент масштаба.
+- Player screen сохраняет свой viewport через typed API; master renderer синхронизирует его с campaign state.
+- Legacy player state гидратируется из старого projection viewport или безопасного default.
 
 ## Проверка
 
-- Unit tests покрывают adapter mapping, order, opacity, projection и asset placement.
-- Browser flow проверен на 1440, 768 и 360 px без horizontal overflow.
-- Проверены placement на ГМ/Токены, запрет редактирования inactive layer и восстановление selection.
-- Browser console не содержит errors/warnings.
-- `npm run lint`, `npm run typecheck`, `npm run test` и `npm run build` проходят.
-- Исходный Word и его lock-файл остаются вне commit.
+- Unit tests проверяют независимость master/player viewport, clamp и неизменность scene objects.
+- Browser flow подтвердил независимые значения `110%` и `120%`.
+- Центрирование на master/player screen сохранило значение `110%`.
+- Player page восстановил сохранённый player viewport и показал собственные controls.
+- Typecheck и профильные tests проходят; полный regression suite выполняется перед commit.
+- Исходный Word остаётся вне commit.
 
 ## Следующий этап
 
-Этап 24 — независимые viewport и масштаб: разделить master/player viewport, добавить wheel zoom и явное центрирование без изменения размеров объектов.
+Этап 25 — компактное управление экраном игроков: collapsible block, `ON/OFF`, `Fullscreen`, `Clear` и состояние `Сцена активна`.
 
 ## Основные затронутые области
 
+- `src/shared/types/playerScreen.ts`
 - `src/renderer/stores/sceneCanvasFactory.ts`
-- `src/renderer/stores/assetFactory.ts`
+- `src/renderer/stores/sceneToolsFactory.ts`
+- `src/renderer/stores/campaignFactory.ts`
 - `src/renderer/stores/useCampaignsStore.ts`
 - `src/renderer/widgets/SceneCanvas.tsx`
 - `src/renderer/pages/MasterDashboardPage.tsx`
+- `src/renderer/pages/PlayerScreenPlaceholderPage.tsx`
 - `src/renderer/app/styles.css`
-- `docs/ROADMAP.md`
-- `docs/ARCHITECTURE.md`
-- `docs/USER_GUIDE.md`
 
 ## Следующие риски
 
-- Master viewport и player viewport нельзя хранить в одном поле.
-- Wheel zoom должен быть ограничен и не менять object width/height или layer data.
-- Центрирование должно сбрасывать только pan, не мутируя сцену целиком.
-- Legacy scenes без player viewport должны получить безопасный default при hydration.
+- `ON/OFF` должен управлять окном, а не только скрывать содержимое.
+- `Clear` должен сохранять blank state и снимать active scene на player screen, не удаляя сцену кампании.
+- Повторная отправка уже активной сцены должна быть заменена понятным read-only состоянием.
+- Управление fullscreen должно отражать фактический IPC status.

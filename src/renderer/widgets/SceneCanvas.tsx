@@ -1,4 +1,10 @@
-import { useEffect, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useEffect,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
+} from 'react'
 import type {
   Asset,
   CharacterCard,
@@ -44,6 +50,7 @@ interface SceneCanvasProps {
   activeUserLayer: SceneUserLayerId
   scene: Scene | null
   mapAsset: Asset | null
+  playerViewport?: SceneCanvasViewport
   assets: Asset[]
   characterCards: CharacterCard[]
   isPlayerSynced: boolean
@@ -65,6 +72,7 @@ interface SceneCanvasProps {
   onUpdateFogRegion(regionId: SceneCanvasFogRegionId, regionUpdate: SceneFogRegionUpdate): void
   onUpdateObjectTokenState(objectId: SceneCanvasObjectId, tokenState: SceneCanvasObjectTokenState): void
   onUpdateGrid(grid: Partial<SceneGrid>): void
+  onUpdatePlayerViewport(viewport: Partial<SceneCanvasViewport>): void
   onUpdateViewport(viewport: Partial<SceneCanvasViewport>): void
 }
 
@@ -134,6 +142,7 @@ export function SceneCanvas({
   activeUserLayer,
   scene,
   mapAsset,
+  playerViewport,
   assets,
   characterCards,
   isPlayerSynced,
@@ -155,6 +164,7 @@ export function SceneCanvas({
   onUpdateFogRegion,
   onUpdateObjectTokenState,
   onUpdateGrid,
+  onUpdatePlayerViewport,
   onUpdateViewport,
 }: SceneCanvasProps) {
   const [activeTool, setActiveTool] = useState<SceneCanvasTool>({ kind: 'select' })
@@ -483,6 +493,7 @@ export function SceneCanvas({
   const objectsInRenderOrder = getSceneCanvasObjectsInRenderOrder(canvas)
   const assetsById = new Map(assets.map((asset) => [asset.id, asset]))
   const playerProjection = createPlayerSceneCanvasProjection(activeScene, assets)
+  const hydratedPlayerViewport = playerViewport ?? playerProjection.viewport
   const viewportTransform: CSSProperties = {
     transform: `translate(${canvas.viewport.panX}px, ${canvas.viewport.panY}px) scale(${canvas.viewport.zoom})`,
   }
@@ -613,6 +624,16 @@ export function SceneCanvas({
   const isFogEditable = activeTool.kind === 'fog-edit'
   const isCanvasDrawActive = activeTool.kind === 'measurement' || activeTool.kind === 'fog-draw'
 
+  function handleCanvasWheel(event: ReactWheelEvent<HTMLDivElement>): void {
+    if (isStorageBusy || event.deltaY === 0) {
+      return
+    }
+
+    event.preventDefault()
+    const direction = event.deltaY < 0 ? 1 : -1
+    onUpdateViewport({ zoom: roundViewportZoom(canvas.viewport.zoom + direction * 0.1) })
+  }
+
   return (
     <div className="scene-canvas">
       <SceneUserLayerSwitcher
@@ -623,7 +644,12 @@ export function SceneCanvas({
       />
 
       <div className="scene-canvas__main">
-        <div className="scene-canvas__viewport" style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}>
+        <div
+          aria-label="Рабочая область сцены. Колесо мыши изменяет масштаб."
+          className="scene-canvas__viewport"
+          onWheel={handleCanvasWheel}
+          style={{ aspectRatio: `${canvas.width} / ${canvas.height}` }}
+        >
           <div className="scene-canvas__content" style={viewportTransform}>
             {mapAsset ? (
               <img className="scene-canvas__map" alt="" src={mapAsset.filePath} />
@@ -772,12 +798,14 @@ export function SceneCanvas({
           grid={activeScene.grid}
           isMapLayerActive={activeUserLayer === 'map'}
           isStorageBusy={isStorageBusy}
+          playerViewport={hydratedPlayerViewport}
           onClearFogRegions={onClearFogRegions}
           onClearMeasurements={onClearMeasurements}
           onRemoveLastFogRegion={onRemoveLastFogRegion}
           onSetTool={setActiveTool}
           onUpdateFog={onUpdateFog}
           onUpdateGrid={onUpdateGrid}
+          onUpdatePlayerViewport={onUpdatePlayerViewport}
           onUpdateViewport={onUpdateViewport}
         />
 
@@ -1128,12 +1156,14 @@ interface SceneCanvasControlsProps {
   grid: SceneGrid
   isMapLayerActive: boolean
   isStorageBusy: boolean
+  playerViewport: SceneCanvasViewport
   onClearFogRegions(): void
   onClearMeasurements(): void
   onRemoveLastFogRegion(): void
   onSetTool(tool: SceneCanvasTool): void
   onUpdateFog(fog: Partial<Pick<SceneCanvasFogState, 'enabled' | 'opacity'>>): void
   onUpdateGrid(grid: Partial<SceneGrid>): void
+  onUpdatePlayerViewport(viewport: Partial<SceneCanvasViewport>): void
   onUpdateViewport(viewport: Partial<SceneCanvasViewport>): void
 }
 
@@ -1143,12 +1173,14 @@ function SceneCanvasControls({
   grid,
   isMapLayerActive,
   isStorageBusy,
+  playerViewport,
   onClearFogRegions,
   onClearMeasurements,
   onRemoveLastFogRegion,
   onSetTool,
   onUpdateFog,
   onUpdateGrid,
+  onUpdatePlayerViewport,
   onUpdateViewport,
 }: SceneCanvasControlsProps) {
   const isGridEditingDisabled = isStorageBusy || !isMapLayerActive
@@ -1237,7 +1269,7 @@ function SceneCanvasControls({
 
       <section className="scene-canvas-control-group">
         <div className="scene-canvas-control-group__header">
-          <h3>Вид</h3>
+          <h3>Вид мастера</h3>
           <span>{Math.round(canvas.viewport.zoom * 100)}%</span>
         </div>
         <div className="scene-canvas-button-grid">
@@ -1245,27 +1277,27 @@ function SceneCanvasControls({
             aria-label="Уменьшить масштаб"
             className="button button--secondary scene-canvas-icon-button"
             disabled={isStorageBusy}
-            onClick={() => onUpdateViewport({ zoom: canvas.viewport.zoom - 0.1 })}
+            onClick={() => onUpdateViewport({ zoom: roundViewportZoom(canvas.viewport.zoom - 0.1) })}
             title="Уменьшить масштаб"
             type="button"
           >
             −
           </button>
           <button
-            aria-label="Сбросить вид"
+            aria-label="Центрировать сетку мастера"
             className="button button--secondary scene-canvas-icon-button scene-canvas-icon-button--wide"
             disabled={isStorageBusy}
-            onClick={() => onUpdateViewport({ zoom: 1, panX: 0, panY: 0 })}
-            title="Сбросить вид"
+            onClick={() => onUpdateViewport({ panX: 0, panY: 0 })}
+            title="Центрировать сетку"
             type="button"
           >
-            100%
+            Центр
           </button>
           <button
             aria-label="Увеличить масштаб"
             className="button button--secondary scene-canvas-icon-button"
             disabled={isStorageBusy}
-            onClick={() => onUpdateViewport({ zoom: canvas.viewport.zoom + 0.1 })}
+            onClick={() => onUpdateViewport({ zoom: roundViewportZoom(canvas.viewport.zoom + 0.1) })}
             title="Увеличить масштаб"
             type="button"
           >
@@ -1312,6 +1344,45 @@ function SceneCanvasControls({
             type="button"
           >
             ↓
+          </button>
+        </div>
+      </section>
+
+      <section className="scene-canvas-control-group">
+        <div className="scene-canvas-control-group__header">
+          <h3>Вид игроков</h3>
+          <span>{Math.round(playerViewport.zoom * 100)}%</span>
+        </div>
+        <div className="scene-canvas-button-grid">
+          <button
+            aria-label="Уменьшить масштаб экрана игроков"
+            className="button button--secondary scene-canvas-icon-button"
+            disabled={isStorageBusy}
+            onClick={() => onUpdatePlayerViewport({ zoom: roundViewportZoom(playerViewport.zoom - 0.1) })}
+            title="Уменьшить масштаб экрана игроков"
+            type="button"
+          >
+            −
+          </button>
+          <button
+            aria-label="Центрировать сетку экрана игроков"
+            className="button button--secondary scene-canvas-icon-button scene-canvas-icon-button--wide"
+            disabled={isStorageBusy}
+            onClick={() => onUpdatePlayerViewport({ panX: 0, panY: 0 })}
+            title="Центрировать сетку экрана игроков"
+            type="button"
+          >
+            Центр
+          </button>
+          <button
+            aria-label="Увеличить масштаб экрана игроков"
+            className="button button--secondary scene-canvas-icon-button"
+            disabled={isStorageBusy}
+            onClick={() => onUpdatePlayerViewport({ zoom: roundViewportZoom(playerViewport.zoom + 0.1) })}
+            title="Увеличить масштаб экрана игроков"
+            type="button"
+          >
+            +
           </button>
         </div>
       </section>
@@ -2147,4 +2218,8 @@ function getOptionalNumberValue(value: string): number | undefined {
 function getNumberValue(value: string, fallback: number): number {
   const numericValue = Number(value)
   return Number.isFinite(numericValue) ? numericValue : fallback
+}
+
+function roundViewportZoom(zoom: number): number {
+  return Math.round(zoom * 10) / 10
 }

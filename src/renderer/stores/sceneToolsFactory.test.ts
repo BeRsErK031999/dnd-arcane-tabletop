@@ -14,6 +14,7 @@ import {
   createCampaignWithActiveSceneObjectTokenState,
   createCampaignWithActiveSceneObjectVisibility,
   createCampaignWithActiveSceneViewport,
+  createCampaignWithPlayerSceneViewport,
   createCampaignWithDuplicatedActiveSceneObject,
   createCampaignWithMovedActiveSceneObject,
   createCampaignWithPositionedActiveSceneObject,
@@ -78,6 +79,31 @@ describe('sceneToolsFactory', () => {
       panX: 800,
       panY: -800,
     })
+  })
+
+  it('updates the player viewport without mutating the master viewport or scene objects', () => {
+    const campaign = createCampaignWithActiveSceneViewport(
+      createCampaignWithTokenObjectFixture(),
+      { zoom: 1.4, panX: 80, panY: -40 },
+      '2026-07-07T05:15:00.000Z',
+    )
+    const activeScene = getActiveCampaignScene(campaign)
+
+    if (!activeScene) {
+      throw new Error('active-scene-missing')
+    }
+
+    const objectsBefore = structuredClone(activeScene.canvas.objects)
+
+    const updated = createCampaignWithPlayerSceneViewport(
+      campaign,
+      { zoom: 9, panX: -1200, panY: 1200 },
+      '2026-07-07T05:30:00.000Z',
+    )
+
+    expect(getActiveCampaignScene(updated)?.canvas.viewport).toEqual({ zoom: 1.4, panX: 80, panY: -40 })
+    expect(getActiveCampaignScene(updated)?.canvas.objects).toEqual(objectsBefore)
+    expect(updated.playerScreenState.playerViewport).toEqual({ zoom: 3, panX: -800, panY: 800 })
   })
 
   it('adds and clears player-visible measurement templates', () => {

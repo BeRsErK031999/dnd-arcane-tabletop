@@ -2,7 +2,7 @@ import type { AssetId } from './asset.js'
 import type { PlayerInitiativeTracker } from './combat.js'
 import type { CampaignId, IsoDateString } from './common.js'
 import type { NoteId } from './note.js'
-import type { PlayerSceneCanvasProjection } from './sceneCanvas.js'
+import type { PlayerSceneCanvasProjection, SceneCanvasViewport } from './sceneCanvas.js'
 import type { SceneId } from './scene.js'
 import type { TokenId } from './token.js'
 
@@ -26,6 +26,7 @@ export interface PlayerHandoutPreview {
 export interface PlayerScreenState {
   mode: PlayerScreenMode
   isHidden: boolean
+  playerViewport: SceneCanvasViewport
   title?: string
   message?: string
   scenePreview?: PlayerScenePreview
@@ -62,6 +63,11 @@ export function createDefaultPlayerScreenState(updatedAt: IsoDateString = new Da
   return {
     mode: 'blank',
     isHidden: false,
+    playerViewport: {
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+    },
     title: 'Экран игроков',
     message: 'Материалы для игроков пока не выбраны.',
     initiativeVisible: false,

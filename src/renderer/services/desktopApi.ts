@@ -142,12 +142,18 @@ function createBrowserFallbackAsset(request: ImportImageAssetRequest): Asset {
   browserFallbackAssetCounter += 1
   const name = request.suggestedName?.trim() || 'Демо-изображение'
 
+  const filePath = createBrowserFallbackImageDataUrl(name)
+
   return {
     id: `asset-browser-${browserFallbackAssetCounter}`,
     campaignId: request.campaignId,
     kind: request.kind,
     name,
-    filePath: createBrowserFallbackImageDataUrl(name),
+    filePath,
+    storageRef: {
+      kind: 'embedded-data',
+    },
+    exportPolicy: 'when-used',
     tags: request.tags ?? [],
     createdAt: new Date().toISOString(),
     metadata: {

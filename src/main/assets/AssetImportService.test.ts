@@ -43,6 +43,11 @@ describe('AssetImportService', () => {
       kind: 'map',
       name: 'Карта ритуального зала',
       tags: ['ночь', 'ритуал'],
+      storageRef: {
+        kind: 'legacy-file',
+        fileUrl: result.asset.filePath,
+      },
+      exportPolicy: 'when-used',
       metadata: {
         originalFileName: 'ritual-map.png',
         fileExtension: 'png',

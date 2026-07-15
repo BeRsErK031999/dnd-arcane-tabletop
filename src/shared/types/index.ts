@@ -1,4 +1,5 @@
 export * from './asset.js'
+export * from './assetStorage.js'
 export * from './campaign.js'
 export * from './characterCard.js'
 export * from './combat.js'

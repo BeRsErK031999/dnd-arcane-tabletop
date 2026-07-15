@@ -1,5 +1,6 @@
 import { access, copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { migrateLegacyCampaignAssetReferences } from '../../shared/assetStorage.js'
 import { createCampaignSummary } from '../../shared/campaignSummary.js'
 import type { Campaign, CampaignId, CampaignSummary } from '../../shared/types/index.js'
 import type { StorageService } from './StorageService.js'
@@ -50,7 +51,8 @@ export class JsonStorageService implements StorageService {
     await this.initialize()
 
     const campaignFilePath = this.getCampaignFilePath(campaign.id)
-    const payload = `${JSON.stringify(campaign, null, 2)}\n`
+    const normalizedCampaign = migrateLegacyCampaignAssetReferences(campaign)
+    const payload = `${JSON.stringify(normalizedCampaign, null, 2)}\n`
     await this.rotateBackups(campaign.id, campaignFilePath)
     await writeFile(campaignFilePath, payload, 'utf8')
   }
@@ -69,7 +71,7 @@ export class JsonStorageService implements StorageService {
         return null
       }
 
-      return parsed
+      return migrateLegacyCampaignAssetReferences(parsed)
     } catch (error) {
       if (error instanceof SyntaxError) {
         return null
@@ -138,10 +140,25 @@ export class JsonStorageService implements StorageService {
       typeof value.updatedAt === 'string' &&
       Array.isArray(value.scenes) &&
       Array.isArray(value.assets) &&
+      value.assets.every(isStorageCompatibleAsset) &&
       Array.isArray(value.characterCards) &&
       Array.isArray(value.notes)
     )
   }
+}
+
+function isStorageCompatibleAsset(value: unknown): value is Campaign['assets'][number] {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.campaignId === 'string' &&
+    typeof value.kind === 'string' &&
+    typeof value.name === 'string' &&
+    typeof value.filePath === 'string' &&
+    Array.isArray(value.tags) &&
+    typeof value.createdAt === 'string' &&
+    (value.storageRef === undefined || isRecord(value.storageRef))
+  )
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

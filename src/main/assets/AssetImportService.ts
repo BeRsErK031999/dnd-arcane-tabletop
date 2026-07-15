@@ -37,6 +37,7 @@ export class AssetImportService {
       const assetId = createAssetId()
       const targetDirectory = this.getCampaignAssetsDirectory(request.campaignId)
       const targetFilePath = path.join(targetDirectory, `${assetId}${extension}`)
+      const targetFileUrl = pathToFileURL(targetFilePath).toString()
       const originalFileName = path.basename(sourceFilePath)
 
       await mkdir(targetDirectory, { recursive: true })
@@ -49,7 +50,12 @@ export class AssetImportService {
           campaignId: request.campaignId,
           kind: request.kind,
           name: normalizeAssetName(request.suggestedName ?? path.parse(originalFileName).name),
-          filePath: pathToFileURL(targetFilePath).toString(),
+          filePath: targetFileUrl,
+          storageRef: {
+            kind: 'legacy-file',
+            fileUrl: targetFileUrl,
+          },
+          exportPolicy: 'when-used',
           tags: normalizeAssetTags(request.tags),
           createdAt: timestamp,
           metadata: {

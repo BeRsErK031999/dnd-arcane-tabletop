@@ -1,4 +1,5 @@
 import type { CampaignId, EntityId, IsoDateString } from './common.js'
+import type { CampaignAssetExportPolicy, CampaignAssetStorageReference } from './assetStorage.js'
 
 export type AssetId = EntityId
 
@@ -11,6 +12,8 @@ export interface Asset {
   kind: AssetKind
   name: string
   filePath: string
+  storageRef?: CampaignAssetStorageReference
+  exportPolicy?: CampaignAssetExportPolicy
   tags: string[]
   createdAt: IsoDateString
   metadata?: Record<string, string | number | boolean | null>

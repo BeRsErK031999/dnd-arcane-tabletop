@@ -217,6 +217,31 @@ RoadMap фиксирует три разных уровня, которые не
 
 Развитый экспорт определяет транзитивно используемые сценами, токенами, handouts и player projection ассеты, добавляет явно отмеченные дополнительные файлы и кладёт каждый уникальный SHA-256 в пакет один раз. Package manifest хранит только относительные безопасные пути и checksums; импорт сначала валидирует весь manifest, а затем дедуплицирует файлы в managed store.
 
+### Фундамент этапа 17
+
+`Asset.filePath` временно остаётся обязательным display/runtime URL, чтобы существующий renderer и legacy campaign JSON продолжали работать. Новый необязательный `Asset.storageRef` становится typed источником происхождения ассета:
+
+- `embedded-data` ссылается на существующий `data:` URL в `filePath`, не дублируя base64 в campaign JSON;
+- `legacy-file` сохраняет текущий `file:` URL до copy-on-use миграции;
+- `managed` хранит SHA-256 и переносимые метаданные без absolute path.
+
+`migrateLegacyCampaignAssetReferences` lossless добавляет `storageRef` и default export policy `when-used` при чтении и записи JSON. Исходный `filePath` при этом не меняется. При экспорте package version 1 legacy `storageRef` удаляется вместе с absolute path, а после импорта строится заново для нового локального URL.
+
+Main process использует три driver-neutral контракта:
+
+- `AssetIndexService` управляет источниками, индексированными ассетами, поиском и тегами;
+- `ManagedAssetStore` кладёт, находит, проверяет и разрешает content-addressed blob;
+- `CampaignAssetResolver` превращает campaign reference в runtime `fileUrl` и не позволяет renderer самостоятельно вычислять managed paths.
+
+Физический layout managed store зафиксирован как `objects/<sha[0..2]>/<sha[2..4]>/<sha256>.<ext>`. Это ограничивает число файлов в одной папке и не зависит от исходного имени.
+
+SQLite catalog имеет две последовательные миграции:
+
+1. `asset_library_sources`, `indexed_assets`, `indexed_asset_tags` и поисковые индексы.
+2. `managed_asset_blobs`, `campaign_asset_references` и индексы для SHA-256/export policy.
+
+Migration runner включает foreign keys, использует `BEGIN IMMEDIATE`, `PRAGMA user_version`, отдельную транзакцию на версию и rollback при ошибке. Конкретный SQLite driver намеренно не входит в этап 17: текущий dev runtime — Node 20 без `node:sqlite`, а преждевременный native addon потребовал бы отдельной ABI-сборки под Node и Electron. Driver подключается на этапе 18 вместе с background indexer, не меняя DDL и сервисные контракты.
+
 ## Почему нельзя размазывать управление player window
 
 Если open/close/fullscreen/state будут жить в разных React-компонентах и строковых IPC-вызовах, появятся риски:

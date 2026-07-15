@@ -55,6 +55,7 @@ describe('ProjectTransferService', () => {
     expect(projectPackage.campaign.assets[0]?.filePath).toBe(
       `arcane-project-asset:${encodeURIComponent(campaign.assets[0]?.id ?? '')}`,
     )
+    expect(projectPackage.campaign.assets[0]?.storageRef).toBeUndefined()
 
     const importResult = await new ProjectTransferService(targetStorage).importCampaign(packagePath)
 
@@ -74,8 +75,10 @@ describe('ProjectTransferService', () => {
     }
 
     await expect(readFile(fileURLToPath(importedMap.filePath))).resolves.toEqual(assetContents)
+    expect(importedMap.storageRef).toEqual({ kind: 'legacy-file', fileUrl: importedMap.filePath })
     expect(importResult.campaign.playerScreenState.sceneCanvas?.backgroundAsset?.filePath).toBe(importedMap.filePath)
     expect(importResult.campaign.assets[1]?.filePath.startsWith('data:')).toBe(true)
+    expect(importResult.campaign.assets[1]?.storageRef?.kind).toBe('embedded-data')
     await expect(targetStorage.loadCampaign(campaign.id)).resolves.toEqual(importResult.campaign)
   })
 
@@ -107,7 +110,17 @@ describe('ProjectTransferService', () => {
     expect(importResult.campaign.notes.every((note) => note.campaignId === importResult.campaign.id)).toBe(true)
     expect(importResult.campaign.combatState.campaignId).toBe(importResult.campaign.id)
     expect(importResult.campaign.playerScreenState.campaignId).toBe(importResult.campaign.id)
-    await expect(storage.loadCampaign(campaign.id)).resolves.toEqual(campaign)
+    await expect(storage.loadCampaign(campaign.id)).resolves.toMatchObject({
+      id: campaign.id,
+      name: campaign.name,
+      assets: [
+        expect.objectContaining({
+          id: campaign.assets[0]?.id,
+          filePath: campaign.assets[0]?.filePath,
+        }),
+        expect.objectContaining({ id: campaign.assets[1]?.id }),
+      ],
+    })
     await expect(storage.loadCampaign(importResult.campaign.id)).resolves.toEqual(importResult.campaign)
   })
 
@@ -147,6 +160,25 @@ describe('ProjectTransferService', () => {
     })
 
     portableAsset.dataBase64 = assetContents.toString('base64')
+    const embeddedAsset = projectPackage.campaign.assets[1]
+
+    if (!embeddedAsset) {
+      throw new Error('Exported package is missing its embedded asset')
+    }
+
+    embeddedAsset.storageRef = {
+      kind: 'legacy-file',
+      fileUrl: 'file:///outside-library/secret.png',
+    }
+    await writeFile(packagePath, JSON.stringify(projectPackage), 'utf8')
+    await expect(new ProjectTransferService(targetStorage).importCampaign(packagePath)).resolves.toEqual({
+      ok: false,
+      reason: 'invalid-package',
+    })
+
+    embeddedAsset.storageRef = {
+      kind: 'embedded-data',
+    }
     const projectedMap = projectPackage.campaign.playerScreenState.sceneCanvas?.backgroundAsset
 
     if (!projectedMap) {

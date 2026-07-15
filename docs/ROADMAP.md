@@ -108,7 +108,7 @@ campaign.arcane-campaign
 
 ## Этап 17. Контракты гибридного хранилища
 
-Статус: запланировано следующим.
+Статус: выполнено.
 
 Цель: отделить логический ассет кампании от внешнего пути и подготовить безопасную миграцию текущих JSON-кампаний.
 
@@ -121,9 +121,29 @@ campaign.arcane-campaign
 - миграция текущих `file:`/`data:` ссылок без потери совместимости;
 - правила жизненного цикла, дедупликации и безопасной очистки неиспользуемых blob.
 
+Реализовано:
+
+- shared contracts `AssetLibrarySource`, `IndexedAsset`, `ManagedAssetBlob`, `CampaignAssetStorageReference` и `CampaignAssetBinding`;
+- необязательный `Asset.storageRef`, совместимый с существующим обязательным `filePath`, и export policy `when-used / always`;
+- lossless migration текущих `file:` и `data:` ссылок при чтении/записи campaign JSON;
+- driver-neutral `AssetIndexService`, `ManagedAssetStore` и `CampaignAssetResolver`;
+- resolver для embedded, legacy и managed references с явными ошибками отсутствующего blob;
+- детерминированный content-addressed layout `objects/<2>/<2>/<sha256>.<ext>`;
+- SQLite schema versions 1-2 для sources, indexed assets, tags, managed blobs и campaign bindings;
+- транзакционный migration runner на `PRAGMA user_version` с rollback и отказом открывать более новую схему;
+- защита `.arcane-campaign` от утечки legacy absolute path через новый `storageRef`.
+
+Критерии готовности:
+
+- legacy JSON загружается без изменения видимого URL ассета;
+- managed reference разрешается только через `ManagedAssetStore` и валидный SHA-256;
+- DDL проходит реальную SQLite syntax/foreign-key проверку;
+- migrations применяются последовательно, откатываются при ошибке и не запускаются повторно;
+- lint, typecheck, unit/integration tests и production build проходят.
+
 ## Этап 18. Подключение папок и фоновая индексация
 
-Статус: запланировано.
+Статус: запланировано следующим.
 
 Входит:
 

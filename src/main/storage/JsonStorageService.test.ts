@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -96,6 +96,50 @@ describe('JsonStorageService', () => {
     expect(firstBackup.name).toBe('Lost Mine v3')
     expect(secondBackup.name).toBe('Lost Mine v2')
     await expect(storage.listCampaigns()).resolves.toHaveLength(1)
+  })
+
+  it('hydrates legacy file and data asset references without changing their display paths', async () => {
+    const directory = await createTempDirectory()
+    const storage = new JsonStorageService(directory)
+    const campaign = createCampaignFixture()
+    const legacyCampaign: Campaign = {
+      ...campaign,
+      assets: [
+        {
+          id: 'asset-file',
+          campaignId: campaign.id,
+          kind: 'map',
+          name: 'Legacy map',
+          filePath: 'file:///C:/legacy/map.png',
+          tags: [],
+          createdAt: campaign.createdAt,
+        },
+        {
+          id: 'asset-data',
+          campaignId: campaign.id,
+          kind: 'handout',
+          name: 'Embedded handout',
+          filePath: 'data:image/png;base64,AA==',
+          tags: [],
+          createdAt: campaign.createdAt,
+        },
+      ],
+    }
+
+    await storage.initialize()
+    await writeFile(path.join(directory, `${campaign.id}.json`), JSON.stringify(legacyCampaign), 'utf8')
+
+    const loadedCampaign = await storage.loadCampaign(campaign.id)
+    expect(loadedCampaign?.assets[0]).toMatchObject({
+      filePath: legacyCampaign.assets[0]?.filePath,
+      storageRef: { kind: 'legacy-file', fileUrl: legacyCampaign.assets[0]?.filePath },
+      exportPolicy: 'when-used',
+    })
+    expect(loadedCampaign?.assets[1]).toMatchObject({
+      filePath: legacyCampaign.assets[1]?.filePath,
+      storageRef: { kind: 'embedded-data' },
+      exportPolicy: 'when-used',
+    })
   })
 })
 

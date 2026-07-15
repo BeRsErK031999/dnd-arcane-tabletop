@@ -2,57 +2,64 @@
 
 ## Текущий этап
 
-Этап 16. Стартовый экран и жизненный цикл проекта.
-
-Текущая задача: 16.2 — переносимый import/export проекта.
+Этап 17. Контракты гибридного хранилища.
 
 Статус: выполнено и проверено.
 
 ## Основание
 
-Требования взяты из `TRP game builder.docx` от 2026-07-15. Документ содержит текстовые требования и 12 макетов для стартового экрана, рабочей области, слоёв, масштаба, управления player window и экрана игроков.
+Целевая модель: большая внешняя библиотека индексируется без массового копирования, выбранные ассеты переходят в managed store по SHA-256, а кампания экспортируется автономным `.arcane-campaign` пакетом.
 
-## Реализовано в задаче 16.2
+## Реализовано в этапе 17
 
-- Добавлен автономный versioned формат `campaign.arcane-campaign`.
-- Экспорт включает campaign JSON и все прикреплённые локальные `file:` ассеты; встроенные `data:` ассеты остаются в JSON.
-- Для каждого бинарного ассета сохраняется и при импорте проверяется SHA-256.
-- Absolute file paths заменяются переносимыми package references и перепривязываются после импорта.
-- Конфликт campaign id разрешается созданием нового id с перепривязкой всех campaign-owned сущностей.
-- Импорт использует staging directory и очищает неполную запись при ошибке.
-- Native Electron dialogs подключены через typed IPC/preload API.
-- Кнопки `Импорт проекта` и `Экспорт проекта` на стартовом экране функциональны.
-- В RoadMap зафиксирована следующая эволюция: внешняя индексируемая библиотека, SQLite-каталог, copy-on-use SHA-256 store и умный автономный экспорт.
+- Добавлены typed contracts для library source, indexed asset, managed blob и campaign binding.
+- `Asset.storageRef` разделяет embedded, legacy file и managed references.
+- `Asset.exportPolicy` готовит выбор дополнительных ассетов для будущего умного экспорта.
+- Legacy `file:`/`data:` ссылки lossless мигрируются при чтении и записи campaign JSON.
+- Новые локальные импорты сразу получают `legacy-file` reference.
+- `CampaignAssetResolver` разрешает runtime URL через `ManagedAssetStore` и валидирует SHA-256.
+- Content-addressed путь стабильно строится как `objects/<2>/<2>/<sha256>.<ext>`.
+- Добавлены service boundaries `AssetIndexService`, `ManagedAssetStore` и `CampaignAssetResolver`.
+- SQLite schema version 1 создаёт sources, indexed assets и tags.
+- SQLite schema version 2 создаёт managed blobs и campaign asset bindings.
+- Migration runner применяет версии транзакционно, использует `PRAGMA user_version` и выполняет rollback при ошибке.
+- Portable export удаляет legacy absolute path из `storageRef` и восстанавливает новый локальный reference после импорта.
+
+## Архитектурное решение по SQLite
+
+Текущий Node 20 runtime не предоставляет `node:sqlite`. На этапе 17 не добавляется native addon, который потребовал бы разные ABI-сборки для Node tests и Electron. DDL и migration runner отделены от драйвера небольшим adapter-контрактом. Конкретный SQLite driver подключается на этапе 18 вместе с background indexer.
 
 ## Критерии готовности
 
-- `npm run lint` проходит.
-- `npm run typecheck` проходит.
-- `npm run test` проходит.
-- `npm run build` проходит.
-- Unit/integration tests подтверждают перенос файла, SHA-256, конфликт id и отклонение повреждённого пакета.
-- Browser smoke подтверждает доступность действий и корректные desktop-only состояния renderer fallback.
-- Git diff не содержит временных файлов и исходный Word не попадает в commit автоматически.
+- Legacy campaign JSON остаётся читаемым и не теряет исходные пути.
+- Managed reference не содержит absolute source path.
+- Некорректный SHA-256 и отсутствующий blob возвращают typed failure.
+- SQLite DDL проходит syntax и foreign-key проверку.
+- Миграции применяются последовательно и откатываются при ошибке.
+- `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build` проходят.
+- Git diff не содержит временных файлов и исходный Word не попадает в commit.
 
-## Следующая задача
+## Следующий этап
 
-Этап 17 — контракты гибридного хранилища: asset references, SQLite schema, managed blob store и миграция текущих путей.
+Этап 18 — подключение папок, реальный SQLite adapter, background indexer, метаданные изображений и дисковые превью.
 
 ## Затрагиваемые области
 
-- `src/renderer/pages/ProjectStartPage.tsx`
+- `src/shared/types/asset.ts`
+- `src/shared/types/assetStorage.ts`
+- `src/shared/assetStorage.ts`
+- `src/main/assets/hybridStorageContracts.ts`
+- `src/main/assets/CampaignAssetResolver.ts`
+- `src/main/assets/catalog/assetCatalogMigrations.ts`
+- `src/main/storage/JsonStorageService.ts`
 - `src/main/projects/ProjectTransferService.ts`
-- `src/main/ipc/storageIpc.ts`
-- `src/preload`
-- `src/renderer/stores/useCampaignsStore.ts`
-- `src/shared/types/projectTransfer.ts`
 - `docs/ROADMAP.md`
 - `docs/ARCHITECTURE.md`
 
 ## Риски и меры
 
-- Риск path traversal: пакет принимает только безопасные имена и внутренние asset references.
-- Риск незаметно повреждённого файла: каждый бинарный ассет проверяется по SHA-256 до записи.
-- Риск частично импортированной кампании: файлы сначала пишутся в staging, ошибки запускают cleanup.
-- Риск конфликта с существующей кампанией или её папкой: импорт создаёт новый campaign id.
-- Ограничение MVP: версия 1 экспортирует все прикреплённые ассеты; выбор только реально используемых и дополнительных файлов вынесен в этап 21.
+- Риск сломать legacy renderer: `filePath` сохраняется до этапа managed-store migration.
+- Риск утечки absolute path в export: portable rewrite удаляет `legacy-file storageRef`.
+- Риск дублирования blob: SHA-256 является primary key каталога и частью managed reference.
+- Риск случайного удаления общего файла: FK использует `ON DELETE RESTRICT`; garbage collection остаётся отдельной операцией этапа 20.
+- Риск несовместимого каталога: приложение отказывается открывать schema version новее поддерживаемой.

@@ -72,7 +72,7 @@ export class ProjectTransferService {
       format: PROJECT_PACKAGE_FORMAT,
       version: PROJECT_PACKAGE_VERSION,
       exportedAt: new Date().toISOString(),
-      campaign: rewriteCampaignAssetPaths(campaign, portablePaths),
+      campaign: rewriteCampaignAssetPaths(campaign, portablePaths, 'portable'),
       assets: portableAssets,
     }
 
@@ -129,7 +129,7 @@ export class ProjectTransferService {
         await rename(stagingDirectory, targetAssetsDirectory)
       }
 
-      const campaignWithAssetPaths = rewriteCampaignAssetPaths(projectPackage.campaign, importedPaths)
+      const campaignWithAssetPaths = rewriteCampaignAssetPaths(projectPackage.campaign, importedPaths, 'local')
       const importedCampaign = rewriteCampaignId(campaignWithAssetPaths, importedCampaignId)
       await this.storageService.saveCampaign(importedCampaign)
 
@@ -230,7 +230,12 @@ function isPortableProjectPackage(value: unknown): value is PortableProjectPacka
     if (asset.filePath.startsWith(PORTABLE_ASSET_PREFIX)) {
       const assetId = readPortableAssetId(asset.filePath)
 
-      if (assetId === null || assetId !== asset.id || !portableAssetIds.has(assetId)) {
+      if (
+        assetId === null ||
+        assetId !== asset.id ||
+        !portableAssetIds.has(assetId) ||
+        asset.storageRef !== undefined
+      ) {
         return false
       }
 
@@ -238,7 +243,7 @@ function isPortableProjectPackage(value: unknown): value is PortableProjectPacka
       continue
     }
 
-    if (!asset.filePath.startsWith('data:')) {
+    if (!asset.filePath.startsWith('data:') || !hasSafeEmbeddedStorageReference(asset)) {
       return false
     }
   }
@@ -292,8 +297,52 @@ function isAsset(value: unknown): value is Asset {
     typeof value.kind === 'string' &&
     typeof value.name === 'string' &&
     typeof value.filePath === 'string' &&
+    (value.storageRef === undefined || isCampaignAssetStorageReference(value.storageRef)) &&
+    (value.exportPolicy === undefined || value.exportPolicy === 'when-used' || value.exportPolicy === 'always') &&
     Array.isArray(value.tags) &&
     typeof value.createdAt === 'string'
+  )
+}
+
+function isCampaignAssetStorageReference(value: unknown): value is Asset['storageRef'] {
+  if (!isRecord(value) || typeof value.kind !== 'string') {
+    return false
+  }
+
+  switch (value.kind) {
+    case 'embedded-data':
+      return value.dataUrl === undefined || typeof value.dataUrl === 'string'
+    case 'legacy-file':
+      return (
+        typeof value.fileUrl === 'string' &&
+        isOptionalSha256(value.sha256) &&
+        (value.indexedAssetId === undefined || typeof value.indexedAssetId === 'string')
+      )
+    case 'managed':
+      return (
+        typeof value.sha256 === 'string' &&
+        /^[a-f0-9]{64}$/.test(value.sha256) &&
+        typeof value.fileName === 'string' &&
+        typeof value.mimeType === 'string' &&
+        typeof value.byteSize === 'number' &&
+        Number.isSafeInteger(value.byteSize) &&
+        value.byteSize >= 0 &&
+        (value.indexedAssetId === undefined || typeof value.indexedAssetId === 'string')
+      )
+    default:
+      return false
+  }
+}
+
+function isOptionalSha256(value: unknown): boolean {
+  return value === undefined || (typeof value === 'string' && /^[a-f0-9]{64}$/.test(value))
+}
+
+function hasSafeEmbeddedStorageReference(asset: Asset): boolean {
+  return (
+    asset.storageRef === undefined ||
+    (asset.storageRef.kind === 'embedded-data' &&
+      (asset.storageRef.dataUrl === undefined || asset.storageRef.dataUrl === asset.filePath))
   )
 }
 
@@ -364,16 +413,30 @@ function hasSafePlayerProjectionAssetPaths(campaign: Campaign, portableAssetIds:
   })
 }
 
-function rewriteCampaignAssetPaths(campaign: Campaign, assetPaths: ReadonlyMap<string, string>): Campaign {
+function rewriteCampaignAssetPaths(
+  campaign: Campaign,
+  assetPaths: ReadonlyMap<string, string>,
+  mode: 'portable' | 'local',
+): Campaign {
   const resolvePath = (assetId: string, currentPath: string): string => assetPaths.get(assetId) ?? currentPath
   const sceneCanvas = campaign.playerScreenState.sceneCanvas
 
   return {
     ...campaign,
-    assets: campaign.assets.map((asset) => ({
-      ...asset,
-      filePath: resolvePath(asset.id, asset.filePath),
-    })),
+    assets: campaign.assets.map((asset) => {
+      const resolvedPath = resolvePath(asset.id, asset.filePath)
+      const hasRewrittenPath = assetPaths.has(asset.id)
+
+      return {
+        ...asset,
+        filePath: resolvedPath,
+        storageRef: hasRewrittenPath
+          ? mode === 'portable'
+            ? undefined
+            : { kind: 'legacy-file', fileUrl: resolvedPath }
+          : asset.storageRef,
+      }
+    }),
     playerScreenState: {
       ...campaign.playerScreenState,
       sceneCanvas: sceneCanvas

@@ -11,6 +11,9 @@ import type {
   ImageAssetKind,
   NoteId,
   PlayerScreenCommandResult,
+  ProjectExportResult,
+  ProjectImportResult,
+  ProjectTransferFailureReason,
   SceneCanvasFogRegionId,
   SceneCanvasFogState,
   SceneCanvasObjectId,
@@ -554,6 +557,75 @@ export function useCampaignsStore() {
       return false
     }
   }, [selectedCampaign])
+
+  const importProject = useCallback(async (): Promise<ProjectImportResult> => {
+    setStatus('loading')
+    setLastError(null)
+
+    try {
+      const result = await desktopApi.storage.importProject()
+
+      if (!result.ok) {
+        if (result.reason === 'cancelled') {
+          setStatus('ready')
+          return result
+        }
+
+        setLastError(getProjectTransferErrorMessage(result.reason, 'import'))
+        setStatus('error')
+        return result
+      }
+
+      const hydratedCampaign = createCampaignWithHydratedCombatState(
+        createCampaignWithHydratedNotes(
+          createCampaignWithHydratedCharacterCards(createCampaignWithHydratedScenes(result.campaign)),
+        ),
+      )
+      setSelectedCampaign(hydratedCampaign)
+      setCampaigns(await desktopApi.storage.listCampaigns())
+      setStatus('ready')
+      return { ...result, campaign: hydratedCampaign }
+    } catch {
+      setLastError('Не удалось импортировать проект.')
+      setStatus('error')
+      return { ok: false, reason: 'read-failed' }
+    }
+  }, [])
+
+  const exportSelectedProject = useCallback(async (): Promise<ProjectExportResult> => {
+    if (selectedCampaign === null) {
+      setLastError('Нет выбранного проекта для экспорта.')
+      return { ok: false, reason: 'campaign-not-found' }
+    }
+
+    setStatus('saving')
+    setLastError(null)
+    clearAutosaveTimer()
+
+    try {
+      await saveCampaignWithStatus(selectedCampaign)
+      const result = await desktopApi.storage.exportProject(selectedCampaign.id)
+
+      if (!result.ok) {
+        if (result.reason === 'cancelled') {
+          setStatus('ready')
+          return result
+        }
+
+        setLastError(getProjectTransferErrorMessage(result.reason, 'export'))
+        setStatus('error')
+        return result
+      }
+
+      setCampaigns(await desktopApi.storage.listCampaigns())
+      setStatus('ready')
+      return result
+    } catch {
+      setLastError('Не удалось экспортировать проект.')
+      setStatus('error')
+      return { ok: false, reason: 'write-failed' }
+    }
+  }, [clearAutosaveTimer, saveCampaignWithStatus, selectedCampaign])
 
   const createScene = useCallback(
     async (name: string, description?: string): Promise<CampaignMutationResult> => {
@@ -1633,6 +1705,8 @@ export function useCampaignsStore() {
     saveSelectedCampaign,
     saveSelectedCampaignToDirectory,
     deleteSelectedCampaign,
+    importProject,
+    exportSelectedProject,
     createScene,
     activateScene,
     sendActiveSceneToPlayers,
@@ -1695,6 +1769,34 @@ function createInitialHistoryState(): CampaignHistoryState {
   return {
     undoCount: 0,
     redoCount: 0,
+  }
+}
+
+function getProjectTransferErrorMessage(
+  reason: ProjectTransferFailureReason,
+  operation: 'import' | 'export',
+): string {
+  switch (reason) {
+    case 'invalid-package':
+      return 'Файл проекта повреждён или имеет неверный формат.'
+    case 'unsupported-version':
+      return 'Версия файла проекта пока не поддерживается.'
+    case 'unsupported-asset-path':
+      return 'Проект содержит неподдерживаемую ссылку на ассет.'
+    case 'asset-read-failed':
+      return 'Не удалось прочитать один из локальных ассетов проекта.'
+    case 'desktop-api-unavailable':
+      return 'Импорт и экспорт доступны только в desktop-приложении.'
+    case 'campaign-not-found':
+      return 'Выбранный проект не найден.'
+    case 'read-failed':
+      return 'Не удалось прочитать файл проекта.'
+    case 'write-failed':
+      return operation === 'import'
+        ? 'Не удалось сохранить импортированный проект.'
+        : 'Не удалось записать файл проекта.'
+    case 'cancelled':
+      return operation === 'import' ? 'Импорт отменён.' : 'Экспорт отменён.'
   }
 }
 

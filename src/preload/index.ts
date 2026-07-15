@@ -19,6 +19,8 @@ const desktopApi: DesktopApi = {
     loadCampaign: (campaignId: CampaignId) => ipcRenderer.invoke(IPC_CHANNELS.storage.loadCampaign, campaignId),
     saveCampaign: (campaign: Campaign) => ipcRenderer.invoke(IPC_CHANNELS.storage.saveCampaign, campaign),
     deleteCampaign: (campaignId: CampaignId) => ipcRenderer.invoke(IPC_CHANNELS.storage.deleteCampaign, campaignId),
+    importProject: () => ipcRenderer.invoke(IPC_CHANNELS.storage.importProject),
+    exportProject: (campaignId: CampaignId) => ipcRenderer.invoke(IPC_CHANNELS.storage.exportProject, campaignId),
   },
   assets: {
     importImageAsset: (request: ImportImageAssetRequest) => ipcRenderer.invoke(IPC_CHANNELS.assets.importImage, request),

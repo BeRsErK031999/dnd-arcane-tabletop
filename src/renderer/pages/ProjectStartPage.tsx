@@ -20,6 +20,8 @@ export function ProjectStartPage({ campaignsStore, onLaunchProject }: ProjectSta
     createCampaign,
     openCampaign,
     deleteSelectedCampaign,
+    importProject,
+    exportSelectedProject,
   } = campaignsStore
   const [dialog, setDialog] = useState<ProjectDialog>(null)
   const [projectName, setProjectName] = useState('')
@@ -85,6 +87,38 @@ export function ProjectStartPage({ campaignsStore, onLaunchProject }: ProjectSta
     setActionMessage('Не удалось удалить проект.')
   }
 
+  async function handleImportProject(): Promise<void> {
+    const result = await importProject()
+
+    if (!result.ok) {
+      if (result.reason === 'cancelled') {
+        setActionMessage('Импорт проекта отменён.')
+      }
+      return
+    }
+
+    setActionMessage(
+      result.campaignIdChanged
+        ? `Проект «${result.campaign.name}» импортирован с новым внутренним ID.`
+        : `Проект «${result.campaign.name}» импортирован и выбран.`,
+    )
+  }
+
+  async function handleExportProject(): Promise<void> {
+    const result = await exportSelectedProject()
+
+    if (!result.ok) {
+      if (result.reason === 'cancelled') {
+        setActionMessage('Экспорт проекта отменён.')
+      }
+      return
+    }
+
+    setActionMessage(
+      `Проект экспортирован: ${result.exportedAssetCount} ${getAssetCountLabel(result.exportedAssetCount)} в автономном пакете.`,
+    )
+  }
+
   return (
     <main className="project-start" aria-label="Стартовый экран проектов">
       <div className="project-start__glow project-start__glow--top" aria-hidden="true" />
@@ -133,23 +167,23 @@ export function ProjectStartPage({ campaignsStore, onLaunchProject }: ProjectSta
             </button>
             <button
               className="project-action"
-              disabled
-              title="Импорт переносимого проекта запланирован следующим этапом RoadMap"
+              disabled={isBusy}
+              onClick={() => void handleImportProject()}
+              title="Импортировать автономный .arcane-campaign пакет"
               type="button"
             >
               <span className="project-action__icon" aria-hidden="true">⇣</span>
               <span>Импорт проекта</span>
-              <small>следующий этап</small>
             </button>
             <button
               className="project-action"
-              disabled
-              title="Экспорт переносимого проекта запланирован следующим этапом RoadMap"
+              disabled={selectedCampaign === null || isBusy}
+              onClick={() => void handleExportProject()}
+              title="Экспортировать выбранный проект в .arcane-campaign"
               type="button"
             >
               <span className="project-action__icon" aria-hidden="true">⇡</span>
               <span>Экспорт проекта</span>
-              <small>следующий этап</small>
             </button>
             <button
               className="project-action project-action--danger"
@@ -365,4 +399,23 @@ function getProjectCountLabel(count: number): string {
   }
 
   return 'проектов'
+}
+
+function getAssetCountLabel(count: number): string {
+  const normalized = Math.abs(count) % 100
+  const lastDigit = normalized % 10
+
+  if (normalized > 10 && normalized < 20) {
+    return 'ассетов'
+  }
+
+  if (lastDigit === 1) {
+    return 'ассет'
+  }
+
+  if (lastDigit >= 2 && lastDigit <= 4) {
+    return 'ассета'
+  }
+
+  return 'ассетов'
 }

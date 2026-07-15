@@ -4,7 +4,7 @@
 
 D&D Arcane Tabletop - локальное desktop-приложение. Оно состоит из Electron main process, secure preload bridge, React renderer и shared contracts.
 
-Проект не использует backend, аккаунты, cloud sync, online player connections, SQLite или PostgreSQL на текущих этапах.
+Проект не использует backend, аккаунты, cloud sync, online player connections или PostgreSQL. Кампании сейчас сохраняются в JSON; SQLite запланирован только как локальный перестраиваемый индекс общей библиотеки ассетов.
 
 ## Main Process
 
@@ -181,6 +181,41 @@ Storage layer находится в `src/main/storage`.
 На этапе 14 контур сохранности разделен между renderer и main process. `useCampaignsStore` остается точкой входа для campaign mutations, ведет `CampaignSaveState`, ставит dirty state, запускает debounced autosave через 3.5 секунды после изменения selected campaign и держит ограниченную undo/redo историю в памяти renderer. `JsonStorageService` перед каждой перезаписью campaign JSON переносит предыдущие версии в `data/campaigns/.backups` и хранит только `backup-1` / `backup-2`, поэтому backup-файлы не попадают в `listCampaigns`. Это не меняет `StorageService`: backup rotation является деталью JSON-реализации.
 
 На этапе 15 React entrypoint обернут в `AppErrorBoundary`, чтобы renderer при runtime error показывал контролируемый fallback вместо пустого окна. Горячие клавиши master UI остаются renderer-level поведением: `Ctrl+S` вызывает сохранение выбранной кампании, `Ctrl+Z` / `Ctrl+Y` используют историю `useCampaignsStore`, но campaign undo/redo не перехватывает события внутри редактируемых полей.
+
+## Перенос проектов
+
+`ProjectTransferService` в main process реализует первый versioned формат `campaign.arcane-campaign`.
+
+Экспорт:
+
+1. Загружает актуальный campaign JSON через `StorageService`.
+2. Читает прикреплённые локальные `file:` ассеты, вычисляет SHA-256 и заменяет absolute paths внутренними `arcane-project-asset:` ссылками.
+3. Сохраняет встроенные `data:` ассеты непосредственно в JSON кампании.
+4. Записывает пакет через temporary file и rename.
+
+Импорт:
+
+1. Проверяет format/version, минимальный campaign contract, безопасные имена, base64 и SHA-256.
+2. При конфликте существующего JSON или папки создаёт новый campaign id.
+3. Пишет файлы в staging directory и только затем подключает папку ассетов.
+4. Перепривязывает пути и campaign id во всех campaign-owned сущностях.
+5. При ошибке удаляет staging и неполные результаты.
+
+Renderer не читает файлы напрямую: native dialogs и transfer service доступны только через typed IPC/preload API.
+
+## Целевая гибридная модель ассетов
+
+RoadMap фиксирует три разных уровня, которые нельзя смешивать:
+
+- внешние папки — read-only источник большой пользовательской библиотеки;
+- SQLite — перестраиваемый каталог метаданных, превью и тегов, но не blob storage;
+- managed store — content-addressed оригиналы по SHA-256, скопированные только при использовании.
+
+Целевой campaign asset reference содержит логический asset id и SHA-256. Absolute source path остаётся свойством записи библиотечного индекса и не является обязательным для открытия кампании. Managed blob физически хранится один раз независимо от числа кампаний, но его удаление допускается только отдельной безопасной garbage-collection операцией после проверки ссылок.
+
+Фоновый indexer живёт в main process/worker boundary, рекурсивно сканирует подключённые папки, строит миниатюры и обновляет SQLite транзакциями. Renderer получает только состояние очереди и страницы результатов для Asset Manager, поэтому большая библиотека не блокирует UI.
+
+Развитый экспорт определяет транзитивно используемые сценами, токенами, handouts и player projection ассеты, добавляет явно отмеченные дополнительные файлы и кладёт каждый уникальный SHA-256 в пакет один раз. Package manifest хранит только относительные безопасные пути и checksums; импорт сначала валидирует весь manifest, а затем дедуплицирует файлы в managed store.
 
 ## Почему нельзя размазывать управление player window
 

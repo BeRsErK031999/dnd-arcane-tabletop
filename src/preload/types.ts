@@ -10,6 +10,8 @@ import type {
   PlayerScreenOpenResult,
   PlayerScreenState,
   PlayerScreenStatus,
+  ProjectExportResult,
+  ProjectImportResult,
 } from '../shared/types/index.js'
 
 export type DesktopEventUnsubscribe = () => void
@@ -23,6 +25,8 @@ export interface DesktopApi {
     loadCampaign(campaignId: CampaignId): Promise<Campaign | null>
     saveCampaign(campaign: Campaign): Promise<void>
     deleteCampaign(campaignId: CampaignId): Promise<void>
+    importProject(): Promise<ProjectImportResult>
+    exportProject(campaignId: CampaignId): Promise<ProjectExportResult>
   }
   assets: {
     importImageAsset(request: ImportImageAssetRequest): Promise<ImportImageAssetResult>

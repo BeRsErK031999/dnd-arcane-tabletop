@@ -5,10 +5,16 @@ import type {
   CampaignId,
   CampaignsDirectoryInfo,
   CampaignsDirectorySelectionResult,
+  ProjectExportResult,
+  ProjectImportResult,
 } from '../../shared/types/index.js'
+import type { ProjectTransferService } from '../projects/ProjectTransferService.js'
 import type { StorageService } from '../storage/StorageService.js'
 
-export function registerStorageIpc(storageService: StorageService): void {
+export function registerStorageIpc(
+  storageService: StorageService,
+  projectTransferService: ProjectTransferService,
+): void {
   ipcMain.handle(IPC_CHANNELS.storage.getCampaignsDirectory, () => getCampaignsDirectoryInfo(storageService))
 
   ipcMain.handle(IPC_CHANNELS.storage.selectCampaignsDirectory, async (event) => {
@@ -60,6 +66,34 @@ export function registerStorageIpc(storageService: StorageService): void {
   ipcMain.handle(IPC_CHANNELS.storage.deleteCampaign, (_event, campaignId: CampaignId) =>
     storageService.deleteCampaign(campaignId),
   )
+
+  ipcMain.handle(IPC_CHANNELS.storage.importProject, async (event): Promise<ProjectImportResult> => {
+    const sourceFilePath = await pickProjectPackage(BrowserWindow.fromWebContents(event.sender))
+
+    return sourceFilePath === null
+      ? { ok: false, reason: 'cancelled' }
+      : projectTransferService.importCampaign(sourceFilePath)
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.storage.exportProject,
+    async (event, campaignId: CampaignId): Promise<ProjectExportResult> => {
+      const campaign = await storageService.loadCampaign(campaignId)
+
+      if (campaign === null) {
+        return { ok: false, reason: 'campaign-not-found' }
+      }
+
+      const targetFilePath = await pickProjectExportPath(
+        createProjectPackageFileName(campaign.name),
+        BrowserWindow.fromWebContents(event.sender),
+      )
+
+      return targetFilePath === null
+        ? { ok: false, reason: 'cancelled' }
+        : projectTransferService.exportCampaign(campaignId, targetFilePath)
+    },
+  )
 }
 
 function getCampaignsDirectoryInfo(storageService: StorageService): CampaignsDirectoryInfo {
@@ -95,4 +129,59 @@ async function pickCampaignsDirectory(
       : await dialog.showOpenDialog(browserWindow, options)
 
   return result.canceled ? null : (result.filePaths[0] ?? null)
+}
+
+async function pickProjectPackage(browserWindow: BrowserWindow | null): Promise<string | null> {
+  const options: Electron.OpenDialogOptions = {
+    title: 'Импорт проекта',
+    buttonLabel: 'Импортировать',
+    properties: ['openFile'],
+    filters: [
+      {
+        name: 'D&D Arcane Tabletop Project',
+        extensions: ['arcane-campaign'],
+      },
+    ],
+  }
+  const result =
+    browserWindow === null
+      ? await dialog.showOpenDialog(options)
+      : await dialog.showOpenDialog(browserWindow, options)
+
+  return result.canceled ? null : (result.filePaths[0] ?? null)
+}
+
+async function pickProjectExportPath(
+  defaultFileName: string,
+  browserWindow: BrowserWindow | null,
+): Promise<string | null> {
+  const options: Electron.SaveDialogOptions = {
+    title: 'Экспорт проекта',
+    buttonLabel: 'Экспортировать',
+    defaultPath: defaultFileName,
+    filters: [
+      {
+        name: 'D&D Arcane Tabletop Project',
+        extensions: ['arcane-campaign'],
+      },
+    ],
+  }
+  const result =
+    browserWindow === null
+      ? await dialog.showSaveDialog(options)
+      : await dialog.showSaveDialog(browserWindow, options)
+
+  return result.canceled ? null : (result.filePath ?? null)
+}
+
+function createProjectPackageFileName(campaignName: string): string {
+  const safeName = [...campaignName.trim()]
+    .map((character) =>
+      character.charCodeAt(0) < 32 || '<>:"/\\|?*'.includes(character) ? '-' : character,
+    )
+    .join('')
+    .replace(/[. ]+$/g, '')
+    .slice(0, 100)
+
+  return `${safeName || 'dnd-campaign'}.arcane-campaign`
 }

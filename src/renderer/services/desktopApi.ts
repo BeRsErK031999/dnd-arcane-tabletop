@@ -12,6 +12,8 @@ import {
   type PlayerScreenCommandResult,
   type PlayerScreenState,
   type PlayerScreenStatus,
+  type ProjectExportResult,
+  type ProjectImportResult,
 } from '@shared/types'
 
 const browserFallbackReason = 'desktop-api-unavailable'
@@ -51,6 +53,14 @@ const browserFallbackApi: DesktopApi = {
     deleteCampaign: async (campaignId: CampaignId) => {
       browserFallbackCampaigns.delete(campaignId)
     },
+    importProject: async (): Promise<ProjectImportResult> => ({
+      ok: false,
+      reason: 'desktop-api-unavailable',
+    }),
+    exportProject: async (): Promise<ProjectExportResult> => ({
+      ok: false,
+      reason: 'desktop-api-unavailable',
+    }),
   },
   assets: {
     importImageAsset: async (request: ImportImageAssetRequest) => ({

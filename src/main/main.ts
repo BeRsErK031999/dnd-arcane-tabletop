@@ -3,6 +3,7 @@ import { AssetImportService } from './assets/AssetImportService.js'
 import { createMasterWindow } from './windows/masterWindow.js'
 import { registerIpcHandlers } from './ipc/index.js'
 import { PlayerScreenController } from './playerScreen/PlayerScreenController.js'
+import { ProjectTransferService } from './projects/ProjectTransferService.js'
 import { JsonStorageService } from './storage/JsonStorageService.js'
 import { getCampaignsDirectory } from './storage/storagePaths.js'
 import { seedReferenceCampaign } from './storage/referenceCampaignSeed.js'
@@ -15,6 +16,7 @@ async function bootstrap(): Promise<void> {
   const campaignsDirectory = getCampaignsDirectory()
   const storageService = new JsonStorageService(campaignsDirectory)
   const assetImportService = new AssetImportService(() => storageService.getCampaignsDirectory(), pickImageFile)
+  const projectTransferService = new ProjectTransferService(storageService)
   await storageService.initialize()
   await seedReferenceCampaign(storageService, storageService.getCampaignsDirectory())
 
@@ -22,6 +24,7 @@ async function bootstrap(): Promise<void> {
 
   registerIpcHandlers({
     assetImportService,
+    projectTransferService,
     storageService,
     playerScreenController,
   })

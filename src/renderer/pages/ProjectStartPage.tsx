@@ -382,7 +382,7 @@ export function ProjectStartPage({ campaignsStore, onLaunchProject }: ProjectSta
             </button>
             <span className="project-actions__kicker">Новая кампания</span>
             <h2 id="create-project-title">Создать проект</h2>
-            <p>Название можно изменить позже. Новый проект откроется сразу после создания.</p>
+            <p>Название появится в библиотеке. Новый проект откроется сразу после создания.</p>
             <form className="project-dialog__form" onSubmit={(event) => void handleCreateProject(event)}>
               <label>
                 <span>Название проекта</span>

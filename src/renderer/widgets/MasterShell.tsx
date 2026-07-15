@@ -8,15 +8,14 @@ interface MasterShellProps {
   onHome?: () => void
 }
 
-type WorkspaceSection = 'campaigns' | 'scenes' | 'assets' | 'combat' | 'notes' | 'players'
+type WorkspaceSection = 'scenes' | 'assets' | 'combat' | 'notes' | 'players'
 
-const navigationItems: Array<{ id: WorkspaceSection; label: string }> = [
-  { id: 'campaigns', label: 'Кампании' },
-  { id: 'assets', label: 'Ассеты' },
-  { id: 'scenes', label: 'Сцены' },
-  { id: 'combat', label: 'Бой' },
-  { id: 'notes', label: 'Заметки' },
-  { id: 'players', label: 'Экран игроков' },
+const navigationItems: Array<{ id: WorkspaceSection; label: string; shortLabel: string; icon: string }> = [
+  { id: 'scenes', label: 'Сцены', shortLabel: 'Сцены', icon: '▦' },
+  { id: 'assets', label: 'Общая библиотека ассетов', shortLabel: 'Ассеты', icon: '◇' },
+  { id: 'combat', label: 'Бой и инициатива', shortLabel: 'Бой', icon: '⚔' },
+  { id: 'notes', label: 'Заметки', shortLabel: 'Заметки', icon: '✎' },
+  { id: 'players', label: 'Экран игроков', shortLabel: 'Игроки', icon: '▣' },
 ]
 
 export function MasterShell({ activeScreen, children, homeDisabled = false, onHome }: MasterShellProps) {
@@ -39,13 +38,14 @@ export function MasterShell({ activeScreen, children, homeDisabled = false, onHo
   }, [])
 
   function navigateToSection(section: WorkspaceSection): void {
-    setActiveSection(section)
-    window.dispatchEvent(new CustomEvent(WORKSPACE_NAVIGATION_EVENT, { detail: { section } }))
+    const nextSection = activeSection === section && section !== 'scenes' ? 'scenes' : section
+    setActiveSection(nextSection)
+    window.dispatchEvent(new CustomEvent(WORKSPACE_NAVIGATION_EVENT, { detail: { section: nextSection } }))
   }
 
   return (
     <div className="app-shell" data-screen={activeScreen}>
-      <aside className="sidebar">
+      <aside aria-label="Инструменты редактора" className="sidebar">
         <button
           aria-label="Вернуться к проектам и сохранить изменения"
           className="brand brand--button"
@@ -55,10 +55,7 @@ export function MasterShell({ activeScreen, children, homeDisabled = false, onHo
           type="button"
         >
           <div className="brand__mark">D20</div>
-          <div>
-            <p className="brand__name">D&D Arcane Tabletop</p>
-            <span className="brand__meta">{homeDisabled ? 'Сохраняем проект...' : 'К списку проектов'}</span>
-          </div>
+          <span className="brand__meta">{homeDisabled ? 'Сохраняем...' : 'Проекты'}</span>
         </button>
 
         <nav aria-label="Master tools">
@@ -66,20 +63,20 @@ export function MasterShell({ activeScreen, children, homeDisabled = false, onHo
             {navigationItems.map((item) => (
               <li key={item.id}>
                 <button
+                  aria-label={item.label}
                   aria-current={activeSection === item.id ? 'page' : undefined}
                   className={activeSection === item.id ? 'nav-item nav-item--active' : 'nav-item'}
+                  data-nav-section={item.id}
                   onClick={() => navigateToSection(item.id)}
                   type="button"
                 >
-                  <span className="nav-dot" aria-hidden="true" />
-                  <span>{item.label}</span>
+                  <span className="nav-item__icon" aria-hidden="true">{item.icon}</span>
+                  <span>{item.shortLabel}</span>
                 </button>
               </li>
             ))}
           </ul>
         </nav>
-
-        <div className="sidebar-footer">Данные хранятся локально</div>
       </aside>
 
       <main className="workspace">{children}</main>
@@ -99,7 +96,6 @@ function getWorkspaceNavigationSection(event: Event): WorkspaceSection | null {
 
 function isWorkspaceSection(value: unknown): value is WorkspaceSection {
   return (
-    value === 'campaigns' ||
     value === 'scenes' ||
     value === 'assets' ||
     value === 'combat' ||

@@ -50,7 +50,7 @@ import {
 
 type PlayerActionResult = PlayerScreenCommandResult | PlayerScreenOpenResult
 type RightPanelTab = 'assets' | 'characters' | 'notes'
-type WorkspaceSection = 'campaigns' | 'scenes' | 'assets' | 'combat' | 'notes' | 'players'
+type WorkspaceSection = 'scenes' | 'assets' | 'combat' | 'notes' | 'players'
 
 interface CharacterCardDraft {
   name: string
@@ -147,20 +147,12 @@ interface MasterDashboardPageProps {
 
 export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps) {
   const {
-    campaigns,
-    campaignsDirectory,
     selectedCampaign,
     status,
     lastError,
     saveState,
     historyState,
-    refresh,
-    selectCampaignsDirectory,
-    createCampaign,
-    openCampaign,
     saveSelectedCampaign,
-    saveSelectedCampaignToDirectory,
-    deleteSelectedCampaign,
     createScene,
     activateScene,
     sendActiveSceneToPlayers,
@@ -205,14 +197,18 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
   const [activeWorkspaceSection, setActiveWorkspaceSection] = useState<WorkspaceSection>('scenes')
   const [activeRightPanel, setActiveRightPanel] = useState<RightPanelTab>('assets')
   const [isToolRailOpen, setIsToolRailOpen] = useState(false)
-  const [newCampaignName, setNewCampaignName] = useState('')
-  const [newCampaignDescription, setNewCampaignDescription] = useState('')
-  const [editorName, setEditorName] = useState('')
-  const [editorDescription, setEditorDescription] = useState('')
-  const [campaignActionStatus, setCampaignActionStatus] = useState('JSON-хранилище готово к работе.')
+  const [isSceneComposerOpen, setIsSceneComposerOpen] = useState(false)
+  const [isMaterialsPanelOpen, setIsMaterialsPanelOpen] = useState(() => window.innerWidth >= 1280)
+  const [campaignActionStatus, setCampaignActionStatus] = useState('Автосохранение включено.')
   const [newSceneName, setNewSceneName] = useState('')
   const [newSceneDescription, setNewSceneDescription] = useState('')
-  const [sceneActionStatus, setSceneActionStatus] = useState('Откройте кампанию, чтобы управлять сценами.')
+  const [sceneActionStatus, setSceneActionStatus] = useState(() =>
+    selectedCampaign === null
+      ? 'Откройте проект, чтобы управлять сценами.'
+      : selectedCampaign.scenes.length === 0
+        ? 'Создайте первую сцену проекта.'
+        : `Активна сцена «${selectedCampaign.scenes.find((scene) => scene.isActive)?.name ?? selectedCampaign.scenes[0]?.name}».`,
+  )
   const [assetKind, setAssetKind] = useState<ImageAssetKind>('map')
   const [assetKindFilter, setAssetKindFilter] = useState<AssetLibraryKindFilter>('all')
   const [assetName, setAssetName] = useState('')
@@ -220,17 +216,27 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
   const [assetSearchQuery, setAssetSearchQuery] = useState('')
   const [assetSelectedTags, setAssetSelectedTags] = useState<string[]>([])
   const [assetTagDrafts, setAssetTagDrafts] = useState<Record<AssetId, string>>({})
-  const [assetActionStatus, setAssetActionStatus] = useState('Откройте кампанию, чтобы импортировать изображения.')
+  const [assetActionStatus, setAssetActionStatus] = useState(() =>
+    selectedCampaign === null
+      ? 'Откройте проект, чтобы импортировать изображения.'
+      : 'Материалы проекта готовы к редактированию.',
+  )
   const [selectedSceneObjectId, setSelectedSceneObjectId] = useState<SceneCanvasObjectId | null>(null)
   const [selectedCharacterCardId, setSelectedCharacterCardId] = useState<CharacterCardId | null>(null)
   const [characterDraft, setCharacterDraft] = useState<CharacterCardDraft>(emptyCharacterCardDraft)
-  const [characterActionStatus, setCharacterActionStatus] = useState('Откройте кампанию, чтобы создавать карточки.')
+  const [characterActionStatus, setCharacterActionStatus] = useState(() =>
+    selectedCampaign === null ? 'Откройте проект, чтобы создавать карточки.' : 'Карточки персонажей готовы к редактированию.',
+  )
   const [selectedNoteId, setSelectedNoteId] = useState<NoteId | null>(null)
   const [noteDraft, setNoteDraft] = useState<NoteDraft>(emptyNoteDraft)
-  const [noteActionStatus, setNoteActionStatus] = useState('Откройте кампанию, чтобы вести заметки.')
+  const [noteActionStatus, setNoteActionStatus] = useState(() =>
+    selectedCampaign === null ? 'Откройте проект, чтобы вести заметки.' : 'Заметки проекта готовы к редактированию.',
+  )
   const [selectedCombatParticipantId, setSelectedCombatParticipantId] = useState<CombatParticipantId | null>(null)
   const [combatDraft, setCombatDraft] = useState<CombatParticipantDraft>(emptyCombatParticipantDraft)
-  const [combatActionStatus, setCombatActionStatus] = useState('Откройте кампанию, чтобы вести инициативу.')
+  const [combatActionStatus, setCombatActionStatus] = useState(() =>
+    selectedCampaign === null ? 'Откройте проект, чтобы вести инициативу.' : 'Tracker инициативы готов к ручному ведению.',
+  )
   const [playerStatus, setPlayerStatus] = useState<PlayerScreenStatus>(() => ({
     isOpen: false,
     isFullscreen: false,
@@ -238,15 +244,6 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
   }))
   const [playerActionStatus, setPlayerActionStatus] = useState('Готов к управлению экраном игроков.')
 
-  const totals = useMemo(
-    () => ({
-      campaigns: campaigns.length,
-      scenes: campaigns.reduce((sum, campaign) => sum + campaign.sceneCount, 0),
-      assets: campaigns.reduce((sum, campaign) => sum + campaign.assetCount, 0),
-      characters: campaigns.reduce((sum, campaign) => sum + campaign.characterCount, 0),
-    }),
-    [campaigns],
-  )
   const activeScene = useMemo(
     () => selectedCampaign?.scenes.find((scene) => scene.isActive) ?? selectedCampaign?.scenes[0] ?? null,
     [selectedCampaign],
@@ -304,25 +301,18 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
       }
 
       setActiveWorkspaceSection(section)
+      setIsToolRailOpen(false)
 
       if (section === 'notes') {
         setActiveRightPanel('notes')
       }
 
       window.requestAnimationFrame(() => {
-        window.scrollTo({ top: 0, left: 0 })
-
-        const activeContent = document.querySelector(`[data-workspace-section-content="${section}"]`)
-        activeContent?.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
-
         if (section === 'scenes') {
           document.querySelector('.scene-strip__items')?.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
           return
         }
-
-        if (section === 'notes') {
-          document.querySelector('#section-notes .context-panel__body')?.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
-        }
+        document.querySelector('.workspace-utility-drawer__body')?.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
       })
     }
 
@@ -332,6 +322,26 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
       window.removeEventListener(WORKSPACE_NAVIGATION_EVENT, handleWorkspaceNavigation)
     }
   }, [])
+
+  useEffect(() => {
+    if (activeWorkspaceSection === 'scenes') {
+      return
+    }
+
+    function closeUtilityPanel(event: KeyboardEvent): void {
+      if (event.key !== 'Escape') {
+        return
+      }
+      setActiveWorkspaceSection('scenes')
+      window.dispatchEvent(new CustomEvent(WORKSPACE_NAVIGATION_EVENT, { detail: { section: 'scenes' } }))
+      window.requestAnimationFrame(() => {
+        document.querySelector<HTMLButtonElement>('[data-nav-section="scenes"]')?.focus()
+      })
+    }
+
+    window.addEventListener('keydown', closeUtilityPanel)
+    return () => window.removeEventListener('keydown', closeUtilityPanel)
+  }, [activeWorkspaceSection])
 
   useEffect(() => {
     if (selectedSceneObjectId === null) {
@@ -351,8 +361,8 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
   }, [activeScene, selectedSceneObjectId])
 
   const rightPanelTabs: Array<{ id: RightPanelTab; label: string; count: number }> = [
-    { id: 'assets', label: 'Ассеты', count: selectedCampaign?.assets.length ?? totals.assets },
-    { id: 'characters', label: 'Персонажи', count: selectedCampaign?.characterCards.length ?? totals.characters },
+    { id: 'assets', label: 'Ассеты', count: selectedCampaign?.assets.length ?? 0 },
+    { id: 'characters', label: 'Персонажи', count: selectedCampaign?.characterCards.length ?? 0 },
     { id: 'notes', label: 'Заметки', count: selectedCampaign?.notes.length ?? 0 },
   ]
 
@@ -390,11 +400,6 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
   }, [])
 
   useEffect(() => {
-    setEditorName(selectedCampaign?.name ?? '')
-    setEditorDescription(selectedCampaign?.description ?? '')
-  }, [selectedCampaign?.name, selectedCampaign?.description])
-
-  useEffect(() => {
     function handleKeyboardShortcut(event: KeyboardEvent): void {
       const hasShortcutModifier = event.ctrlKey || event.metaKey
 
@@ -411,7 +416,7 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
           return
         }
 
-        void saveSelectedCampaign(editorName, editorDescription).then((result) => {
+        void saveSelectedCampaign(selectedCampaign.name, selectedCampaign.description).then((result) => {
           setCampaignActionStatus(
             result.ok ? `Кампания "${result.campaign.name}" сохранена в JSON.` : 'Не удалось сохранить кампанию.',
           )
@@ -455,14 +460,13 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
       window.removeEventListener('keydown', handleKeyboardShortcut)
     }
   }, [
-    editorDescription,
-    editorName,
     hasSelectedCampaign,
     historyState.redoCount,
     historyState.undoCount,
     isStorageBusy,
     redoSelectedCampaign,
     saveSelectedCampaign,
+    selectedCampaign,
     undoSelectedCampaign,
   ])
 
@@ -477,7 +481,7 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
       if (key === 'i') {
         event.preventDefault()
         setActiveWorkspaceSection('combat')
-        scrollWorkspaceSection('combat')
+        window.dispatchEvent(new CustomEvent(WORKSPACE_NAVIGATION_EVENT, { detail: { section: 'combat' } }))
         return
       }
 
@@ -485,7 +489,7 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
         event.preventDefault()
         setActiveWorkspaceSection('notes')
         setActiveRightPanel('notes')
-        scrollWorkspaceSection('notes')
+        window.dispatchEvent(new CustomEvent(WORKSPACE_NAVIGATION_EVENT, { detail: { section: 'notes' } }))
         return
       }
 
@@ -588,77 +592,13 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
     })
   }, [selectedCampaign?.assets])
 
-  async function handleSelectCampaignsDirectory(): Promise<void> {
-    const result = await selectCampaignsDirectory()
-
-    if (!result.ok) {
-      setCampaignActionStatus('Не удалось открыть папку проекта.')
-      return
-    }
-
-    if (result.canceled) {
-      setCampaignActionStatus('Выбор папки проекта отменен.')
-      return
-    }
-
-    setCampaignActionStatus(`Открыта папка проекта: ${result.directory.path}`)
-    setSceneActionStatus('Выберите кампанию из открытой папки или создайте новую.')
-    setAssetActionStatus('Откройте кампанию из выбранной папки, чтобы импортировать изображения.')
-  }
-
-  async function handleSaveCampaignToDirectory(): Promise<void> {
-    const result = await saveSelectedCampaignToDirectory(editorName, editorDescription)
-
-    if (result.ok) {
-      setCampaignActionStatus(`Кампания "${result.campaign.name}" сохранена в папку: ${result.directory.path}`)
-      return
-    }
-
-    setCampaignActionStatus(
-      result.reason === 'directory-selection-canceled'
-        ? 'Выбор папки для сохранения отменен.'
-        : 'Не удалось сохранить кампанию в выбранную папку.',
-    )
-  }
-
-  async function handleCreateCampaign(): Promise<void> {
-    const result = await createCampaign(newCampaignName, newCampaignDescription)
-
-    if (result.ok) {
-      setNewCampaignName('')
-      setNewCampaignDescription('')
-      setCampaignActionStatus(`Кампания "${result.campaign.name}" создана и сохранена.`)
-      setSceneActionStatus('Создайте первую сцену для открытой кампании.')
-      setAssetActionStatus('Импортируйте карту или handout для открытой кампании.')
-      return
-    }
-
-    setCampaignActionStatus('Не удалось создать кампанию.')
-  }
-
-  async function handleOpenCampaign(campaignId: string): Promise<void> {
-    const result = await openCampaign(campaignId)
-
-    if (result.ok) {
-      setCampaignActionStatus(`Кампания "${result.campaign.name}" открыта.`)
-      setSceneActionStatus(
-        result.campaign.scenes.length === 0
-          ? 'В кампании пока нет сцен.'
-          : `В кампании доступно сцен: ${result.campaign.scenes.length}.`,
-      )
-      setAssetActionStatus(
-        result.campaign.assets.length === 0
-          ? 'В кампании пока нет изображений.'
-          : `В кампании доступно изображений: ${result.campaign.assets.length}.`,
-      )
-      return
-    }
-
-    setCampaignActionStatus('Не удалось открыть кампанию.')
-  }
-
   async function handleSaveCampaign(): Promise<void> {
-    const result = await saveSelectedCampaign(editorName, editorDescription)
+    if (!selectedCampaign) {
+      setCampaignActionStatus('Нет открытой кампании для сохранения.')
+      return
+    }
+
+    const result = await saveSelectedCampaign(selectedCampaign.name, selectedCampaign.description)
 
     if (result.ok) {
       setCampaignActionStatus(`Кампания "${result.campaign.name}" сохранена в JSON.`)
@@ -690,20 +630,6 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
     setCampaignActionStatus('Нет действия для повтора.')
   }
 
-  async function handleDeleteCampaign(): Promise<void> {
-    const campaignName = selectedCampaign?.name ?? 'кампания'
-    const deleted = await deleteSelectedCampaign()
-
-    if (deleted) {
-      setCampaignActionStatus(`Кампания "${campaignName}" удалена.`)
-      setSceneActionStatus('Откройте кампанию, чтобы управлять сценами.')
-      setAssetActionStatus('Откройте кампанию, чтобы импортировать изображения.')
-      return
-    }
-
-    setCampaignActionStatus('Не удалось удалить кампанию.')
-  }
-
   async function handleCreateScene(): Promise<void> {
     const result = await createScene(newSceneName, newSceneDescription)
 
@@ -711,6 +637,7 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
       const createdScene = result.campaign.scenes[result.campaign.scenes.length - 1]
       setNewSceneName('')
       setNewSceneDescription('')
+      setIsSceneComposerOpen(false)
       setSceneActionStatus(`Сцена "${createdScene.name}" создана и сохранена.`)
       return
     }
@@ -1290,6 +1217,7 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
   }
 
   function handleSelectWorkspaceSection(section: WorkspaceSection): void {
+    const shouldReturnFocusToSceneNavigation = section === 'scenes' && activeWorkspaceSection !== 'scenes'
     setActiveWorkspaceSection(section)
 
     if (section === 'notes') {
@@ -1297,6 +1225,12 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
     }
 
     window.dispatchEvent(new CustomEvent(WORKSPACE_NAVIGATION_EVENT, { detail: { section } }))
+
+    if (shouldReturnFocusToSceneNavigation) {
+      window.requestAnimationFrame(() => {
+        document.querySelector<HTMLButtonElement>('[data-nav-section="scenes"]')?.focus()
+      })
+    }
   }
 
   const rightPanelContentProps: RightPanelContentProps = {
@@ -1363,230 +1297,55 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
     portraitAssets,
     selectedCharacterCardId,
     selectedNoteId,
-    totals,
   }
 
   return (
-    <div className="workspace-accordion" aria-label="Рабочие блоки мастера">
-      <WorkspaceSectionPanel
-        activeSection={activeWorkspaceSection}
-        badge={selectedCampaign ? saveStatusLabel : `${totals.campaigns} кампаний`}
-        id="campaigns"
-        onSelect={handleSelectWorkspaceSection}
-        summary={selectedCampaign ? selectedCampaign.name : 'Создать или открыть кампанию'}
-        title="Кампании"
-      >
-        <div className="workspace-section__scroll">
-          <section className="campaign-summary campaign-manager" id="section-campaigns" aria-label="Кампании">
-            <div className="module-header">
-              <div>
-                <p className="eyebrow">Campaigns</p>
-                <h2>Кампании</h2>
-              </div>
-              <div className="module-header__actions">
-                <span className="status-badge">{status === 'loading' ? 'Загрузка' : 'JSON'}</span>
-                <button
-                  aria-label="Обновить список кампаний"
-                  className="button button--secondary icon-button"
-                  title="Обновить"
-                  type="button"
-                  onClick={refresh}
-                >
-                  ↻
-                </button>
-              </div>
-            </div>
-            <div className="metric-grid metric-grid--compact">
-              <div className="metric">
-                <span className="metric__value">{totals.campaigns}</span>
-                <span className="metric__label">кампаний</span>
-              </div>
-              <div className="metric">
-                <span className="metric__value">{totals.scenes}</span>
-                <span className="metric__label">сцен</span>
-              </div>
-              <div className="metric">
-                <span className="metric__value">{totals.characters}</span>
-                <span className="metric__label">персонажей</span>
-              </div>
-            </div>
-
-            <div className="save-control-strip" aria-label="Статус сохранения кампании">
-              <div>
-                <p className="eyebrow">Autosave</p>
-                <strong>{saveStatusLabel}</strong>
-                <small>{saveStatusDetail}</small>
-                {saveState.lastError ? <small className="save-control-strip__error">{saveState.lastError}</small> : null}
-              </div>
-              <div className="save-control-strip__actions">
-                <button
-                  aria-label="Отменить последнее действие"
-                  className="button button--secondary icon-button"
-                  disabled={selectedCampaign === null || isStorageBusy || historyState.undoCount === 0}
-                  onClick={() => void handleUndoCampaign()}
-                  title="Отменить (Ctrl+Z)"
-                  type="button"
-                >
-                  ↶
-                </button>
-                <button
-                  aria-label="Повторить действие"
-                  className="button button--secondary icon-button"
-                  disabled={selectedCampaign === null || isStorageBusy || historyState.redoCount === 0}
-                  onClick={() => void handleRedoCampaign()}
-                  title="Повторить (Ctrl+Y)"
-                  type="button"
-                >
-                  ↷
-                </button>
-              </div>
-              <div className="save-control-strip__history">
-                <span>Undo: {historyState.undoCount}</span>
-                <span>Redo: {historyState.redoCount}</span>
-                <span>{saveState.isDirty ? 'Есть несохраненный снимок' : 'Снимок сохранен'}</span>
-              </div>
-            </div>
-
-            <div className="project-directory-strip" aria-label="Папка проекта">
-              <div>
-                <p className="eyebrow">Папка проекта</p>
-                <strong>{campaignsDirectory?.path ?? 'Папка не выбрана'}</strong>
-                <small>Новые кампании, JSON-файлы и импортированные ассеты сохраняются здесь.</small>
-              </div>
-              <div className="project-directory-strip__actions">
-                <button
-                  className="button button--secondary"
-                  disabled={isStorageBusy}
-                  onClick={() => void handleSelectCampaignsDirectory()}
-                  type="button"
-                >
-                  Открыть папку...
-                </button>
-                <button
-                  className="button"
-                  disabled={selectedCampaign === null || isStorageBusy}
-                  onClick={() => void handleSaveCampaignToDirectory()}
-                  type="button"
-                >
-                  Сохранить в папку...
-                </button>
-              </div>
-            </div>
-
-            <div className="campaign-manager__grid">
-              <form
-                className="campaign-form"
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  void handleCreateCampaign()
-                }}
-              >
-                <h3>Новая кампания</h3>
-                <label>
-                  <span>Название</span>
-                  <input
-                    onChange={(event) => setNewCampaignName(event.target.value)}
-                    placeholder="Например: Башня над рекой"
-                    value={newCampaignName}
-                  />
-                </label>
-                <label>
-                  <span>Описание</span>
-                  <textarea
-                    onChange={(event) => setNewCampaignDescription(event.target.value)}
-                    placeholder="Короткая заметка для мастера"
-                    rows={3}
-                    value={newCampaignDescription}
-                  />
-                </label>
-                <button className="button" disabled={isStorageBusy} type="submit">
-                  Создать кампанию
-                </button>
-              </form>
-
-              <form
-                className="campaign-form"
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  void handleSaveCampaign()
-                }}
-              >
-                <h3>Открытая кампания</h3>
-                <label>
-                  <span>Название</span>
-                  <input
-                    disabled={selectedCampaign === null}
-                    onChange={(event) => setEditorName(event.target.value)}
-                    placeholder="Откройте кампанию"
-                    value={editorName}
-                  />
-                </label>
-                <label>
-                  <span>Описание</span>
-                  <textarea
-                    disabled={selectedCampaign === null}
-                    onChange={(event) => setEditorDescription(event.target.value)}
-                    placeholder="Описание выбранной кампании"
-                    rows={3}
-                    value={editorDescription}
-                  />
-                </label>
-                <div className="button-row">
-                  <button className="button" disabled={selectedCampaign === null || isStorageBusy} type="submit">
-                    Сохранить
-                  </button>
-                  <button
-                    className="button button--danger"
-                    disabled={selectedCampaign === null || isStorageBusy}
-                    onClick={() => void handleDeleteCampaign()}
-                    type="button"
-                  >
-                    Удалить
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            <section className="campaign-list" aria-label="Сохраненные кампании">
-              <div className="campaign-list__header">
-                <h3>Кампании</h3>
-                <span>{campaigns.length}</span>
-              </div>
-              {campaigns.length === 0 ? (
-                <p className="muted">Кампаний пока нет. Создайте новую или откройте эталонную после первого запуска.</p>
-              ) : (
-                <ul className="campaign-list__items">
-                  {campaigns.map((campaign) => (
-                    <li
-                      className={selectedCampaign?.id === campaign.id ? 'campaign-item campaign-item--active' : 'campaign-item'}
-                      key={campaign.id}
-                    >
-                      <div>
-                        <span>{campaign.name}</span>
-                        <small>{campaign.description ?? 'Без описания'}</small>
-                      </div>
-                      <div className="campaign-item__meta">
-                        <small>{formatTimestamp(campaign.updatedAt)}</small>
-                        <button
-                          className="button button--secondary"
-                          disabled={isStorageBusy}
-                          onClick={() => void handleOpenCampaign(campaign.id)}
-                          type="button"
-                        >
-                          Открыть
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            {lastError ? <p className="form-status form-status--error">{lastError}</p> : null}
-            <p className="muted">{campaignActionStatus}</p>
-          </section>
+    <div className="workspace-studio" aria-label="Редактор сцены">
+      <header className="workspace-studio__header">
+        <div className="workspace-studio__identity">
+          <span className="workspace-studio__kicker">Открытый проект</span>
+          <strong>{selectedCampaign?.name ?? 'Проект не выбран'}</strong>
+          <span>{activeScene?.name ?? 'Создайте первую сцену'}</span>
         </div>
-      </WorkspaceSectionPanel>
+        <div className="workspace-studio__save" aria-live="polite">
+          <span className={`save-state-dot save-state-dot--${saveState.status}`} aria-hidden="true" />
+          <div>
+            <strong>{saveStatusLabel}</strong>
+            <span>{lastError ?? campaignActionStatus}</span>
+          </div>
+        </div>
+        <div className="workspace-studio__actions">
+          <button
+            aria-label="Отменить последнее действие"
+            className="button button--secondary workspace-studio__icon-button"
+            disabled={historyState.undoCount === 0 || isStorageBusy}
+            onClick={() => void handleUndoCampaign()}
+            title="Отменить (Ctrl+Z)"
+            type="button"
+          >
+            ↶
+          </button>
+          <button
+            aria-label="Повторить отменённое действие"
+            className="button button--secondary workspace-studio__icon-button"
+            disabled={historyState.redoCount === 0 || isStorageBusy}
+            onClick={() => void handleRedoCampaign()}
+            title="Повторить (Ctrl+Y)"
+            type="button"
+          >
+            ↷
+          </button>
+          <button
+            className="button button--secondary workspace-studio__save-button"
+            disabled={selectedCampaign === null || isStorageBusy}
+            onClick={() => void handleSaveCampaign()}
+            title={saveStatusDetail}
+            type="button"
+          >
+            {isStorageBusy ? 'Сохранение...' : 'Сохранить'}
+          </button>
+        </div>
+      </header>
 
       <WorkspaceSectionPanel
         activeSection={activeWorkspaceSection}
@@ -1614,34 +1373,48 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
         <div className="scenes-panel">
           <section className="scene-strip" id="section-scenes" aria-label="Сцены">
             <div className="scene-strip__header">
-              <span>Сцены</span>
-              <span className="muted">
-                {selectedCampaign ? `${selectedCampaign.scenes.length} в открытой кампании` : 'Откройте кампанию'}
-              </span>
-            </div>
-            <form
-              className="scene-strip__actions"
-              onSubmit={(event) => {
-                event.preventDefault()
-                void handleCreateScene()
-              }}
-            >
-              <input
+              <div>
+                <strong>Сцены</strong>
+                <span className="muted">
+                  {selectedCampaign ? `${selectedCampaign.scenes.length} в проекте` : 'Откройте проект'}
+                </span>
+              </div>
+              <button
+                aria-expanded={isSceneComposerOpen}
+                className="button button--secondary scene-strip__create-toggle"
                 disabled={selectedCampaign === null || isStorageBusy}
-                onChange={(event) => setNewSceneName(event.target.value)}
-                placeholder="Например: Ритуальный зал"
-                value={newSceneName}
-              />
-              <input
-                disabled={selectedCampaign === null || isStorageBusy}
-                onChange={(event) => setNewSceneDescription(event.target.value)}
-                placeholder="Короткое описание сцены"
-                value={newSceneDescription}
-              />
-              <button className="button" disabled={selectedCampaign === null || isStorageBusy} type="submit">
-                Создать сцену
+                onClick={() => setIsSceneComposerOpen((isOpen) => !isOpen)}
+                type="button"
+              >
+                {isSceneComposerOpen ? 'Скрыть форму' : '+ Новая сцена'}
               </button>
-            </form>
+            </div>
+            {isSceneComposerOpen ? (
+              <form
+                className="scene-strip__actions"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void handleCreateScene()
+                }}
+              >
+                <input
+                  autoFocus
+                  disabled={selectedCampaign === null || isStorageBusy}
+                  onChange={(event) => setNewSceneName(event.target.value)}
+                  placeholder="Например: Ритуальный зал"
+                  value={newSceneName}
+                />
+                <input
+                  disabled={selectedCampaign === null || isStorageBusy}
+                  onChange={(event) => setNewSceneDescription(event.target.value)}
+                  placeholder="Короткое описание сцены"
+                  value={newSceneDescription}
+                />
+                <button className="button" disabled={selectedCampaign === null || isStorageBusy} type="submit">
+                  Создать сцену
+                </button>
+              </form>
+            ) : null}
             <div className="scene-strip__items">
               {selectedCampaign === null ? (
                 <p className="scene-strip__empty">Создайте или откройте кампанию, чтобы добавить сцены.</p>
@@ -1667,7 +1440,7 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
             <p className="scene-strip__status">{sceneActionStatus}</p>
           </section>
 
-          <div className="scene-workbench">
+          <div className={isMaterialsPanelOpen ? 'scene-workbench' : 'scene-workbench scene-workbench--wide'}>
             <aside className="tool-rail" aria-label="Горячие клавиши">
               <button
                 aria-controls="tool-rail-popover"
@@ -1718,6 +1491,14 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
                     <h2>{activeScene?.name ?? 'Рабочая область сцены'}</h2>
                   </div>
                   <div className="workspace-board__meta">
+                    <button
+                      aria-expanded={isMaterialsPanelOpen}
+                      className="workspace-board__materials-toggle"
+                      onClick={() => setIsMaterialsPanelOpen((isOpen) => !isOpen)}
+                      type="button"
+                    >
+                      {isMaterialsPanelOpen ? 'Скрыть материалы' : 'Материалы'}
+                    </button>
                     <span>Туман войны</span>
                     <span>Handouts</span>
                     <span>Инициатива</span>
@@ -1759,30 +1540,32 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
               </section>
             </main>
 
-            <aside className="context-panel" id="section-library" aria-label="Материалы">
-              <div className="context-panel__header">
-                <div>
-                  <p className="eyebrow">Library</p>
-                  <h2>Материалы</h2>
+            {isMaterialsPanelOpen ? (
+              <aside className="context-panel" id="section-library" aria-label="Материалы">
+                <div className="context-panel__header">
+                  <div>
+                    <p className="eyebrow">Library</p>
+                    <h2>Материалы</h2>
+                  </div>
                 </div>
-              </div>
-              <div className="tab-list" role="tablist" aria-label="Материалы мастера">
-                {rightPanelTabs.map((tab) => (
-                  <button
-                    aria-selected={activeRightPanel === tab.id}
-                    className={activeRightPanel === tab.id ? 'tab-button tab-button--active' : 'tab-button'}
-                    key={tab.id}
-                    onClick={() => setActiveRightPanel(tab.id)}
-                    role="tab"
-                    type="button"
-                  >
-                    <span>{tab.label}</span>
-                    <small>{tab.count}</small>
-                  </button>
-                ))}
-              </div>
-              {renderRightPanelContent(rightPanelContentProps)}
-            </aside>
+                <div className="tab-list" role="tablist" aria-label="Материалы мастера">
+                  {rightPanelTabs.map((tab) => (
+                    <button
+                      aria-selected={activeRightPanel === tab.id}
+                      className={activeRightPanel === tab.id ? 'tab-button tab-button--active' : 'tab-button'}
+                      key={tab.id}
+                      onClick={() => setActiveRightPanel(tab.id)}
+                      role="tab"
+                      type="button"
+                    >
+                      <span>{tab.label}</span>
+                      <small>{tab.count}</small>
+                    </button>
+                  ))}
+                </div>
+                {renderRightPanelContent(rightPanelContentProps)}
+              </aside>
+            ) : null}
           </div>
         </div>
       </WorkspaceSectionPanel>
@@ -1888,29 +1671,37 @@ function WorkspaceSectionPanel({
   title,
 }: WorkspaceSectionPanelProps) {
   const isActive = activeSection === id
+  const isStage = id === 'scenes'
   const contentId = `workspace-section-content-${id}`
+  const className = isStage
+    ? 'workspace-section workspace-section--stage'
+    : isActive
+      ? 'workspace-section workspace-section--utility workspace-section--active'
+      : 'workspace-section workspace-section--utility'
 
   return (
     <section
-      className={isActive ? 'workspace-section workspace-section--active' : 'workspace-section'}
+      aria-hidden={!isStage && !isActive}
+      className={className}
       data-workspace-section={id}
       id={`workspace-section-${id}`}
     >
-      <button
-        aria-controls={contentId}
-        aria-expanded={isActive}
-        className="workspace-section__toggle"
-        onClick={() => onSelect(id)}
-        type="button"
-      >
-        <span className="workspace-section__title">{title}</span>
-        <span className="workspace-section__summary">{summary}</span>
-        <span className="workspace-section__badge">{badge}</span>
-        <span className="workspace-section__chevron" aria-hidden="true">
-          {isActive ? '−' : '+'}
-        </span>
-      </button>
-      {isActive ? (
+      {!isStage ? (
+        <button
+          aria-controls={contentId}
+          aria-expanded={isActive}
+          aria-label={`Закрыть панель «${title}»`}
+          className="workspace-section__toggle"
+          onClick={() => onSelect('scenes')}
+          type="button"
+        >
+          <span className="workspace-section__title">{title}</span>
+          <span className="workspace-section__summary">{summary}</span>
+          <span className="workspace-section__badge">{badge}</span>
+          <span className="workspace-section__chevron" aria-hidden="true">×</span>
+        </button>
+      ) : null}
+      {isStage || isActive ? (
         <div
           className="workspace-section__content"
           data-workspace-section-content={id}
@@ -2331,7 +2122,6 @@ interface RightPanelContentProps {
   portraitAssets: Asset[]
   selectedCharacterCardId: CharacterCardId | null
   selectedNoteId: NoteId | null
-  totals: { assets: number; characters: number }
 }
 
 function renderRightPanelContent(props: RightPanelContentProps) {
@@ -2966,17 +2756,8 @@ function getWorkspaceNavigationSection(event: Event): WorkspaceSection | null {
   return isWorkspaceSection(section) ? section : null
 }
 
-function scrollWorkspaceSection(section: WorkspaceSection): void {
-  window.requestAnimationFrame(() => {
-    const activeContent = document.querySelector(`[data-workspace-section-content="${section}"]`)
-
-    activeContent?.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
-  })
-}
-
 function isWorkspaceSection(value: unknown): value is WorkspaceSection {
   return (
-    value === 'campaigns' ||
     value === 'scenes' ||
     value === 'assets' ||
     value === 'combat' ||

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Asset, AssetLibraryItem } from '@shared/types'
+import type { Asset, AssetLibraryItem, ManageIndexedAssetForCampaignResult } from '@shared/types'
 import { createEmptyCampaign } from './campaignFactory'
 import {
   createAssetLibraryView,
@@ -172,6 +172,7 @@ describe('assetFactory', () => {
     const selected = createCampaignWithIndexedAsset(
       campaign,
       indexedAsset,
+      createManagedSelection(indexedAsset),
       'map',
       'always',
       '2026-07-07T01:00:00.000Z',
@@ -182,12 +183,11 @@ describe('assetFactory', () => {
       campaignId: 'campaign-test',
       kind: 'map',
       name: 'ritual-map',
-      filePath: indexedAsset.fileUrl,
+      filePath: 'file:///managed-store/ritual-map.png',
       exportPolicy: 'always',
       tags: ['карта', 'ночь'],
       storageRef: {
-        kind: 'legacy-file',
-        fileUrl: indexedAsset.fileUrl,
+        kind: 'managed',
         sha256: indexedAsset.sha256,
         indexedAssetId: indexedAsset.id,
       },
@@ -204,6 +204,7 @@ describe('assetFactory', () => {
     const updated = createCampaignWithIndexedAsset(
       selected,
       { ...indexedAsset, tags: ['обновлено'] },
+      createManagedSelection(indexedAsset, selected.assets[0].id, true),
       'token',
       'when-used',
       '2026-07-07T02:00:00.000Z',
@@ -217,16 +218,26 @@ describe('assetFactory', () => {
     })
   })
 
-  it('rejects selecting an unavailable indexed asset', () => {
+  it('restores an unavailable indexed asset from an existing managed blob', () => {
     const campaign = createEmptyCampaign({ id: 'campaign-test', name: 'Campaign' })
-    expect(() =>
-      createCampaignWithIndexedAsset(
-        campaign,
-        { ...createIndexedAssetFixture(), availability: 'missing', fileUrl: undefined },
-        'other',
-        'when-used',
-      ),
-    ).toThrow('indexed-asset-unavailable')
+    const indexedAsset = {
+      ...createIndexedAssetFixture(),
+      availability: 'missing' as const,
+      fileUrl: undefined,
+    }
+    const restored = createCampaignWithIndexedAsset(
+      campaign,
+      indexedAsset,
+      createManagedSelection(indexedAsset, 'asset-restored', true),
+      'other',
+      'when-used',
+    )
+
+    expect(restored.assets[0]).toMatchObject({
+      id: 'asset-restored',
+      filePath: 'file:///managed-store/ritual-map.png',
+      storageRef: { kind: 'managed', sha256: indexedAsset.sha256 },
+    })
   })
 })
 
@@ -266,5 +277,36 @@ function createIndexedAssetFixture(): AssetLibraryItem {
     indexedAt: '2026-07-07T00:00:00.000Z',
     fileUrl: 'file:///C:/private/art-library/maps/ritual-map.png',
     previewUrl: 'file:///C:/private/previews/ritual-map.webp',
+  }
+}
+
+function createManagedSelection(
+  indexedAsset: AssetLibraryItem,
+  assetId = 'asset-managed-map',
+  deduplicated = false,
+): Extract<ManageIndexedAssetForCampaignResult, { ok: true }> {
+  const sha256 = indexedAsset.sha256 ?? 'a'.repeat(64)
+  return {
+    ok: true,
+    assetId,
+    fileUrl: 'file:///managed-store/ritual-map.png',
+    deduplicated,
+    storageRef: {
+      kind: 'managed',
+      sha256,
+      fileName: indexedAsset.fileName,
+      mimeType: indexedAsset.mimeType,
+      byteSize: indexedAsset.byteSize,
+      indexedAssetId: indexedAsset.id,
+    },
+    blob: {
+      sha256,
+      relativePath: `objects/aa/aa/${sha256}.png`,
+      byteSize: indexedAsset.byteSize,
+      mimeType: indexedAsset.mimeType,
+      fileExtension: '.png',
+      createdAt: '2026-07-07T00:30:00.000Z',
+      verifiedAt: '2026-07-07T00:30:00.000Z',
+    },
   }
 }

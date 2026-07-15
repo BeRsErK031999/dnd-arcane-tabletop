@@ -1,23 +1,27 @@
-import { copyFile, mkdir } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { createReadStream } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 import type { AssetId, ImportImageAssetRequest, ImportImageAssetResult } from '../../shared/types/index.js'
+import type { ManagedAssetRegistry, ManagedAssetStore } from './hybridStorageContracts.js'
 
 export type ImageFilePicker = () => Promise<string | null>
-export type CampaignsDirectoryProvider = string | (() => string)
 
 const supportedImageExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp', '.jfif'])
+const imageMimeTypes: Readonly<Record<string, string>> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.jfif': 'image/jpeg',
+  '.webp': 'image/webp',
+}
 
 export class AssetImportService {
-  private readonly getCampaignsDirectory: () => string
-
   constructor(
-    campaignsDirectory: CampaignsDirectoryProvider,
+    private readonly managedAssetStore: ManagedAssetStore,
     private readonly pickImageFile: ImageFilePicker,
-  ) {
-    this.getCampaignsDirectory =
-      typeof campaignsDirectory === 'function' ? campaignsDirectory : () => campaignsDirectory
-  }
+    private readonly managedAssetRegistry?: ManagedAssetRegistry,
+  ) {}
 
   async importImageAsset(request: ImportImageAssetRequest): Promise<ImportImageAssetResult> {
     const sourceFilePath = request.sourceFilePath ?? (await this.pickImageFile())
@@ -35,13 +39,36 @@ export class AssetImportService {
     try {
       const timestamp = new Date().toISOString()
       const assetId = createAssetId()
-      const targetDirectory = this.getCampaignAssetsDirectory(request.campaignId)
-      const targetFilePath = path.join(targetDirectory, `${assetId}${extension}`)
-      const targetFileUrl = pathToFileURL(targetFilePath).toString()
       const originalFileName = path.basename(sourceFilePath)
-
-      await mkdir(targetDirectory, { recursive: true })
-      await copyFile(sourceFilePath, targetFilePath)
+      const sourceStat = await stat(sourceFilePath)
+      const sha256 = await hashFile(sourceFilePath)
+      const mimeType = imageMimeTypes[extension] ?? 'application/octet-stream'
+      const blob = await this.managedAssetStore.put({
+        sourceFilePath: path.resolve(sourceFilePath),
+        sha256,
+        byteSize: sourceStat.size,
+        mimeType,
+        fileExtension: extension,
+      })
+      const fileUrl = await this.managedAssetStore.resolveFileUrl(blob.sha256)
+      if (!fileUrl) {
+        return { ok: false, reason: 'copy-failed' }
+      }
+      const storageRef = {
+        kind: 'managed' as const,
+        sha256: blob.sha256,
+        fileName: originalFileName,
+        mimeType,
+        byteSize: blob.byteSize,
+      }
+      await this.managedAssetRegistry?.saveCampaignAssetBinding({
+        campaignId: request.campaignId,
+        assetId,
+        storage: storageRef,
+        exportPolicy: 'when-used',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
 
       return {
         ok: true,
@@ -50,11 +77,8 @@ export class AssetImportService {
           campaignId: request.campaignId,
           kind: request.kind,
           name: normalizeAssetName(request.suggestedName ?? path.parse(originalFileName).name),
-          filePath: targetFileUrl,
-          storageRef: {
-            kind: 'legacy-file',
-            fileUrl: targetFileUrl,
-          },
+          filePath: fileUrl,
+          storageRef,
           exportPolicy: 'when-used',
           tags: normalizeAssetTags(request.tags),
           createdAt: timestamp,
@@ -67,14 +91,6 @@ export class AssetImportService {
     } catch {
       return { ok: false, reason: 'copy-failed' }
     }
-  }
-
-  private getCampaignAssetsDirectory(campaignId: string): string {
-    if (path.basename(campaignId) !== campaignId || campaignId.includes('/') || campaignId.includes('\\')) {
-      throw new Error(`Invalid campaign id: ${campaignId}`)
-    }
-
-    return path.join(this.getCampaignsDirectory(), campaignId, 'assets')
   }
 }
 
@@ -101,4 +117,12 @@ function normalizeAssetTags(tags: string[] | undefined): string[] {
   return [...new Set(tags.map((tag) => tag.trim()).filter(Boolean))].sort((left, right) =>
     left.localeCompare(right, 'ru'),
   )
+}
+
+async function hashFile(filePath: string): Promise<string> {
+  const hash = createHash('sha256')
+  for await (const chunk of createReadStream(filePath)) {
+    hash.update(chunk)
+  }
+  return hash.digest('hex')
 }

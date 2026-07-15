@@ -53,6 +53,8 @@ export interface ManagedAssetBlob {
   verifiedAt?: IsoDateString
 }
 
+export type ManagedAssetGarbageCandidate = ManagedAssetBlob
+
 export interface ManagedCampaignAssetReference {
   kind: 'managed'
   sha256: Sha256Digest
@@ -132,6 +134,56 @@ export interface AssetLibraryPage {
   offset: number
   limit: number
 }
+
+export interface ManageIndexedAssetForCampaignRequest {
+  campaignId: CampaignId
+  indexedAssetId: IndexedAssetId
+  assetId?: AssetId
+  exportPolicy: CampaignAssetExportPolicy
+}
+
+export type ManageIndexedAssetForCampaignResult =
+  | {
+      ok: true
+      assetId: AssetId
+      blob: ManagedAssetBlob
+      fileUrl: string
+      storageRef: ManagedCampaignAssetReference
+      deduplicated: boolean
+    }
+  | {
+      ok: false
+      reason:
+        | 'asset-not-found'
+        | 'asset-unavailable'
+        | 'asset-checksum-missing'
+        | 'source-changed'
+        | 'storage-failed'
+        | 'desktop-api-unavailable'
+    }
+
+export interface ManagedAssetGarbagePlan {
+  token: string
+  candidates: ManagedAssetGarbageCandidate[]
+  totalByteSize: number
+  generatedAt: IsoDateString
+}
+
+export type PreviewManagedAssetGarbageResult =
+  | { ok: true; plan: ManagedAssetGarbagePlan }
+  | { ok: false; reason: 'storage-failed' | 'desktop-api-unavailable' }
+
+export type CollectManagedAssetGarbageResult =
+  | {
+      ok: true
+      deletedSha256: Sha256Digest[]
+      skippedSha256: Sha256Digest[]
+      reclaimedByteSize: number
+    }
+  | {
+      ok: false
+      reason: 'invalid-plan' | 'storage-failed' | 'desktop-api-unavailable'
+    }
 
 export type UpdateIndexedAssetTagsResult =
   | { ok: true; asset: AssetLibraryItem }

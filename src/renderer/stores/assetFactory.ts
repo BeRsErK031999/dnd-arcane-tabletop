@@ -7,6 +7,7 @@ import type {
   CampaignAssetExportPolicy,
   ImageAssetKind,
   IsoDateString,
+  ManageIndexedAssetForCampaignResult,
   PlayerScreenState,
   Scene,
   SceneCanvasObject,
@@ -63,29 +64,32 @@ export function createCampaignWithImportedAsset(
 export function createCampaignWithIndexedAsset(
   campaign: Campaign,
   indexedAsset: AssetLibraryItem,
+  managedSelection: Extract<ManageIndexedAssetForCampaignResult, { ok: true }>,
   kind: ImageAssetKind,
   exportPolicy: CampaignAssetExportPolicy,
   updatedAt: IsoDateString = new Date().toISOString(),
 ): Campaign {
-  if (indexedAsset.availability !== 'available' || !indexedAsset.fileUrl) {
-    throw new Error('indexed-asset-unavailable')
+  if (
+    !indexedAsset.sha256 ||
+    managedSelection.storageRef.sha256 !== indexedAsset.sha256
+  ) {
+    throw new Error('managed-asset-selection-invalid')
   }
 
   const existingAsset = campaign.assets.find(
-    (asset) => asset.storageRef?.kind === 'legacy-file' && asset.storageRef.indexedAssetId === indexedAsset.id,
+    (asset) =>
+      asset.storageRef?.kind !== 'embedded-data' && asset.storageRef?.indexedAssetId === indexedAsset.id,
   )
+  if (existingAsset && existingAsset.id !== managedSelection.assetId) {
+    throw new Error('indexed-asset-id-mismatch')
+  }
   const libraryAsset: Asset = {
-    id: existingAsset?.id ?? createCampaignAssetId(),
+    id: managedSelection.assetId,
     campaignId: campaign.id,
     kind,
     name: existingAsset?.name ?? createAssetName(indexedAsset.fileName),
-    filePath: indexedAsset.fileUrl,
-    storageRef: {
-      kind: 'legacy-file',
-      fileUrl: indexedAsset.fileUrl,
-      sha256: indexedAsset.sha256,
-      indexedAssetId: indexedAsset.id,
-    },
+    filePath: managedSelection.fileUrl,
+    storageRef: managedSelection.storageRef,
     exportPolicy,
     tags: normalizeAssetTags(indexedAsset.tags),
     createdAt: existingAsset?.createdAt ?? updatedAt,
@@ -315,11 +319,6 @@ function createSceneAssetObjectId(): string {
   }
 
   return `object-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-}
-
-function createCampaignAssetId(): AssetId {
-  const randomId = globalThis.crypto?.randomUUID?.()
-  return randomId ? `asset-${randomId}` : `asset-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 function createAssetName(fileName: string): string {

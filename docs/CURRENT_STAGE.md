@@ -2,64 +2,68 @@
 
 ## Текущий этап
 
-Этап 17. Контракты гибридного хранилища.
+Этап 20. Управляемое SHA-256-хранилище.
 
 Статус: выполнено и проверено.
 
-## Основание
+## Результат
 
-Целевая модель: большая внешняя библиотека индексируется без массового копирования, выбранные ассеты переходят в managed store по SHA-256, а кампания экспортируется автономным `.arcane-campaign` пакетом.
+Гибридная модель хранения теперь работает целиком до границы экспорта: большая внешняя библиотека индексируется без массового копирования, а использованный кампанией файл один раз переносится в управляемое content-addressed хранилище.
 
-## Реализовано в этапе 17
+## Реализовано в этапе 20
 
-- Добавлены typed contracts для library source, indexed asset, managed blob и campaign binding.
-- `Asset.storageRef` разделяет embedded, legacy file и managed references.
-- `Asset.exportPolicy` готовит выбор дополнительных ассетов для будущего умного экспорта.
-- Legacy `file:`/`data:` ссылки lossless мигрируются при чтении и записи campaign JSON.
-- Новые локальные импорты сразу получают `legacy-file` reference.
-- `CampaignAssetResolver` разрешает runtime URL через `ManagedAssetStore` и валидирует SHA-256.
-- Content-addressed путь стабильно строится как `objects/<2>/<2>/<sha256>.<ext>`.
-- Добавлены service boundaries `AssetIndexService`, `ManagedAssetStore` и `CampaignAssetResolver`.
-- SQLite schema version 1 создаёт sources, indexed assets и tags.
-- SQLite schema version 2 создаёт managed blobs и campaign asset bindings.
-- Migration runner применяет версии транзакционно, использует `PRAGMA user_version` и выполняет rollback при ошибке.
-- Portable export удаляет legacy absolute path из `storageRef` и восстанавливает новый локальный reference после импорта.
+- Добавлен файловый `FileSystemManagedAssetStore` с layout `objects/<2>/<2>/<sha256>.<ext>`.
+- Copy-on-use применяется при выборе индексированного ассета и при прямом импорте изображения.
+- Staging-файл проверяется по размеру и SHA-256 до атомарной установки.
+- Одинаковый контент дедуплицируется между файлами и кампаниями по SHA-256.
+- Повреждённый managed blob можно восстановить из доступного индексированного источника.
+- SQLite-каталог хранит blob metadata и campaign bindings; legacy references не нарушают managed foreign key.
+- Сохранение, импорт и удаление кампании синхронизируют полный набор ссылок.
+- Загрузка кампании разрешает managed references в runtime `fileUrl` без внешнего absolute path.
+- При недоступной внешней папке уже сохранённый blob продолжает открываться и может повторно использоваться.
+- Asset Manager получил явную двухшаговую очистку: preview, подтверждение, повторная проверка ссылок и отчёт.
 
-## Архитектурное решение по SQLite
+## Инварианты безопасности
 
-Текущий Node 20 runtime не предоставляет `node:sqlite`. На этапе 17 не добавляется native addon, который потребовал бы разные ABI-сборки для Node tests и Electron. DDL и migration runner отделены от драйвера небольшим adapter-контрактом. Конкретный SQLite driver подключается на этапе 18 вместе с background indexer.
+- Renderer не строит путь managed blob и не получает путь staging-каталога.
+- Файл не публикуется, пока его checksum не совпал с индексом.
+- Garbage collection никогда не удаляет blob с актуальной campaign binding.
+- Preview-план одноразовый; устаревший или повторно использованный token отклоняется.
+- Ошибка удаления физического файла восстанавливает запись blob в каталоге.
+- Автоматическая очистка при старте или сохранении не выполняется.
 
 ## Критерии готовности
 
-- Legacy campaign JSON остаётся читаемым и не теряет исходные пути.
-- Managed reference не содержит absolute source path.
-- Некорректный SHA-256 и отсутствующий blob возвращают typed failure.
-- SQLite DDL проходит syntax и foreign-key проверку.
-- Миграции применяются последовательно и откатываются при ошибке.
-- `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build` проходят.
-- Git diff не содержит временных файлов и исходный Word не попадает в commit.
+- Два одинаковых файла дают один стабильный managed path.
+- Кампания работает после удаления исходного файла из подключённой папки.
+- Изменившийся после индексации источник возвращает typed failure.
+- Ссылка, добавленная после preview очистки, защищает blob от удаления.
+- Legacy и managed campaign assets совместно сохраняются и загружаются.
+- `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build` и `npm run dist:win` проходят.
+- Исходный Word и его временный lock-файл не входят в commit.
 
 ## Следующий этап
 
-Этап 18 — подключение папок, реальный SQLite adapter, background indexer, метаданные изображений и дисковые превью.
+Этап 21 — умный автономный экспорт: вычисление реально используемых и явно выбранных ассетов, preview состава пакета, manifest с SHA-256 и импорт с дедупликацией непосредственно в managed store.
 
-## Затрагиваемые области
+## Основные затронутые области
 
-- `src/shared/types/asset.ts`
+- `src/main/assets/FileSystemManagedAssetStore.ts`
+- `src/main/assets/AssetLibraryService.ts`
+- `src/main/assets/AssetImportService.ts`
+- `src/main/assets/catalog/SqlJsAssetCatalog.ts`
+- `src/main/ipc/assetLibraryIpc.ts`
+- `src/main/ipc/storageIpc.ts`
+- `src/preload`
+- `src/renderer/stores`
+- `src/renderer/widgets/AssetManagerPanel.tsx`
 - `src/shared/types/assetStorage.ts`
-- `src/shared/assetStorage.ts`
-- `src/main/assets/hybridStorageContracts.ts`
-- `src/main/assets/CampaignAssetResolver.ts`
-- `src/main/assets/catalog/assetCatalogMigrations.ts`
-- `src/main/storage/JsonStorageService.ts`
-- `src/main/projects/ProjectTransferService.ts`
 - `docs/ROADMAP.md`
 - `docs/ARCHITECTURE.md`
 
-## Риски и меры
+## Следующие риски
 
-- Риск сломать legacy renderer: `filePath` сохраняется до этапа managed-store migration.
-- Риск утечки absolute path в export: portable rewrite удаляет `legacy-file storageRef`.
-- Риск дублирования blob: SHA-256 является primary key каталога и частью managed reference.
-- Риск случайного удаления общего файла: FK использует `ON DELETE RESTRICT`; garbage collection остаётся отдельной операцией этапа 20.
-- Риск несовместимого каталога: приложение отказывается открывать schema version новее поддерживаемой.
+- Этап 21 должен включать в пакет каждый SHA-256 ровно один раз, даже если на blob ссылаются несколько сущностей.
+- Export preview и фактическая запись обязаны использовать один валидируемый manifest contract.
+- Импорт пакета должен сначала проверить все пути, размеры и checksums и только затем публиковать blobs и campaign JSON.
+- Совместимость с package version 1 нельзя ломать при переходе на managed references.

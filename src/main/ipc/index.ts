@@ -19,6 +19,6 @@ export interface IpcContext {
 export function registerIpcHandlers(context: IpcContext): void {
   registerAssetIpc(context.assetImportService)
   registerAssetLibraryIpc(context.assetLibraryService)
-  registerStorageIpc(context.storageService, context.projectTransferService)
+  registerStorageIpc(context.storageService, context.projectTransferService, context.assetLibraryService)
   registerPlayerScreenIpc(context.playerScreenController)
 }

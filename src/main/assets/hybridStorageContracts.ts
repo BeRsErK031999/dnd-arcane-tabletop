@@ -3,6 +3,7 @@ import type {
   AssetLibraryQuery,
   AssetLibrarySource,
   AssetLibrarySourceId,
+  CampaignAssetBinding,
   CampaignAssetStorageReference,
   IndexedAsset,
   IndexedAssetId,
@@ -45,11 +46,25 @@ export interface PutManagedAssetInput {
 }
 
 export interface ManagedAssetStore {
+  initialize(): Promise<void>
   put(input: PutManagedAssetInput): Promise<ManagedAssetBlob>
   get(sha256: Sha256Digest): Promise<ManagedAssetBlob | null>
   resolveFileUrl(sha256: Sha256Digest): Promise<string | null>
   verify(sha256: Sha256Digest): Promise<boolean>
+  deleteIfUnreferenced(sha256: Sha256Digest): Promise<ManagedAssetBlob | null>
 }
+
+export interface ManagedAssetRegistry {
+  getManagedBlob(sha256: Sha256Digest): Promise<ManagedAssetBlob | null>
+  saveManagedBlob(blob: ManagedAssetBlob): Promise<void>
+  listUnreferencedManagedBlobs(): Promise<ManagedAssetBlob[]>
+  deleteManagedBlobIfUnreferenced(sha256: Sha256Digest): Promise<ManagedAssetBlob | null>
+  saveCampaignAssetBinding(binding: CampaignAssetBinding): Promise<void>
+  replaceCampaignAssetBindings(campaignId: string, bindings: CampaignAssetBinding[]): Promise<void>
+  removeCampaignAssetBindings(campaignId: string): Promise<void>
+}
+
+export type HybridAssetCatalog = AssetIndexService & ManagedAssetRegistry
 
 export type CampaignAssetResolution =
   | {

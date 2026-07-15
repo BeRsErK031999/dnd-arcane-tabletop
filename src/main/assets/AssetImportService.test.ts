@@ -3,20 +3,24 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
+import { SqlJsAssetCatalog } from './catalog/SqlJsAssetCatalog.js'
+import { FileSystemManagedAssetStore } from './FileSystemManagedAssetStore.js'
 import { AssetImportService } from './AssetImportService.js'
 
 const tempDirectories: string[] = []
+const openCatalogs: SqlJsAssetCatalog[] = []
 
 afterEach(async () => {
+  await Promise.all(openCatalogs.splice(0).map((catalog) => catalog.close()))
   await Promise.all(tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
 })
 
 describe('AssetImportService', () => {
-  it('copies a supported image into the campaign asset folder', async () => {
+  it('copies a supported image into the managed content-addressed store', async () => {
     const directory = await createTempDirectory()
     const sourceDirectory = path.join(directory, 'source')
     const sourceFilePath = path.join(sourceDirectory, 'ritual-map.png')
-    const service = new AssetImportService(path.join(directory, 'campaigns'), async () => null)
+    const { service } = createService(directory)
 
     await mkdir(sourceDirectory)
     await writeFile(sourceFilePath, 'fake-image-content')
@@ -37,15 +41,17 @@ describe('AssetImportService', () => {
 
     const copiedFilePath = fileURLToPath(result.asset.filePath)
     await expect(readFile(copiedFilePath, 'utf8')).resolves.toBe('fake-image-content')
-    expect(copiedFilePath).toContain(path.join('campaign-test', 'assets'))
+    expect(copiedFilePath).toContain(path.join('managed-store', 'objects'))
     expect(result.asset).toMatchObject({
       campaignId: 'campaign-test',
       kind: 'map',
       name: 'Карта ритуального зала',
       tags: ['ночь', 'ритуал'],
       storageRef: {
-        kind: 'legacy-file',
-        fileUrl: result.asset.filePath,
+        kind: 'managed',
+        fileName: 'ritual-map.png',
+        mimeType: 'image/png',
+        byteSize: 18,
       },
       exportPolicy: 'when-used',
       metadata: {
@@ -58,7 +64,7 @@ describe('AssetImportService', () => {
   it('rejects unsupported image extensions before copying', async () => {
     const directory = await createTempDirectory()
     const sourceFilePath = path.join(directory, 'notes.txt')
-    const service = new AssetImportService(path.join(directory, 'campaigns'), async () => null)
+    const { service } = createService(directory)
 
     await writeFile(sourceFilePath, 'not an image')
 
@@ -71,32 +77,47 @@ describe('AssetImportService', () => {
     ).resolves.toEqual({ ok: false, reason: 'unsupported-file' })
   })
 
-  it('uses the latest campaign directory provider value for copied assets', async () => {
+  it('deduplicates identical imports across campaigns', async () => {
     const directory = await createTempDirectory()
     const sourceFilePath = path.join(directory, 'portrait.png')
-    let campaignsDirectory = path.join(directory, 'campaigns-a')
-    const service = new AssetImportService(() => campaignsDirectory, async () => null)
+    const { catalog, service } = createService(directory)
 
     await writeFile(sourceFilePath, 'portrait-content')
-    campaignsDirectory = path.join(directory, 'campaigns-b')
-
-    const result = await service.importImageAsset({
-      campaignId: 'campaign-test',
+    const first = await service.importImageAsset({
+      campaignId: 'campaign-a',
+      kind: 'portrait',
+      sourceFilePath,
+    })
+    const second = await service.importImageAsset({
+      campaignId: 'campaign-b',
       kind: 'portrait',
       sourceFilePath,
     })
 
-    expect(result.ok).toBe(true)
-
-    if (!result.ok) {
+    expect(first.ok).toBe(true)
+    expect(second.ok).toBe(true)
+    if (!first.ok || !second.ok) {
       return
     }
 
-    const copiedFilePath = fileURLToPath(result.asset.filePath)
-    expect(copiedFilePath).toContain(path.join('campaigns-b', 'campaign-test', 'assets'))
-    await expect(readFile(copiedFilePath, 'utf8')).resolves.toBe('portrait-content')
+    expect(first.asset.filePath).toBe(second.asset.filePath)
+    expect(first.asset.storageRef).toMatchObject(second.asset.storageRef!)
+    await expect(catalog.listUnreferencedManagedBlobs()).resolves.toHaveLength(0)
   })
 })
+
+function createService(directory: string): {
+  catalog: SqlJsAssetCatalog
+  service: AssetImportService
+} {
+  const catalog = new SqlJsAssetCatalog(path.join(directory, 'asset-catalog.sqlite'))
+  openCatalogs.push(catalog)
+  const managedStore = new FileSystemManagedAssetStore(path.join(directory, 'managed-store'), catalog)
+  return {
+    catalog,
+    service: new AssetImportService(managedStore, async () => null, catalog),
+  }
+}
 
 async function createTempDirectory(): Promise<string> {
   const directory = await mkdtemp(path.join(tmpdir(), 'dnd-arcane-assets-'))

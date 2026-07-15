@@ -20,6 +20,9 @@ export const IPC_CHANNELS = {
     cancelIndexing: 'asset-library:indexing:cancel',
     queryAssets: 'asset-library:assets:query',
     updateTags: 'asset-library:assets:tags:update',
+    manageForCampaign: 'asset-library:assets:manage-for-campaign',
+    previewGarbageCollection: 'asset-library:managed:gc:preview',
+    collectGarbage: 'asset-library:managed:gc:collect',
     snapshotChanged: 'asset-library:snapshot:changed',
   },
   playerScreen: {

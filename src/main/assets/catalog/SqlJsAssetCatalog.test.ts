@@ -89,6 +89,26 @@ describe('SqlJsAssetCatalog', () => {
       items: [{ id: smallAsset.id }],
     })
   })
+
+  it('tracks a legacy checksum without requiring a managed blob row', async () => {
+    const catalog = trackCatalog(new SqlJsAssetCatalog(await createDatabaseFilePath()))
+    await catalog.initialize()
+
+    await expect(
+      catalog.saveCampaignAssetBinding({
+        campaignId: 'campaign-legacy',
+        assetId: 'asset-legacy',
+        storage: {
+          kind: 'legacy-file',
+          fileUrl: 'file:///C:/legacy/map.png',
+          sha256: 'a'.repeat(64),
+        },
+        exportPolicy: 'when-used',
+        createdAt: '2026-07-15T08:00:00.000Z',
+        updatedAt: '2026-07-15T08:00:00.000Z',
+      }),
+    ).resolves.toBeUndefined()
+  })
 })
 
 async function createDatabaseFilePath(): Promise<string> {

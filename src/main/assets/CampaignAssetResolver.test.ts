@@ -77,6 +77,8 @@ class FakeManagedAssetStore implements ManagedAssetStore {
 
   constructor(private readonly fileUrls = new Map<Sha256Digest, string>()) {}
 
+  async initialize(): Promise<void> {}
+
   async put(_input: PutManagedAssetInput): Promise<ManagedAssetBlob> {
     throw new Error('Not implemented in resolver test')
   }
@@ -92,6 +94,10 @@ class FakeManagedAssetStore implements ManagedAssetStore {
 
   async verify(_sha256: Sha256Digest): Promise<boolean> {
     return false
+  }
+
+  async deleteIfUnreferenced(_sha256: Sha256Digest): Promise<ManagedAssetBlob | null> {
+    return null
   }
 }
 

@@ -60,6 +60,8 @@ export function AssetManagerPanel({ campaign, isCampaignBusy, onSelectAsset }: A
   const [alwaysExport, setAlwaysExport] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSavingTags, setIsSavingTags] = useState(false)
+  const [isMaintenanceBusy, setIsMaintenanceBusy] = useState(false)
+  const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState('Выберите ассет, чтобы посмотреть детали.')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [previewErrors, setPreviewErrors] = useState<Set<string>>(() => new Set())
@@ -188,7 +190,7 @@ export function AssetManagerPanel({ campaign, isCampaignBusy, onSelectAsset }: A
   }
 
   async function selectForCampaign(): Promise<void> {
-    if (!selectedAsset || !campaign || selectedAsset.availability !== 'available') {
+    if (!selectedAsset || !campaign || !selectedAsset.sha256) {
       return
     }
     setActionMessage('Сохраняем выбор в кампании…')
@@ -200,10 +202,45 @@ export function AssetManagerPanel({ campaign, isCampaignBusy, onSelectAsset }: A
     setActionMessage(
       result.ok
         ? alwaysExport
-          ? 'Ассет выбран для кампании и всегда будет включаться в автономный экспорт.'
-          : 'Ассет выбран для кампании и будет экспортироваться при использовании.'
+          ? 'Ассет сохранён в управляемом хранилище и всегда будет включаться в автономный экспорт.'
+          : 'Ассет сохранён в управляемом хранилище и будет экспортироваться при использовании.'
         : 'Не удалось сохранить выбор ассета в кампании.',
     )
+  }
+
+  async function collectUnusedManagedAssets(): Promise<void> {
+    setIsMaintenanceBusy(true)
+    setMaintenanceMessage('Проверяем ссылки кампаний…')
+    try {
+      const preview = await desktopApi.assetLibrary.previewGarbageCollection()
+      if (!preview.ok) {
+        setMaintenanceMessage('Не удалось проверить управляемое хранилище.')
+        return
+      }
+      if (preview.plan.candidates.length === 0) {
+        setMaintenanceMessage('Неиспользуемых файлов нет — очистка не требуется.')
+        return
+      }
+
+      const confirmed = window.confirm(
+        `Удалить ${preview.plan.candidates.length} неиспользуемых файлов (${formatFileSize(preview.plan.totalByteSize)})? Используемые кампаниями файлы затронуты не будут.`,
+      )
+      if (!confirmed) {
+        setMaintenanceMessage('Очистка отменена. Файлы не изменялись.')
+        return
+      }
+
+      const result = await desktopApi.assetLibrary.collectGarbage(preview.plan.token)
+      setMaintenanceMessage(
+        result.ok
+          ? `Удалено файлов: ${result.deletedSha256.length}, пропущено: ${result.skippedSha256.length}, освобождено ${formatFileSize(result.reclaimedByteSize)}.`
+          : 'План очистки устарел или хранилище недоступно.',
+      )
+    } catch {
+      setMaintenanceMessage('Не удалось завершить очистку управляемого хранилища.')
+    } finally {
+      setIsMaintenanceBusy(false)
+    }
   }
 
   function resetFilters(): void {
@@ -228,7 +265,7 @@ export function AssetManagerPanel({ campaign, isCampaignBusy, onSelectAsset }: A
           </span>
           <button
             className="button button--secondary"
-            disabled={isIndexing || libraryStore.status === 'working'}
+            disabled={isIndexing || libraryStore.status === 'working' || isMaintenanceBusy}
             onClick={() => void libraryStore.connectDirectory()}
             type="button"
           >
@@ -246,15 +283,28 @@ export function AssetManagerPanel({ campaign, isCampaignBusy, onSelectAsset }: A
           ) : (
             <button
               className="button button--secondary"
-              disabled={!sourceForRescan || libraryStore.status === 'working'}
+              disabled={!sourceForRescan || libraryStore.status === 'working' || isMaintenanceBusy}
               onClick={() => sourceForRescan && void libraryStore.startIndexing(sourceForRescan.id)}
               type="button"
             >
               Пересканировать
             </button>
           )}
+          <button
+            className="button button--secondary"
+            disabled={isIndexing || isMaintenanceBusy}
+            onClick={() => void collectUnusedManagedAssets()}
+            title="Удалить только файлы, на которые не ссылается ни одна кампания"
+            type="button"
+          >
+            {isMaintenanceBusy ? 'Проверяем…' : 'Очистить хранилище'}
+          </button>
         </div>
       </header>
+
+      {maintenanceMessage ? (
+        <p className="asset-manager__maintenance" role="status">{maintenanceMessage}</p>
+      ) : null}
 
       {isIndexing ? (
         <div className="asset-manager-indexing" aria-live="polite">
@@ -598,7 +648,7 @@ function AssetDetails({
     )
   }
 
-  const canSelectForCampaign = campaign !== null && asset.availability === 'available' && Boolean(asset.fileUrl)
+  const canSelectForCampaign = campaign !== null && Boolean(asset.sha256)
 
   return (
     <aside className="asset-manager-details" aria-label={`Детали ${asset.fileName}`}>
@@ -683,7 +733,7 @@ function AssetDetails({
           <small>
             {!campaign
               ? 'Откройте кампанию, чтобы выбрать ассет.'
-              : 'Добавление недоступно, пока исходный файл отсутствует или не читается.'}
+              : 'Добавление недоступно, пока для файла не вычислен SHA-256.'}
           </small>
         ) : null}
       </div>
@@ -767,7 +817,7 @@ function getSizeQuery(filter: AssetSizeFilter): Pick<AssetLibraryQuery, 'maxByte
 
 function findCampaignAsset(campaign: Campaign | null, indexedAssetId: string): Asset | null {
   return campaign?.assets.find(
-    (asset) => asset.storageRef?.kind === 'legacy-file' && asset.storageRef.indexedAssetId === indexedAssetId,
+    (asset) => asset.storageRef?.kind !== 'embedded-data' && asset.storageRef?.indexedAssetId === indexedAssetId,
   ) ?? null
 }
 

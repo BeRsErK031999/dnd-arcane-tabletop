@@ -235,12 +235,27 @@ Main process использует три driver-neutral контракта:
 
 Физический layout managed store зафиксирован как `objects/<sha[0..2]>/<sha[2..4]>/<sha256>.<ext>`. Это ограничивает число файлов в одной папке и не зависит от исходного имени.
 
-SQLite catalog имеет две последовательные миграции:
+SQLite catalog имеет три последовательные миграции:
 
 1. `asset_library_sources`, `indexed_assets`, `indexed_asset_tags` и поисковые индексы.
 2. `managed_asset_blobs`, `campaign_asset_references` и индексы для SHA-256/export policy.
+3. scan marker `last_seen_scan_id` для атомарного определения отсутствующих после полного сканирования файлов.
 
-Migration runner включает foreign keys, использует `BEGIN IMMEDIATE`, `PRAGMA user_version`, отдельную транзакцию на версию и rollback при ошибке. Конкретный SQLite driver намеренно не входит в этап 17: текущий dev runtime — Node 20 без `node:sqlite`, а преждевременный native addon потребовал бы отдельной ABI-сборки под Node и Electron. Driver подключается на этапе 18 вместе с background indexer, не меняя DDL и сервисные контракты.
+Migration runner включает foreign keys, использует `BEGIN IMMEDIATE`, `PRAGMA user_version`, отдельную транзакцию на версию и rollback при ошибке. С этапа 18 каталог работает через `sql.js`: это сохраняет один SQLite-файл без native addon и отдельной ABI-сборки под Node и Electron.
+
+### Реализация этапа 20
+
+`FileSystemManagedAssetStore` хранит оригиналы под каталогом приложения в `managed-store/objects`. Операция `put` сериализована внутри процесса и выполняет следующий протокол:
+
+1. Проверяет входной SHA-256, размер, MIME и абсолютный source path.
+2. Если зарегистрированный blob существует и проходит checksum-проверку, возвращает его без чтения внешнего источника.
+3. Иначе копирует источник в уникальный файл `staging`, повторно вычисляет размер и SHA-256 и только затем устанавливает blob через `rename`.
+4. Повреждённый target временно отводится в backup и восстанавливается при ошибке установки.
+5. Метаданные публикуются в `managed_asset_blobs` после успешной файловой операции.
+
+Выбор ассета и прямой импорт сначала создают managed blob и предварительную campaign binding. Последующее сохранение campaign JSON заменяет полный набор ссылок кампании. Загрузка JSON разрешает каждый `managed` reference в локальный runtime `fileUrl`; исходный путь индексированной библиотеки для этого не нужен.
+
+Garbage collection не запускается автоматически. Asset Manager сначала получает одноразовый preview token со списком unreferenced blobs, затем после подтверждения передаёт token на выполнение. Перед физическим удалением каждого файла SQLite ещё раз атомарно проверяет отсутствие ссылок; появившийся после preview reference приводит к пропуску, а не к удалению.
 
 ## Почему нельзя размазывать управление player window
 

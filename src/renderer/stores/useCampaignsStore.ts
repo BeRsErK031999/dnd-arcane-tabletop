@@ -1644,15 +1644,39 @@ export function useCampaignsStore() {
       setLastError(null)
 
       try {
+        const existingAsset = selectedCampaign.assets.find(
+          (asset) =>
+            asset.storageRef?.kind !== 'embedded-data' &&
+            asset.storageRef?.indexedAssetId === indexedAsset.id,
+        )
+        const managedSelection = await desktopApi.assetLibrary.manageForCampaign({
+          campaignId: selectedCampaign.id,
+          indexedAssetId: indexedAsset.id,
+          assetId: existingAsset?.id,
+          exportPolicy,
+        })
+        if (!managedSelection.ok) {
+          const errorMessages = {
+            'asset-not-found': 'Ассет больше не найден в каталоге. Обновите библиотеку.',
+            'asset-unavailable': 'Исходный файл недоступен, а управляемая копия ещё не создана.',
+            'asset-checksum-missing': 'Для ассета не вычислен SHA-256. Пересканируйте папку.',
+            'source-changed': 'Исходный файл изменился после индексации. Пересканируйте папку и повторите выбор.',
+            'storage-failed': 'Не удалось скопировать ассет в управляемое хранилище.',
+            'desktop-api-unavailable': 'Управляемое хранилище доступно только в настольном приложении.',
+          } satisfies Record<typeof managedSelection.reason, string>
+          setLastError(errorMessages[managedSelection.reason])
+          setStatus('error')
+          return { ok: false, reason: managedSelection.reason }
+        }
         const updatedCampaign = createCampaignWithIndexedAsset(
           selectedCampaign,
           indexedAsset,
+          managedSelection,
           kind,
           exportPolicy,
         )
         const selectedAsset = updatedCampaign.assets.find(
-          (asset) =>
-            asset.storageRef?.kind === 'legacy-file' && asset.storageRef.indexedAssetId === indexedAsset.id,
+          (asset) => asset.id === managedSelection.assetId,
         )
         if (!selectedAsset) {
           throw new Error('indexed-asset-selection-failed')

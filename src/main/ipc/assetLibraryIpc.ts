@@ -4,6 +4,7 @@ import type {
   AssetLibrarySourceId,
   ConnectAssetLibraryResult,
   IndexedAssetId,
+  ManageIndexedAssetForCampaignRequest,
 } from '../../shared/types/index.js'
 import { IPC_CHANNELS } from '../../shared/constants/index.js'
 import type { AssetLibraryService } from '../assets/AssetLibraryService.js'
@@ -31,6 +32,17 @@ export function registerAssetLibraryIpc(assetLibraryService: AssetLibraryService
   )
   ipcMain.handle(IPC_CHANNELS.assetLibrary.updateTags, (_event, assetId: IndexedAssetId, tags: string[]) =>
     assetLibraryService.updateTags(assetId, tags),
+  )
+  ipcMain.handle(
+    IPC_CHANNELS.assetLibrary.manageForCampaign,
+    (_event, request: ManageIndexedAssetForCampaignRequest) =>
+      assetLibraryService.manageIndexedAssetForCampaign(request),
+  )
+  ipcMain.handle(IPC_CHANNELS.assetLibrary.previewGarbageCollection, () =>
+    assetLibraryService.previewManagedGarbageCollection(),
+  )
+  ipcMain.handle(IPC_CHANNELS.assetLibrary.collectGarbage, (_event, token: string) =>
+    assetLibraryService.collectManagedGarbage(token),
   )
 
   assetLibraryService.subscribe((snapshot) => {

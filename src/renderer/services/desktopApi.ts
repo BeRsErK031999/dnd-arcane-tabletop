@@ -93,6 +93,17 @@ const browserFallbackApi: DesktopApi = {
       limit: query.limit,
     }),
     updateTags: async () => ({ ok: false, reason: 'desktop-api-unavailable' }),
+    manageForCampaign: async () => ({ ok: false, reason: 'desktop-api-unavailable' }),
+    previewGarbageCollection: async () => ({
+      ok: true,
+      plan: {
+        token: 'browser-fallback',
+        candidates: [],
+        totalByteSize: 0,
+        generatedAt: new Date().toISOString(),
+      },
+    }),
+    collectGarbage: async () => ({ ok: false, reason: 'desktop-api-unavailable' }),
     onSnapshotChanged: () => () => undefined,
   },
   playerScreen: {

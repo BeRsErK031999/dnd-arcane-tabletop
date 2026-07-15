@@ -12,6 +12,8 @@ import type {
   ImportImageAssetRequest,
   ImportImageAssetResult,
   IndexedAssetId,
+  ManageIndexedAssetForCampaignRequest,
+  ManageIndexedAssetForCampaignResult,
   ConnectAssetLibraryResult,
   PlayerScreenCommandResult,
   PlayerScreenOpenResult,
@@ -20,6 +22,8 @@ import type {
   ProjectExportResult,
   ProjectImportResult,
   StartAssetIndexResult,
+  CollectManagedAssetGarbageResult,
+  PreviewManagedAssetGarbageResult,
   UpdateIndexedAssetTagsResult,
 } from '../shared/types/index.js'
 
@@ -47,6 +51,9 @@ export interface DesktopApi {
     cancelIndexing(): Promise<CancelAssetIndexResult>
     queryAssets(query: AssetLibraryQuery): Promise<AssetLibraryPage>
     updateTags(assetId: IndexedAssetId, tags: string[]): Promise<UpdateIndexedAssetTagsResult>
+    manageForCampaign(request: ManageIndexedAssetForCampaignRequest): Promise<ManageIndexedAssetForCampaignResult>
+    previewGarbageCollection(): Promise<PreviewManagedAssetGarbageResult>
+    collectGarbage(token: string): Promise<CollectManagedAssetGarbageResult>
     onSnapshotChanged(listener: (snapshot: AssetLibrarySnapshot) => void): DesktopEventUnsubscribe
   }
   playerScreen: {

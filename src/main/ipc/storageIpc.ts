@@ -9,11 +9,13 @@ import type {
   ProjectImportResult,
 } from '../../shared/types/index.js'
 import type { ProjectTransferService } from '../projects/ProjectTransferService.js'
+import type { AssetLibraryService } from '../assets/AssetLibraryService.js'
 import type { StorageService } from '../storage/StorageService.js'
 
 export function registerStorageIpc(
   storageService: StorageService,
   projectTransferService: ProjectTransferService,
+  assetLibraryService: AssetLibraryService,
 ): void {
   ipcMain.handle(IPC_CHANNELS.storage.getCampaignsDirectory, () => getCampaignsDirectoryInfo(storageService))
 
@@ -46,6 +48,7 @@ export function registerStorageIpc(
     try {
       await storageService.setCampaignsDirectory(selectedDirectory)
       await storageService.saveCampaign(campaign)
+      await assetLibraryService.syncCampaignBindings(campaign)
       return createDirectorySelectionResult(storageService, false)
     } catch (error) {
       await storageService.setCampaignsDirectory(previousDirectory)
@@ -55,24 +58,33 @@ export function registerStorageIpc(
 
   ipcMain.handle(IPC_CHANNELS.storage.listCampaigns, () => storageService.listCampaigns())
 
-  ipcMain.handle(IPC_CHANNELS.storage.loadCampaign, (_event, campaignId: CampaignId) =>
-    storageService.loadCampaign(campaignId),
-  )
+  ipcMain.handle(IPC_CHANNELS.storage.loadCampaign, async (_event, campaignId: CampaignId) => {
+    const campaign = await storageService.loadCampaign(campaignId)
+    return campaign ? assetLibraryService.resolveCampaignAssetUrls(campaign) : null
+  })
 
-  ipcMain.handle(IPC_CHANNELS.storage.saveCampaign, (_event, campaign: Campaign) =>
-    storageService.saveCampaign(campaign),
-  )
+  ipcMain.handle(IPC_CHANNELS.storage.saveCampaign, async (_event, campaign: Campaign) => {
+    await storageService.saveCampaign(campaign)
+    await assetLibraryService.syncCampaignBindings(campaign)
+  })
 
-  ipcMain.handle(IPC_CHANNELS.storage.deleteCampaign, (_event, campaignId: CampaignId) =>
-    storageService.deleteCampaign(campaignId),
-  )
+  ipcMain.handle(IPC_CHANNELS.storage.deleteCampaign, async (_event, campaignId: CampaignId) => {
+    await storageService.deleteCampaign(campaignId)
+    await assetLibraryService.removeCampaignBindings(campaignId)
+  })
 
   ipcMain.handle(IPC_CHANNELS.storage.importProject, async (event): Promise<ProjectImportResult> => {
     const sourceFilePath = await pickProjectPackage(BrowserWindow.fromWebContents(event.sender))
 
-    return sourceFilePath === null
-      ? { ok: false, reason: 'cancelled' }
-      : projectTransferService.importCampaign(sourceFilePath)
+    if (sourceFilePath === null) {
+      return { ok: false, reason: 'cancelled' }
+    }
+
+    const resolvedResult = await projectTransferService.importCampaign(sourceFilePath)
+    if (resolvedResult.ok) {
+      await assetLibraryService.syncCampaignBindings(resolvedResult.campaign)
+    }
+    return resolvedResult
   })
 
   ipcMain.handle(

@@ -8,6 +8,7 @@ import type {
   CampaignId,
   ImportImageAssetRequest,
   IndexedAssetId,
+  ManageIndexedAssetForCampaignRequest,
   PlayerScreenState,
   PlayerScreenStatus,
 } from '../shared/types/index.js'
@@ -38,6 +39,12 @@ const desktopApi: DesktopApi = {
     queryAssets: (query: AssetLibraryQuery) => ipcRenderer.invoke(IPC_CHANNELS.assetLibrary.queryAssets, query),
     updateTags: (assetId: IndexedAssetId, tags: string[]) =>
       ipcRenderer.invoke(IPC_CHANNELS.assetLibrary.updateTags, assetId, tags),
+    manageForCampaign: (request: ManageIndexedAssetForCampaignRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.assetLibrary.manageForCampaign, request),
+    previewGarbageCollection: () =>
+      ipcRenderer.invoke(IPC_CHANNELS.assetLibrary.previewGarbageCollection),
+    collectGarbage: (token: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.assetLibrary.collectGarbage, token),
     onSnapshotChanged: (listener: (snapshot: AssetLibrarySnapshot) => void) =>
       subscribeToIpc(IPC_CHANNELS.assetLibrary.snapshotChanged, listener),
   },

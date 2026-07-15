@@ -16,3 +16,7 @@ export function getAssetLibraryDirectory(): string {
 
   return path.join(process.cwd(), 'data', 'asset-library')
 }
+
+export function getManagedAssetStoreDirectory(): string {
+  return path.join(getAssetLibraryDirectory(), 'managed-store')
+}

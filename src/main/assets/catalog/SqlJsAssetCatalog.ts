@@ -5,11 +5,13 @@ import initSqlJs, { type BindParams, type Database, type ParamsObject, type SqlV
 import type {
   AssetLibrarySource,
   AssetLibrarySourceId,
+  CampaignAssetBinding,
   IndexedAsset,
   IndexedAssetId,
+  ManagedAssetBlob,
   Sha256Digest,
 } from '../../../shared/types/index.js'
-import type { AssetIndexService, IndexedAssetPage, IndexedAssetQuery } from '../hybridStorageContracts.js'
+import type { HybridAssetCatalog, IndexedAssetPage, IndexedAssetQuery } from '../hybridStorageContracts.js'
 import {
   migrateAssetCatalog,
   type AssetCatalogMigrationDatabase,
@@ -21,7 +23,7 @@ const sqlJsPromise = initSqlJs({
   locateFile: () => sqlJsWasmPath,
 })
 
-export class SqlJsAssetCatalog implements AssetIndexService, AssetCatalogMigrationDatabase {
+export class SqlJsAssetCatalog implements HybridAssetCatalog, AssetCatalogMigrationDatabase {
   private database: Database | null = null
   private initializePromise: Promise<void> | null = null
   private writeQueue: Promise<void> = Promise.resolve()
@@ -292,6 +294,93 @@ export class SqlJsAssetCatalog implements AssetIndexService, AssetCatalogMigrati
     })
   }
 
+  async getManagedBlob(sha256: Sha256Digest): Promise<ManagedAssetBlob | null> {
+    await this.waitUntilReadable()
+    return this.queryOne('SELECT * FROM managed_asset_blobs WHERE sha256 = ?', [sha256], mapManagedBlob)
+  }
+
+  async saveManagedBlob(blob: ManagedAssetBlob): Promise<void> {
+    await this.initialize()
+    await this.enqueueWrite(() => {
+      this.requireDatabase().run(
+        `INSERT INTO managed_asset_blobs (
+          sha256, relative_path, byte_size, mime_type, file_extension, created_at, verified_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(sha256) DO UPDATE SET
+          relative_path = excluded.relative_path,
+          byte_size = excluded.byte_size,
+          mime_type = excluded.mime_type,
+          file_extension = excluded.file_extension,
+          verified_at = excluded.verified_at`,
+        [
+          blob.sha256,
+          blob.relativePath,
+          blob.byteSize,
+          blob.mimeType,
+          blob.fileExtension,
+          blob.createdAt,
+          blob.verifiedAt ?? null,
+        ],
+      )
+    })
+  }
+
+  async listUnreferencedManagedBlobs(): Promise<ManagedAssetBlob[]> {
+    await this.waitUntilReadable()
+    return this.queryRows(
+      `SELECT managed_asset_blobs.*
+       FROM managed_asset_blobs
+       LEFT JOIN campaign_asset_references
+         ON campaign_asset_references.sha256 = managed_asset_blobs.sha256
+       WHERE campaign_asset_references.sha256 IS NULL
+       ORDER BY managed_asset_blobs.created_at, managed_asset_blobs.sha256`,
+    ).map(mapManagedBlob)
+  }
+
+  async deleteManagedBlobIfUnreferenced(sha256: Sha256Digest): Promise<ManagedAssetBlob | null> {
+    await this.initialize()
+    return this.enqueueWrite(() => {
+      const blob = this.queryOne(
+        `SELECT managed_asset_blobs.*
+         FROM managed_asset_blobs
+         WHERE managed_asset_blobs.sha256 = ? AND NOT EXISTS (
+           SELECT 1 FROM campaign_asset_references
+           WHERE campaign_asset_references.sha256 = managed_asset_blobs.sha256
+         )`,
+        [sha256],
+        mapManagedBlob,
+      )
+      if (!blob) {
+        return null
+      }
+      this.requireDatabase().run('DELETE FROM managed_asset_blobs WHERE sha256 = ?', [sha256])
+      return blob
+    })
+  }
+
+  async saveCampaignAssetBinding(binding: CampaignAssetBinding): Promise<void> {
+    await this.initialize()
+    await this.enqueueWrite(() => saveCampaignBinding(this.requireDatabase(), binding))
+  }
+
+  async replaceCampaignAssetBindings(campaignId: string, bindings: CampaignAssetBinding[]): Promise<void> {
+    await this.initialize()
+    await this.enqueueWrite(() => {
+      const database = this.requireDatabase()
+      database.run('DELETE FROM campaign_asset_references WHERE campaign_id = ?', [campaignId])
+      for (const binding of bindings) {
+        saveCampaignBinding(database, binding)
+      }
+    })
+  }
+
+  async removeCampaignAssetBindings(campaignId: string): Promise<void> {
+    await this.initialize()
+    await this.enqueueWrite(() => {
+      this.requireDatabase().run('DELETE FROM campaign_asset_references WHERE campaign_id = ?', [campaignId])
+    })
+  }
+
   private async initializeInternal(): Promise<void> {
     await mkdir(path.dirname(this.databaseFilePath), { recursive: true })
     const SQL = await sqlJsPromise
@@ -315,14 +404,15 @@ export class SqlJsAssetCatalog implements AssetIndexService, AssetCatalogMigrati
     await this.writeQueue
   }
 
-  private enqueueWrite(operation: () => void): Promise<void> {
+  private enqueueWrite<Result>(operation: () => Result): Promise<Result> {
     const queuedOperation = this.writeQueue.then(async () => {
       const database = this.requireDatabase()
       database.run('BEGIN IMMEDIATE')
       try {
-        operation()
+        const result = operation()
         database.run('COMMIT')
         await this.persist()
+        return result
       } catch (error) {
         try {
           database.run('ROLLBACK')
@@ -333,7 +423,10 @@ export class SqlJsAssetCatalog implements AssetIndexService, AssetCatalogMigrati
       }
     })
 
-    this.writeQueue = queuedOperation.catch(() => undefined)
+    this.writeQueue = queuedOperation.then(
+      () => undefined,
+      () => undefined,
+    )
     return queuedOperation
   }
 
@@ -434,6 +527,50 @@ function mapAsset(row: ParamsObject): IndexedAsset {
     availability: readString(row, 'availability') as IndexedAsset['availability'],
     indexedAt: readString(row, 'indexed_at'),
   }
+}
+
+function mapManagedBlob(row: ParamsObject): ManagedAssetBlob {
+  return {
+    sha256: readString(row, 'sha256'),
+    relativePath: readString(row, 'relative_path'),
+    byteSize: readNumber(row, 'byte_size'),
+    mimeType: readString(row, 'mime_type'),
+    fileExtension: readString(row, 'file_extension'),
+    createdAt: readString(row, 'created_at'),
+    ...optionalStringProperty(row, 'verified_at', 'verifiedAt'),
+  }
+}
+
+function saveCampaignBinding(database: Database, binding: CampaignAssetBinding): void {
+  const storage = binding.storage
+  const sha256 = storage.kind === 'managed' ? storage.sha256 : null
+  const indexedAssetId = storage.kind === 'embedded-data' ? null : storage.indexedAssetId ?? null
+  const legacyFileUrl = storage.kind === 'legacy-file' ? storage.fileUrl : null
+
+  database.run(
+    `INSERT INTO campaign_asset_references (
+      campaign_id, asset_id, storage_kind, sha256, indexed_asset_id,
+      legacy_file_url, export_policy, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(campaign_id, asset_id) DO UPDATE SET
+      storage_kind = excluded.storage_kind,
+      sha256 = excluded.sha256,
+      indexed_asset_id = excluded.indexed_asset_id,
+      legacy_file_url = excluded.legacy_file_url,
+      export_policy = excluded.export_policy,
+      updated_at = excluded.updated_at`,
+    [
+      binding.campaignId,
+      binding.assetId,
+      storage.kind,
+      sha256,
+      indexedAssetId,
+      legacyFileUrl,
+      binding.exportPolicy,
+      binding.createdAt,
+      binding.updatedAt,
+    ],
+  )
 }
 
 function appendInFilter(

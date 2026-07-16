@@ -46,6 +46,7 @@ import {
   type SceneCanvasObjectTokenState,
   type SceneCanvasViewport,
   type SceneGrid,
+  type Scene,
 } from '@shared/types'
 
 type PlayerActionResult = PlayerScreenCommandResult | PlayerScreenOpenResult
@@ -156,6 +157,7 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
     createScene,
     activateScene,
     sendActiveSceneToPlayers,
+    clearPlayerScreen,
     updateActiveSceneGrid,
     updateActiveSceneViewport,
     updatePlayerSceneViewport,
@@ -694,6 +696,18 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
     }
 
     setSceneActionStatus('Не удалось отправить активную сцену игрокам.')
+  }
+
+  async function handleClearPlayerScreen(): Promise<void> {
+    const result = await clearPlayerScreen()
+
+    if (result.ok) {
+      setPlayerStatus(getStatusFromPlayerAction(result.playerStatus))
+      setPlayerActionStatus('Экран игроков очищен.')
+      return
+    }
+
+    setPlayerActionStatus('Не удалось очистить экран игроков.')
   }
 
   async function handleUpdateActiveSceneGrid(grid: Partial<SceneGrid>): Promise<void> {
@@ -1686,6 +1700,10 @@ export function MasterDashboardPage({ campaignsStore }: MasterDashboardPageProps
       >
         <div className="workspace-section__scroll">
           <PlayerScreenControls
+            activeScene={activeScene}
+            isStorageBusy={isStorageBusy}
+            onClear={handleClearPlayerScreen}
+            onPublishActiveScene={handleSendActiveSceneToPlayers}
             playerActionStatus={playerActionStatus}
             playerStatus={playerStatus}
             runPlayerAction={runPlayerAction}
@@ -1760,6 +1778,10 @@ function WorkspaceSectionPanel({
 }
 
 interface PlayerScreenControlsProps {
+  activeScene: Scene | null
+  isStorageBusy: boolean
+  onClear(): Promise<void>
+  onPublishActiveScene(): Promise<void>
   playerActionStatus: string
   playerStatus: PlayerScreenStatus
   runPlayerAction(label: string, action: () => Promise<PlayerActionResult>): Promise<void>
@@ -2011,106 +2033,80 @@ function CombatTrackerPanel({
   )
 }
 
-function PlayerScreenControls({ playerActionStatus, playerStatus, runPlayerAction }: PlayerScreenControlsProps) {
+function PlayerScreenControls({
+  activeScene,
+  isStorageBusy,
+  onClear,
+  onPublishActiveScene,
+  playerActionStatus,
+  playerStatus,
+  runPlayerAction,
+}: PlayerScreenControlsProps) {
+  const isActiveScenePublished =
+    activeScene !== null &&
+    playerStatus.state.mode === 'scene' &&
+    playerStatus.state.activeSceneId === activeScene.id
+
   return (
     <section className="player-control-panel" id="section-players" aria-label="Экран игроков">
-      <div className="module-header">
-        <div>
-          <p className="eyebrow">Player Screen</p>
-          <h2>Экран игроков</h2>
+      <details className="player-control-panel__details">
+        <summary>
+          <span>Экран игрока</span>
+          <span className={playerStatus.isOpen ? 'status-badge' : 'status-badge status-badge--neutral'}>
+            {playerStatus.isOpen ? 'ON' : 'OFF'}
+          </span>
+        </summary>
+        <div className="player-control-panel__actions">
+          <button
+            aria-label={playerStatus.isOpen ? 'Выключить экран игрока' : 'Включить экран игрока'}
+            aria-pressed={playerStatus.isOpen}
+            className="button"
+            disabled={isStorageBusy}
+            onClick={() =>
+              void runPlayerAction(
+                playerStatus.isOpen ? 'Экран игроков выключен.' : 'Экран игроков включен.',
+                () => (playerStatus.isOpen ? desktopApi.playerScreen.close() : desktopApi.playerScreen.open()),
+              )
+            }
+            type="button"
+          >
+            {playerStatus.isOpen ? 'ON' : 'OFF'}
+          </button>
+          <button
+            aria-pressed={playerStatus.isFullscreen}
+            className="button button--secondary"
+            disabled={!playerStatus.isOpen || isStorageBusy}
+            onClick={() =>
+              void runPlayerAction('Режим fullscreen экрана игроков изменен.', () => desktopApi.playerScreen.toggleFullscreen())
+            }
+            type="button"
+          >
+            Fullscreen
+          </button>
+          <button
+            className="button button--secondary"
+            disabled={isStorageBusy}
+            onClick={() => void onClear()}
+            type="button"
+          >
+            Clear
+          </button>
+          {isActiveScenePublished ? (
+            <span className="player-control-panel__scene-status">Сцена активна</span>
+          ) : (
+            <button
+              className="button button--secondary"
+              disabled={activeScene === null || isStorageBusy}
+              onClick={() => void onPublishActiveScene()}
+              type="button"
+            >
+              Активная сцена
+            </button>
+          )}
         </div>
-        <span className={playerStatus.isOpen ? 'status-badge' : 'status-badge status-badge--neutral'}>
-          {playerStatus.isOpen ? 'открыт' : 'закрыт'}
-        </span>
-      </div>
+        <p className="muted">{playerActionStatus}</p>
+      </details>
 
-      <div className="control-grid control-grid--dense">
-        <button
-          className="button"
-          type="button"
-          onClick={() => void runPlayerAction('Окно игроков открыто.', () => desktopApi.playerScreen.open())}
-        >
-          Открыть экран игроков
-        </button>
-        <button
-          className="button button--secondary"
-          disabled={!playerStatus.isOpen}
-          type="button"
-          onClick={() => void runPlayerAction('Окно игроков закрыто.', () => desktopApi.playerScreen.close())}
-        >
-          Закрыть экран игроков
-        </button>
-        <button
-          className="button button--secondary"
-          disabled={!playerStatus.isOpen || playerStatus.isFullscreen}
-          type="button"
-          onClick={() =>
-            void runPlayerAction('Окно игроков переведено в fullscreen.', () =>
-              desktopApi.playerScreen.setFullscreen(true),
-            )
-          }
-        >
-          Fullscreen игрокам
-        </button>
-        <button
-          className="button button--secondary"
-          disabled={!playerStatus.isOpen || !playerStatus.isFullscreen}
-          type="button"
-          onClick={() =>
-            void runPlayerAction('Окно игроков выведено из fullscreen.', () =>
-              desktopApi.playerScreen.setFullscreen(false),
-            )
-          }
-        >
-          Выйти из fullscreen
-        </button>
-        <button
-          className="button button--secondary"
-          type="button"
-          onClick={() => void runPlayerAction('Экран игроков скрыт.', () => desktopApi.playerScreen.hide())}
-        >
-          Скрыть экран игроков
-        </button>
-        <button
-          className="button button--secondary"
-          type="button"
-          onClick={() => void runPlayerAction('Экран игроков снова показан.', () => desktopApi.playerScreen.show())}
-        >
-          Показать экран игроков
-        </button>
-        <button
-          className="button button--secondary"
-          type="button"
-          onClick={() => void runPlayerAction('Экран игроков сброшен.', () => desktopApi.playerScreen.resetState())}
-        >
-          Сбросить экран игроков
-        </button>
-      </div>
-
-      <dl className="status-grid status-grid--compact">
-        <div>
-          <dt>Окно</dt>
-          <dd>{playerStatus.isOpen ? 'открыто' : 'закрыто'}</dd>
-        </div>
-        <div>
-          <dt>Mode</dt>
-          <dd>{playerStatus.state.mode}</dd>
-        </div>
-        <div>
-          <dt>Экран</dt>
-          <dd>{playerStatus.state.isHidden ? 'скрыт' : 'виден'}</dd>
-        </div>
-        <div>
-          <dt>Fullscreen</dt>
-          <dd>{playerStatus.isFullscreen ? 'да' : 'нет'}</dd>
-        </div>
-        <div>
-          <dt>Обновлено</dt>
-          <dd>{formatTimestamp(playerStatus.state.updatedAt)}</dd>
-        </div>
-      </dl>
-
-      <p className="muted">{playerActionStatus}</p>
     </section>
   )
 }

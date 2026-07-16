@@ -2,6 +2,7 @@ import {
   useEffect,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from 'react'
@@ -869,6 +870,35 @@ function SceneUserLayerSwitcher({
   onChange,
   userLayers,
 }: SceneUserLayerSwitcherProps) {
+  function handleLayerKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, currentIndex: number): void {
+    if (userLayers.length === 0) {
+      return
+    }
+
+    const lastIndex = userLayers.length - 1
+    const nextIndex =
+      event.key === 'ArrowRight' || event.key === 'ArrowDown'
+        ? (currentIndex + 1) % userLayers.length
+        : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+          ? (currentIndex - 1 + userLayers.length) % userLayers.length
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? lastIndex
+              : null
+
+    if (nextIndex === null) {
+      return
+    }
+
+    event.preventDefault()
+    const nextLayer = userLayers[nextIndex]
+    onChange(nextLayer.id)
+    window.requestAnimationFrame(() => {
+      document.getElementById(`scene-user-layer-${nextLayer.id}`)?.focus()
+    })
+  }
+
   return (
     <section className="scene-user-layers" aria-label="Пользовательские слои">
       <div className="scene-user-layers__header">
@@ -888,9 +918,12 @@ function SceneUserLayerSwitcher({
               aria-label={`Активировать слой ${userLayer.label}`}
               className={isActive ? 'scene-user-layer scene-user-layer--active' : 'scene-user-layer'}
               disabled={isStorageBusy}
+              id={`scene-user-layer-${userLayer.id}`}
               key={userLayer.id}
               onClick={() => onChange(userLayer.id)}
+              onKeyDown={(event) => handleLayerKeyDown(event, index)}
               role="radio"
+              tabIndex={isActive ? 0 : -1}
               type="button"
             >
               <span className="scene-user-layer__index">{index + 1}</span>

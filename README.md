@@ -70,7 +70,7 @@ In a packaged build the storage directory is resolved from Electron `userData`. 
 
 Основная инструкция пользователя и сборки лежит в [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
-Актуальный продуктовый план по требованиям `TRP game builder.docx` находится в [docs/ROADMAP.md](docs/ROADMAP.md). Выполненные технические этапы 0-15 сохранены там же как архив.
+Актуальный продуктовый план по требованиям `TRP game builder.docx` находится в [docs/ROADMAP.md](docs/ROADMAP.md). Этапы 23-27 закрывают player viewport, управление отдельным окном игроков, live-проекцию сцены и финальный accessibility/regression pass. Выполненные технические этапы 0-15 сохранены там же как архив.
 
 ## Local Verification
 

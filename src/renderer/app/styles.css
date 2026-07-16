@@ -2826,6 +2826,54 @@ h1 {
   padding: 12px;
 }
 
+.player-control-panel__details {
+  display: grid;
+  gap: 10px;
+}
+
+.player-control-panel__details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #191817;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.player-control-panel__details summary:focus-visible {
+  outline: 2px solid #2f8d7a;
+  outline-offset: 3px;
+}
+
+.player-control-panel__details[open] summary {
+  margin-bottom: 2px;
+}
+
+.player-control-panel__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.player-control-panel__actions .button,
+.player-control-panel__scene-status {
+  min-height: 38px;
+}
+
+.player-control-panel__scene-status {
+  display: grid;
+  place-items: center;
+  padding: 8px 12px;
+  color: #1d5f55;
+  background: #e4f1ed;
+  border: 1px solid #b8dbd1;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
 .campaign-manager__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4036,7 +4084,6 @@ button.asset-tag {
 }
 
 .player-screen__center,
-.player-screen__content-panel,
 .player-screen__image-frame,
 .player-screen__split-pane {
   border: 1px solid #30343a;
@@ -4056,10 +4103,7 @@ button.asset-tag {
 
 .player-screen__scene {
   width: min(1180px, 100%);
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(340px, 0.7fr);
-  gap: 20px;
-  align-items: stretch;
+  display: block;
 }
 
 .player-screen__map-preview {
@@ -4272,32 +4316,6 @@ button.asset-tag {
 .player-scene-canvas-measurement--cone {
   clip-path: polygon(50% 50%, 100% 0, 100% 100%);
   transform-origin: center;
-}
-
-.player-screen__content-panel {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-height: 560px;
-  padding: 32px;
-}
-
-.player-screen__details {
-  display: grid;
-  gap: 6px;
-  margin-top: 18px;
-  color: #d8d0c3;
-}
-
-.player-screen__badge {
-  width: fit-content;
-  margin-top: 22px;
-  padding: 6px 10px;
-  color: #dff5ef;
-  background: #16463f;
-  border: 1px solid #2c806f;
-  border-radius: 6px;
-  font-weight: 700;
 }
 
 .player-screen__initiative {
@@ -4725,7 +4743,6 @@ button.asset-tag {
   }
 
   .player-screen__center,
-  .player-screen__content-panel,
   .player-screen__image,
   .player-screen__image-frame,
   .player-screen__split-pane {
@@ -4750,6 +4767,10 @@ button.asset-tag {
 }
 
 @media (max-width: 560px) {
+  .player-control-panel__actions {
+    grid-template-columns: 1fr;
+  }
+
   .project-start {
     padding: 12px;
   }

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { createEmptyCampaign } from './campaignFactory'
 import {
   createCampaignWithActiveScene,
+  createCampaignWithClearedPlayerScreen,
   createCampaignWithNewScene,
+  createCampaignWithPublishedSceneProjection,
   createCampaignWithScenePreview,
   createEmptyScene,
   getActiveCampaignScene,
@@ -124,5 +126,94 @@ describe('sceneFactory', () => {
         height: 900,
       },
     })
+  })
+
+  it('keeps the published scene on the player screen when the master selects another scene', () => {
+    const campaign = createEmptyCampaign({
+      id: 'campaign-test',
+      name: 'Campaign',
+      timestamp: '2026-07-07T00:00:00.000Z',
+    })
+    const withFirstScene = createCampaignWithNewScene(campaign, { id: 'scene-first', name: 'First scene' })
+    const withSecondScene = createCampaignWithNewScene(withFirstScene, { id: 'scene-second', name: 'Second scene' })
+    const published = createCampaignWithScenePreview(withSecondScene, 'scene-first', '2026-07-07T03:00:00.000Z')
+
+    const selectedSecondScene = createCampaignWithActiveScene(published, 'scene-second', '2026-07-07T04:00:00.000Z')
+
+    expect(getActiveCampaignScene(selectedSecondScene)?.id).toBe('scene-second')
+    expect(selectedSecondScene.playerScreenState).toMatchObject({
+      mode: 'scene',
+      activeSceneId: 'scene-first',
+      scenePreview: { id: 'scene-first' },
+    })
+  })
+
+  it('rebuilds the player projection only for the scene currently published to players', () => {
+    const campaign = createEmptyCampaign({
+      id: 'campaign-test',
+      name: 'Campaign',
+      timestamp: '2026-07-07T00:00:00.000Z',
+    })
+    const withScene = createCampaignWithNewScene(campaign, { id: 'scene-first', name: 'First scene' })
+    const published = createCampaignWithScenePreview(withScene, 'scene-first', '2026-07-07T03:00:00.000Z')
+    const withMovedToken = {
+      ...published,
+      scenes: published.scenes.map((scene) => ({
+        ...scene,
+        canvas: {
+          ...scene.canvas,
+          objects: [
+            {
+              id: 'token-1',
+              layerId: 'scene-layer-tokens',
+              kind: 'token-placeholder' as const,
+              name: 'Token',
+              x: 440,
+              y: 220,
+              width: 70,
+              height: 70,
+              rotation: 0,
+              color: '#2c806f',
+              isPlayerVisible: true,
+            },
+          ],
+        },
+      })),
+    }
+
+    const projected = createCampaignWithPublishedSceneProjection(withMovedToken, '2026-07-07T04:00:00.000Z')
+
+    expect(projected).not.toBe(withMovedToken)
+    expect(projected.playerScreenState.sceneCanvas?.objects).toMatchObject([{ id: 'token-1', x: 440, y: 220 }])
+  })
+
+  it('clears the player screen without deleting the selected scene or its viewport', () => {
+    const campaign = createEmptyCampaign({
+      id: 'campaign-test',
+      name: 'Campaign',
+      timestamp: '2026-07-07T00:00:00.000Z',
+    })
+    const withScene = createCampaignWithNewScene(campaign, { id: 'scene-first', name: 'First scene' })
+    const published = createCampaignWithScenePreview(withScene, 'scene-first', '2026-07-07T03:00:00.000Z')
+    const withPlayerViewport = {
+      ...published,
+      playerScreenState: {
+        ...published.playerScreenState,
+        playerViewport: { zoom: 1.4, panX: 36, panY: -20 },
+      },
+    }
+
+    const cleared = createCampaignWithClearedPlayerScreen(withPlayerViewport, '2026-07-07T04:00:00.000Z')
+
+    expect(cleared.scenes).toEqual(withPlayerViewport.scenes)
+    expect(cleared.playerScreenState).toMatchObject({
+      mode: 'blank',
+      isHidden: false,
+      playerViewport: { zoom: 1.4, panX: 36, panY: -20 },
+      visibleTokenIds: [],
+      revealedAssetIds: [],
+    })
+    expect(cleared.playerScreenState.activeSceneId).toBeUndefined()
+    expect(cleared.playerScreenState.sceneCanvas).toBeUndefined()
   })
 })

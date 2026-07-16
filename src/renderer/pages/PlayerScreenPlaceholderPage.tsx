@@ -71,7 +71,7 @@ export function PlayerScreenPlaceholderPage() {
   return (
     <main className={`player-screen player-screen--${playerScreenState.mode}`}>
       {renderPlayerScreenContent(playerScreenState, handlePlayerViewportChange)}
-      {playerScreenState.initiativeVisible && playerScreenState.initiativeTracker ? (
+      {playerScreenState.mode !== 'scene' && playerScreenState.initiativeVisible && playerScreenState.initiativeTracker ? (
         <PlayerInitiativePanel tracker={playerScreenState.initiativeTracker} />
       ) : null}
     </main>
@@ -91,18 +91,6 @@ function renderPlayerScreenContent(
           ) : (
             <div className="player-screen__map-preview" aria-hidden="true" />
           )}
-          <div className="player-screen__content-panel">
-            <p className="eyebrow">Scene</p>
-            <h1 className="player-screen__title">{state.title ?? state.scenePreview?.name ?? 'Сцена'}</h1>
-            <p>{state.message}</p>
-            {state.scenePreview ? (
-              <div className="player-screen__details">
-                <span>{state.scenePreview.name}</span>
-                <span>{state.scenePreview.locationLabel}</span>
-              </div>
-            ) : null}
-            {state.initiativeVisible ? <span className="player-screen__badge">Инициатива видна</span> : null}
-          </div>
         </section>
       )
     case 'image':

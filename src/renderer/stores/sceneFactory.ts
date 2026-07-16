@@ -102,7 +102,10 @@ export function createCampaignWithActiveScene(
 
   return {
     ...nextCampaign,
-    playerScreenState: createSceneSelectionState(nextCampaign, activeScene, updatedAt),
+    playerScreenState:
+      campaign.playerScreenState.mode === 'scene'
+        ? campaign.playerScreenState
+        : createSceneSelectionState(nextCampaign, activeScene, updatedAt),
   }
 }
 
@@ -117,6 +120,50 @@ export function createCampaignWithScenePreview(
   return {
     ...campaignWithActiveScene,
     playerScreenState: createScenePlayerScreenState(campaignWithActiveScene, activeScene, updatedAt),
+  }
+}
+
+export function createCampaignWithPublishedSceneProjection(
+  campaign: Campaign,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): Campaign {
+  const activeScene = getActiveCampaignScene(campaign)
+
+  if (
+    campaign.playerScreenState.mode !== 'scene' ||
+    activeScene === null ||
+    campaign.playerScreenState.activeSceneId !== activeScene.id
+  ) {
+    return campaign
+  }
+
+  return createCampaignWithScenePreview(campaign, activeScene.id, updatedAt)
+}
+
+export function createCampaignWithClearedPlayerScreen(
+  campaign: Campaign,
+  updatedAt: IsoDateString = new Date().toISOString(),
+): Campaign {
+  return {
+    ...campaign,
+    updatedAt,
+    playerScreenState: {
+      ...campaign.playerScreenState,
+      mode: 'blank',
+      isHidden: false,
+      playerViewport: createHydratedSceneCanvasViewport(campaign.playerScreenState.playerViewport),
+      title: 'Экран игроков',
+      message: 'Материалы для игроков пока не выбраны.',
+      scenePreview: undefined,
+      sceneCanvas: undefined,
+      handoutPreview: undefined,
+      initiativeVisible: false,
+      initiativeTracker: undefined,
+      activeSceneId: undefined,
+      visibleTokenIds: [],
+      revealedAssetIds: [],
+      updatedAt,
+    },
   }
 }
 

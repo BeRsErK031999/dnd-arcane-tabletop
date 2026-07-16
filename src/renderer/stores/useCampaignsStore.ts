@@ -67,8 +67,10 @@ import {
 } from './noteFactory'
 import {
   createCampaignWithActiveScene,
+  createCampaignWithClearedPlayerScreen,
   createCampaignWithHydratedScenes,
   createCampaignWithNewScene,
+  createCampaignWithPublishedSceneProjection,
   createCampaignWithScenePreview,
   getActiveCampaignScene,
 } from './sceneFactory'
@@ -212,6 +214,24 @@ export function useCampaignsStore() {
       throw error
     }
   }, [])
+
+  const saveCampaignWithLivePlayerProjection = useCallback(
+    async (campaign: Campaign): Promise<Campaign> => {
+      const campaignWithProjection = createCampaignWithPublishedSceneProjection(campaign)
+      await saveCampaignWithStatus(campaignWithProjection)
+
+      if (campaignWithProjection !== campaign) {
+        const playerStatus = await desktopApi.playerScreen.updateState(campaignWithProjection.playerScreenState)
+
+        if (!playerStatus.ok) {
+          throw new Error(playerStatus.reason ?? 'player-screen-update-failed')
+        }
+      }
+
+      return campaignWithProjection
+    },
+    [saveCampaignWithStatus],
+  )
 
   const queueAutosave = useCallback(
     (campaign: Campaign) => {
@@ -761,6 +781,37 @@ export function useCampaignsStore() {
     }
   }, [saveCampaignWithStatus, selectedCampaign])
 
+  const clearPlayerScreen = useCallback(async (): Promise<PlayerScenePreviewResult> => {
+    if (selectedCampaign === null) {
+      setLastError('Нет открытой кампании для очистки экрана игроков.')
+      return { ok: false, reason: 'campaign-not-selected' }
+    }
+
+    setStatus('saving')
+    setLastError(null)
+
+    try {
+      const updatedCampaign = createCampaignWithClearedPlayerScreen(selectedCampaign)
+      await saveCampaignWithStatus(updatedCampaign)
+      const playerStatus = await desktopApi.playerScreen.updateState(updatedCampaign.playerScreenState)
+
+      if (!playerStatus.ok) {
+        setLastError('Не удалось очистить экран игроков.')
+        setStatus('error')
+        return { ok: false, reason: playerStatus.reason ?? 'player-screen-update-failed' }
+      }
+
+      setSelectedCampaign(updatedCampaign)
+      setCampaigns(await desktopApi.storage.listCampaigns())
+      setStatus('ready')
+      return { ok: true, campaign: updatedCampaign, playerStatus }
+    } catch {
+      setLastError('Не удалось очистить экран игроков.')
+      setStatus('error')
+      return { ok: false, reason: 'clear-player-screen-failed' }
+    }
+  }, [saveCampaignWithStatus, selectedCampaign])
+
   const updateActiveSceneGrid = useCallback(
     async (grid: Partial<SceneGrid>): Promise<CampaignMutationResult> => {
       if (selectedCampaign === null) {
@@ -772,8 +823,9 @@ export function useCampaignsStore() {
       setLastError(null)
 
       try {
-        const updatedCampaign = createCampaignWithActiveSceneGrid(selectedCampaign, grid)
-        await saveCampaignWithStatus(updatedCampaign)
+        const updatedCampaign = await saveCampaignWithLivePlayerProjection(
+          createCampaignWithActiveSceneGrid(selectedCampaign, grid),
+        )
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())
         setStatus('ready')
@@ -784,7 +836,7 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'update-grid-failed' }
       }
     },
-    [saveCampaignWithStatus, selectedCampaign],
+    [saveCampaignWithLivePlayerProjection, selectedCampaign],
   )
 
   const updateActiveSceneViewport = useCallback(
@@ -851,8 +903,9 @@ export function useCampaignsStore() {
       setLastError(null)
 
       try {
-        const updatedCampaign = createCampaignWithActiveSceneMeasurement(selectedCampaign, input)
-        await saveCampaignWithStatus(updatedCampaign)
+        const updatedCampaign = await saveCampaignWithLivePlayerProjection(
+          createCampaignWithActiveSceneMeasurement(selectedCampaign, input),
+        )
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())
         setStatus('ready')
@@ -863,7 +916,7 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'add-measurement-failed' }
       }
     },
-    [saveCampaignWithStatus, selectedCampaign],
+    [saveCampaignWithLivePlayerProjection, selectedCampaign],
   )
 
   const clearActiveSceneMeasurements = useCallback(async (): Promise<CampaignMutationResult> => {
@@ -876,8 +929,9 @@ export function useCampaignsStore() {
     setLastError(null)
 
     try {
-      const updatedCampaign = createCampaignWithoutActiveSceneMeasurements(selectedCampaign)
-      await saveCampaignWithStatus(updatedCampaign)
+      const updatedCampaign = await saveCampaignWithLivePlayerProjection(
+        createCampaignWithoutActiveSceneMeasurements(selectedCampaign),
+      )
       setSelectedCampaign(updatedCampaign)
       setCampaigns(await desktopApi.storage.listCampaigns())
       setStatus('ready')
@@ -887,7 +941,7 @@ export function useCampaignsStore() {
       setStatus('error')
       return { ok: false, reason: 'clear-measurements-failed' }
     }
-  }, [saveCampaignWithStatus, selectedCampaign])
+  }, [saveCampaignWithLivePlayerProjection, selectedCampaign])
 
   const updateActiveSceneFog = useCallback(
     async (fog: Partial<Pick<SceneCanvasFogState, 'enabled' | 'opacity'>>): Promise<CampaignMutationResult> => {
@@ -900,8 +954,9 @@ export function useCampaignsStore() {
       setLastError(null)
 
       try {
-        const updatedCampaign = createCampaignWithActiveSceneFog(selectedCampaign, fog)
-        await saveCampaignWithStatus(updatedCampaign)
+        const updatedCampaign = await saveCampaignWithLivePlayerProjection(
+          createCampaignWithActiveSceneFog(selectedCampaign, fog),
+        )
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())
         setStatus('ready')
@@ -912,7 +967,7 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'update-fog-failed' }
       }
     },
-    [saveCampaignWithStatus, selectedCampaign],
+    [saveCampaignWithLivePlayerProjection, selectedCampaign],
   )
 
   const addActiveSceneFogRegion = useCallback(
@@ -926,8 +981,9 @@ export function useCampaignsStore() {
       setLastError(null)
 
       try {
-        const updatedCampaign = createCampaignWithActiveSceneFogRegion(selectedCampaign, input)
-        await saveCampaignWithStatus(updatedCampaign)
+        const updatedCampaign = await saveCampaignWithLivePlayerProjection(
+          createCampaignWithActiveSceneFogRegion(selectedCampaign, input),
+        )
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())
         setStatus('ready')
@@ -938,7 +994,7 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'add-fog-region-failed' }
       }
     },
-    [saveCampaignWithStatus, selectedCampaign],
+    [saveCampaignWithLivePlayerProjection, selectedCampaign],
   )
 
   const updateActiveSceneFogRegion = useCallback(
@@ -955,12 +1011,9 @@ export function useCampaignsStore() {
       setLastError(null)
 
       try {
-        const updatedCampaign = createCampaignWithUpdatedActiveSceneFogRegion(
-          selectedCampaign,
-          regionId,
-          regionUpdate,
+        const updatedCampaign = await saveCampaignWithLivePlayerProjection(
+          createCampaignWithUpdatedActiveSceneFogRegion(selectedCampaign, regionId, regionUpdate),
         )
-        await saveCampaignWithStatus(updatedCampaign)
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())
         setStatus('ready')
@@ -971,7 +1024,7 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'update-fog-region-failed' }
       }
     },
-    [saveCampaignWithStatus, selectedCampaign],
+    [saveCampaignWithLivePlayerProjection, selectedCampaign],
   )
 
   const removeLastActiveSceneFogRegion = useCallback(async (): Promise<CampaignMutationResult> => {
@@ -984,8 +1037,9 @@ export function useCampaignsStore() {
     setLastError(null)
 
     try {
-      const updatedCampaign = createCampaignWithoutLastActiveSceneFogRegion(selectedCampaign)
-      await saveCampaignWithStatus(updatedCampaign)
+      const updatedCampaign = await saveCampaignWithLivePlayerProjection(
+        createCampaignWithoutLastActiveSceneFogRegion(selectedCampaign),
+      )
       setSelectedCampaign(updatedCampaign)
       setCampaigns(await desktopApi.storage.listCampaigns())
       setStatus('ready')
@@ -995,7 +1049,7 @@ export function useCampaignsStore() {
       setStatus('error')
       return { ok: false, reason: 'remove-fog-region-failed' }
     }
-  }, [saveCampaignWithStatus, selectedCampaign])
+  }, [saveCampaignWithLivePlayerProjection, selectedCampaign])
 
   const clearActiveSceneFogRegions = useCallback(async (): Promise<CampaignMutationResult> => {
     if (selectedCampaign === null) {
@@ -1007,8 +1061,9 @@ export function useCampaignsStore() {
     setLastError(null)
 
     try {
-      const updatedCampaign = createCampaignWithoutActiveSceneFogRegions(selectedCampaign)
-      await saveCampaignWithStatus(updatedCampaign)
+      const updatedCampaign = await saveCampaignWithLivePlayerProjection(
+        createCampaignWithoutActiveSceneFogRegions(selectedCampaign),
+      )
       setSelectedCampaign(updatedCampaign)
       setCampaigns(await desktopApi.storage.listCampaigns())
       setStatus('ready')
@@ -1018,7 +1073,7 @@ export function useCampaignsStore() {
       setStatus('error')
       return { ok: false, reason: 'clear-fog-failed' }
     }
-  }, [saveCampaignWithStatus, selectedCampaign])
+  }, [saveCampaignWithLivePlayerProjection, selectedCampaign])
 
   const createCharacterCard = useCallback(
     async (input: CharacterCardInput): Promise<CharacterCardMutationResult> => {
@@ -1492,8 +1547,9 @@ export function useCampaignsStore() {
       setLastError(null)
 
       try {
-        const updatedCampaign = createCampaignWithMovedActiveSceneObject(selectedCampaign, objectId, direction)
-        await saveCampaignWithStatus(updatedCampaign)
+        const updatedCampaign = await saveCampaignWithLivePlayerProjection(
+          createCampaignWithMovedActiveSceneObject(selectedCampaign, objectId, direction),
+        )
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())
         setStatus('ready')
@@ -1504,7 +1560,7 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'move-scene-object-failed' }
       }
     },
-    [saveCampaignWithStatus, selectedCampaign],
+    [saveCampaignWithLivePlayerProjection, selectedCampaign],
   )
 
   const positionActiveSceneObject = useCallback(
@@ -1521,8 +1577,9 @@ export function useCampaignsStore() {
       setLastError(null)
 
       try {
-        const updatedCampaign = createCampaignWithPositionedActiveSceneObject(selectedCampaign, objectId, position)
-        await saveCampaignWithStatus(updatedCampaign)
+        const updatedCampaign = await saveCampaignWithLivePlayerProjection(
+          createCampaignWithPositionedActiveSceneObject(selectedCampaign, objectId, position),
+        )
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())
         setStatus('ready')
@@ -1533,7 +1590,7 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'position-scene-object-failed' }
       }
     },
-    [saveCampaignWithStatus, selectedCampaign],
+    [saveCampaignWithLivePlayerProjection, selectedCampaign],
   )
 
   const duplicateActiveSceneObject = useCallback(
@@ -1547,8 +1604,9 @@ export function useCampaignsStore() {
       setLastError(null)
 
       try {
-        const updatedCampaign = createCampaignWithDuplicatedActiveSceneObject(selectedCampaign, objectId)
-        await saveCampaignWithStatus(updatedCampaign)
+        const updatedCampaign = await saveCampaignWithLivePlayerProjection(
+          createCampaignWithDuplicatedActiveSceneObject(selectedCampaign, objectId),
+        )
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())
         setStatus('ready')
@@ -1559,7 +1617,7 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'duplicate-scene-object-failed' }
       }
     },
-    [saveCampaignWithStatus, selectedCampaign],
+    [saveCampaignWithLivePlayerProjection, selectedCampaign],
   )
 
   const setActiveSceneObjectVisibility = useCallback(
@@ -1576,12 +1634,9 @@ export function useCampaignsStore() {
       setLastError(null)
 
       try {
-        const updatedCampaign = createCampaignWithActiveSceneObjectVisibility(
-          selectedCampaign,
-          objectId,
-          isPlayerVisible,
+        const updatedCampaign = await saveCampaignWithLivePlayerProjection(
+          createCampaignWithActiveSceneObjectVisibility(selectedCampaign, objectId, isPlayerVisible),
         )
-        await saveCampaignWithStatus(updatedCampaign)
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())
         setStatus('ready')
@@ -1592,7 +1647,7 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'update-scene-object-visibility-failed' }
       }
     },
-    [saveCampaignWithStatus, selectedCampaign],
+    [saveCampaignWithLivePlayerProjection, selectedCampaign],
   )
 
   const updateActiveSceneObjectTokenState = useCallback(
@@ -1609,12 +1664,9 @@ export function useCampaignsStore() {
       setLastError(null)
 
       try {
-        const updatedCampaign = createCampaignWithActiveSceneObjectTokenState(
-          selectedCampaign,
-          objectId,
-          tokenState,
+        const updatedCampaign = await saveCampaignWithLivePlayerProjection(
+          createCampaignWithActiveSceneObjectTokenState(selectedCampaign, objectId, tokenState),
         )
-        await saveCampaignWithStatus(updatedCampaign)
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())
         setStatus('ready')
@@ -1625,7 +1677,7 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'update-scene-object-token-state-failed' }
       }
     },
-    [saveCampaignWithStatus, selectedCampaign],
+    [saveCampaignWithLivePlayerProjection, selectedCampaign],
   )
 
   const importImageAsset = useCallback(
@@ -1661,10 +1713,11 @@ export function useCampaignsStore() {
           return { ok: false, reason: result.reason }
         }
 
-        const updatedCampaign = createCampaignWithImportedAsset(selectedCampaign, result.asset, {
-          bindMapToActiveScene: userLayer === 'map',
-        })
-        await saveCampaignWithStatus(updatedCampaign)
+        const updatedCampaign = await saveCampaignWithLivePlayerProjection(
+          createCampaignWithImportedAsset(selectedCampaign, result.asset, {
+            bindMapToActiveScene: userLayer === 'map',
+          }),
+        )
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())
         setStatus('ready')
@@ -1675,7 +1728,7 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'import-image-failed' }
       }
     },
-    [saveCampaignWithStatus, selectedCampaign],
+    [saveCampaignWithLivePlayerProjection, selectedCampaign],
   )
 
   const updateAssetTags = useCallback(
@@ -1781,8 +1834,9 @@ export function useCampaignsStore() {
       setLastError(null)
 
       try {
-        const updatedCampaign = createCampaignWithAssetInActiveScene(selectedCampaign, assetId, { userLayer })
-        await saveCampaignWithStatus(updatedCampaign)
+        const updatedCampaign = await saveCampaignWithLivePlayerProjection(
+          createCampaignWithAssetInActiveScene(selectedCampaign, assetId, { userLayer }),
+        )
         setSelectedCampaign(updatedCampaign)
         setCampaigns(await desktopApi.storage.listCampaigns())
         setStatus('ready')
@@ -1793,7 +1847,7 @@ export function useCampaignsStore() {
         return { ok: false, reason: 'use-asset-failed' }
       }
     },
-    [saveCampaignWithStatus, selectedCampaign],
+    [saveCampaignWithLivePlayerProjection, selectedCampaign],
   )
 
   const sendAssetToPlayers = useCallback(
@@ -1855,6 +1909,7 @@ export function useCampaignsStore() {
     createScene,
     activateScene,
     sendActiveSceneToPlayers,
+    clearPlayerScreen,
     updateActiveSceneGrid,
     updateActiveSceneViewport,
     updatePlayerSceneViewport,
